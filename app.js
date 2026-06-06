@@ -1,4 +1,4 @@
-﻿import { createClient as createSupabaseClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { createClient as createSupabaseClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
 // === SUPABASE MIGRATION CONFIG ===
 // Disamakan dengan Server Pusat. Jangan taruh service_role / sb_secret di frontend.
@@ -506,6 +506,9 @@ function manualBonusDate(b){
 }
 function manualBonusFallbackId(b){return `${key(b?.user)}_${manualBonusDate(b)}_${Number(b?.amount||0)}_${ms(b)||''}`}
 function manualBonusId(b){return String(b?.id||b?.docId||b?.clientId||manualBonusFallbackId(b))}
+function manualBonusTargetUsername(b){
+  return key(b?.targetUsername||b?.user||b?.username||b?.staffUsername||b?.staff||'');
+}
 function manualBonusIsSeen(b,seen){return seen.has(manualBonusId(b))||seen.has(manualBonusFallbackId(b))}
 function markManualBonusesSeen(rows){
   const seen=getManualSeen();
@@ -520,7 +523,11 @@ function unreadManualBonusRows(){
     return !manualBonusIsSeen(b,seen);
   }));
 }
-function canReceiveManualBonusRow(){return true}
+function canReceiveManualBonusRow(b){
+  const current=key(state.user?.username||'');
+  const target=manualBonusTargetUsername(b);
+  return !!current&&!!target&&target===current;
+}
 function dismissManualBonusNotice(){
   markManualBonusesSeen(unreadManualBonusRows());
   closeModal();
