@@ -715,21 +715,23 @@ function syncAndroidStaffSession(){
   if(!state.user)return;
   try{
     const username=key(state.user.username), actualRole=String(state.user.role||'staff'), dailyMode=isDaily();
+    const staffName=String(state.user.name||state.user.username||'');
     const payload={
       username,
       user:username,
       staff:username,
       targetUsername:username,
-      name:String(state.user.name||state.user.username||''),
-      role:'staff',
+      name:staffName,
+      role:actualRole,
       userRole:actualRole,
       actualRole,
       bonusGroup:dailyMode?'harian':'staff',
-      daily:false,
-      isDaily:false,
+      daily:dailyMode,
+      isDaily:dailyMode,
       actualDaily:dailyMode,
       dailyMode,
       mode:dailyMode?'harian':'staff',
+      notificationAudience:'staff',
       canReceiveStaffNotifications:true
     };
     const signature=JSON.stringify(payload);
@@ -740,6 +742,10 @@ function syncAndroidStaffSession(){
       if(seen.includes(bridge))return;
       seen.push(bridge);
       if(typeof bridge.setStaffSession==='function')bridge.setStaffSession(signature);
+      if(typeof bridge.registerStaffSession==='function')bridge.registerStaffSession(signature);
+      if(typeof bridge.setStaffUser==='function'){
+        try{bridge.setStaffUser(username,staffName,actualRole)}catch(e){try{bridge.setStaffUser(username)}catch(err){}}
+      }
     });
   }catch(e){}
 }
@@ -751,6 +757,7 @@ function clearAndroidStaffSession(){
       if(seen.includes(bridge))return;
       seen.push(bridge);
       if(typeof bridge.clearStaffSession==='function')bridge.clearStaffSession();
+      if(typeof bridge.clearStaffUser==='function')bridge.clearStaffUser();
     });
   }catch(e){}
 }
