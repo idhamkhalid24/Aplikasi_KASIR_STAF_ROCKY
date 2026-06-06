@@ -533,20 +533,24 @@ function dismissManualBonusNotice(){
   closeModal();
   render();
 }
+function manualBonusDisplayNote(value,fallback=''){
+  const note=String(value||fallback||'').trim();
+  return /bonus\s*manual/i.test(note)?'':note;
+}
 function manualBonusNoticeCard(){
   const rows=unreadManualBonusRows();
   if(!rows.length)return '';
   const latest=rows[0];
   const total=Number(latest.amount||0);
-  const note=String(latest.note||latest.description||latest.reason||'Bonus manual dari admin');
-  return `<div class="card manual-bonus-alert"><div class="between"><div style="display:flex;align-items:center;gap:9px;min-width:0"><span class="manual-bonus-ico">🎁</span><div style="min-width:0"><div class="label">Bonus Manual Baru</div><div class="stat-val">Rp ${rp(total)}</div><div class="hint" style="margin-top:2px">${esc(note)}</div></div></div><button class="btn success" onclick="dismissManualBonusNotice()">OK</button></div></div>`;
+  const note=manualBonusDisplayNote(latest.note||latest.description||latest.reason,'Bonus dari Mimin')||'Bonus dari Mimin';
+  return `<div class="card manual-bonus-alert"><div class="between"><div style="display:flex;align-items:center;gap:9px;min-width:0"><span class="manual-bonus-ico">🎁</span><div style="min-width:0"><div class="label">Ada Bonus Masuk Nih</div><div class="stat-val">Rp ${rp(total)}</div><div class="hint" style="margin-top:2px">${esc(note)}</div></div></div><button class="btn success" onclick="dismissManualBonusNotice()">OK</button></div></div>`;
 }
 function notifyNewManualBonuses(){
   const rows=unreadManualBonusRows();
   if(!rows.length)return;
   const latest=rows[0];
   const total=Number(latest.amount||0);
-  const note=String(latest.note||latest.description||latest.reason||'Bonus manual dari admin');
+  const note=manualBonusDisplayNote(latest.note||latest.description||latest.reason,'');
   // Tandai semua yang sudah kebaca supaya bonus lama hari ini tidak ikut ke popup berikutnya.
   markManualBonusesSeen(rows);
   render();
@@ -594,9 +598,11 @@ function showManualBonusParty(amount,note,count=1,options={}){
   wrap.className='manual-bonus-party';
   const pieces=Array.from({length:34},()=>`<i style="--x:${Math.round(Math.random()*250-125)}px;--y:${Math.round(Math.random()*-190-45)}px;--r:${Math.round(Math.random()*720-360)}deg;--d:${(Math.random()*.20).toFixed(2)}s"></i>`).join('');
   const onlyAmount=options?.amountOnly===true;
+  const noteText=manualBonusDisplayNote(note,'');
+  const noteHtml=noteText?`<div class="manual-bonus-note">${esc(noteText)}</div>`:'';
   wrap.innerHTML=onlyAmount
     ? `<div class="manual-bonus-confetti">${pieces}</div><div class="manual-bonus-box"><div class="manual-bonus-amount">Rp ${rp(amount)}</div><button class="manual-bonus-close" onclick="closeManualBonusParty()" type="button">Tutup</button></div>`
-    : `<div class="manual-bonus-confetti">${pieces}</div><div class="manual-bonus-box"><div class="manual-bonus-emoji">🎁</div><div class="manual-bonus-title">BONUS DARI MIMIN</div><div class="manual-bonus-sub">الحمد لله</div><div class="manual-bonus-amount">Rp ${rp(amount)}</div><div class="manual-bonus-note">${esc(note||'Bonus dari Mimin')}</div><button class="manual-bonus-close" onclick="closeManualBonusParty()" type="button">Tutup</button></div>`;
+    : `<div class="manual-bonus-confetti">${pieces}</div><div class="manual-bonus-box"><div class="manual-bonus-emoji">🎁</div><div class="manual-bonus-title">BONUS DARI MIMIN</div><div class="manual-bonus-sub">الحمد لله</div><div class="manual-bonus-amount">Rp ${rp(amount)}</div>${noteHtml}<button class="manual-bonus-close" onclick="closeManualBonusParty()" type="button">Tutup</button></div>`;
   (document.querySelector('.app')||document.body).appendChild(wrap);
   requestAnimationFrame(()=>wrap.classList.add('show'));
 }
