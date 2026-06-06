@@ -1,4 +1,4 @@
-﻿import { createClient as createSupabaseClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { createClient as createSupabaseClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
 // === SUPABASE MIGRATION CONFIG ===
 // Disamakan dengan Server Pusat. Jangan taruh service_role / sb_secret di frontend.
