@@ -735,15 +735,23 @@ function syncAndroidStaffSession(){
     const signature=JSON.stringify(payload);
     if(signature===androidStaffSessionSignature)return;
     androidStaffSessionSignature=signature;
-    const bridge=window.AndroidStaff;
-    if(bridge&&typeof bridge.setStaffSession==='function')bridge.setStaffSession(signature);
+    const bridges=[window.AndroidStaff,window.Android].filter(Boolean), seen=[];
+    bridges.forEach(bridge=>{
+      if(seen.includes(bridge))return;
+      seen.push(bridge);
+      if(typeof bridge.setStaffSession==='function')bridge.setStaffSession(signature);
+    });
   }catch(e){}
 }
 function clearAndroidStaffSession(){
   androidStaffSessionSignature='';
   try{
-    const bridge=window.AndroidStaff;
-    if(bridge&&typeof bridge.clearStaffSession==='function')bridge.clearStaffSession();
+    const bridges=[window.AndroidStaff,window.Android].filter(Boolean), seen=[];
+    bridges.forEach(bridge=>{
+      if(seen.includes(bridge))return;
+      seen.push(bridge);
+      if(typeof bridge.clearStaffSession==='function')bridge.clearStaffSession();
+    });
   }catch(e){}
 }
 function renderNow(){if(!state.user)return renderLogin();syncAndroidStaffSession();nav();if(state.page==='history')return history();if(state.page==='unlock')return renderUnlockPage();return home()}
