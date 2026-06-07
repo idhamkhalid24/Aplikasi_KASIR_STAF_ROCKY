@@ -555,7 +555,7 @@ function notifyNewManualBonuses(){
   markManualBonusesSeen(rows);
   render();
   try{if(navigator.vibrate)navigator.vibrate([80,40,80,40,110])}catch(e){}
-  playSuccessSound();
+  playBonusSound();
   toast(`Asik dapet bonus Rp ${rp(total)}`);
   showManualBonusParty(total,note,1);
 }
@@ -608,9 +608,14 @@ function showManualBonusParty(amount,note,count=1,options={}){
 }
 
 const SUCCESS_SOUND_SRC='./success.mp3';
+const BONUS_SOUND_SRC='./notifkasi_bonus_masuk.mp3';
 let successAudio=null;
+let bonusAudio=null;
 function primeSuccessSound(){try{if(!successAudio){successAudio=new Audio(SUCCESS_SOUND_SRC);successAudio.preload='auto';successAudio.volume=0.9;successAudio.load();}}catch(e){}}
 function playSuccessSound(){try{primeSuccessSound();if(!successAudio)return;successAudio.pause();successAudio.currentTime=0;const p=successAudio.play();if(p&&p.catch)p.catch(()=>{});}catch(e){}}
+function primeBonusSound(){try{if(!bonusAudio){bonusAudio=new Audio(BONUS_SOUND_SRC);bonusAudio.preload='auto';bonusAudio.volume=1;bonusAudio.load();}}catch(e){}}
+function playBonusSound(){try{primeBonusSound();if(!bonusAudio)return;bonusAudio.pause();bonusAudio.currentTime=0;const p=bonusAudio.play();if(p&&p.catch)p.catch(()=>{});}catch(e){}}
+function primeAppSounds(){primeSuccessSound();primeBonusSound();}
 function onlyDigits(v){return String(v||'').replace(/[^0-9]/g,'')}
 function formatRupiahInput(el){const n=onlyDigits(el.value);el.value=n?'Rp '+rp(Number(n)):''}
 function modal(title,body,actions='',variant=''){
@@ -2088,7 +2093,7 @@ function notifyAdminTransactionDelete(tx={}){
 function openTx(draft={}){
   if(!state.user)return;
   if(!canTx())return toast(txBlockedMessage());
-  primeSuccessSound();
+  primeAppSounds();
   const defaultNote=String(draft?.note||'');
   const defaultAmount=Number(draft?.amount||0);
   const amountValue=defaultAmount>0?`Rp ${rp(defaultAmount)}`:'';
@@ -2148,7 +2153,7 @@ async function confirmTxPayment(paymentMethod,btn,event){
   }
 }
 async function saveTx(printAfterSave=false,paymentMethod='',draft=null){
-  primeSuccessSound();
+  primeAppSounds();
   const amount=Number(draft?.amount||onlyDigits($('txa')?.value)), note=String(draft?.note??$('txn')?.value??'').trim()||'Transaksi';
   if(!amount||amount<=0)return toast('Nominal wajib diisi');
   if(!paymentMethod){
