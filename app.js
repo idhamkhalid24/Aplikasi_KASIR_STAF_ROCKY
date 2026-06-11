@@ -797,17 +797,80 @@ function notifyTargetAchievedOnce(summary,plan){
     return Promise.resolve(null);
   }
 }
-function notifyStaffTargetBonus(row={},user={}){
+async function notifyStaffTargetBonus(row={},user={}){
   try{
     const username=key(row.user||row.username||user.username||'');
     const amount=Number(row.amount||0);
-    if(!username||amount<=0)return Promise.resolve(null);
+    if(!username||amount<=0)return null;
     const role=String(row.userRole||row.role||user.role||'staff');
-    return fetch(ROCKY_STAFF_NOTIFY_MANUAL_BONUS_URL,{method:'POST',headers:{'Content-Type':'application/json','X-Notify-Secret':ROCKY_ADMIN_NOTIFY_SECRET},body:JSON.stringify({secret:ROCKY_ADMIN_NOTIFY_SECRET,targetUsername:username,username,user:username,name:row.name||user.name||username,amount,note:row.note||'Bonus target omzet harian tercapai',action:'add',dateKey:String(row.dateKey||''),monthKey:String(row.monthKey||''),bonusId:String(row.id||row.docId||''),type:'daily_target_bonus',source:'daily_target',role,userRole:role,actualRole:role,bonusGroup:'staff',isDaily:false,dailyMode:false,actualDaily:false,canReceiveStaffNotifications:true,notificationAudience:'staff',createdByName:'Target Otomatis Rocky'})}).catch(e=>console.warn('Notif bonus target staff gagal',e?.message||e));
+    const res=await fetch(ROCKY_STAFF_NOTIFY_MANUAL_BONUS_URL,{method:'POST',headers:{'Content-Type':'application/json','X-Notify-Secret':ROCKY_ADMIN_NOTIFY_SECRET},body:JSON.stringify({secret:ROCKY_ADMIN_NOTIFY_SECRET,targetUsername:username,username,user:username,name:row.name||user.name||username,amount,note:row.note||'Bonus target omzet harian tercapai',action:'add',dateKey:String(row.dateKey||''),monthKey:String(row.monthKey||''),bonusId:String(row.id||row.docId||''),type:'daily_target_bonus',source:'daily_target',role,userRole:role,actualRole:role,bonusGroup:'staff',isDaily:false,dailyMode:false,actualDaily:false,canReceiveStaffNotifications:true,notificationAudience:'staff',createdByName:'Target Otomatis Rocky'})});
+    const data=await res.json().catch(()=>null);
+    if(!res.ok||data?.ok===false){
+      console.warn('Notif bonus target staff gagal',data||res.status);
+      return null;
+    }
+    return data||{ok:true};
   }catch(e){
     console.warn('Notif bonus target staff gagal',e?.message||e);
-    return Promise.resolve(null);
+    return null;
   }
+}
+function targetBonusPayload(summary,user,amount){
+  const username=targetUserKey(user);
+  return{
+    user:username,
+    targetUsername:username,
+    name:user.name||username,
+    userRole:user.role||'staff',
+    role:user.role||'staff',
+    bonusGroup:'staff',
+    amount,
+    dateKey:summary.dateKey,
+    monthKey:summary.dateKey.slice(0,7),
+    type:'daily_target_bonus',
+    source:'daily_target',
+    note:'Bonus target omzet harian tercapai',
+    description:'Bonus otomatis karena target omzet harian gabungan tercapai',
+    action:'add',
+    ...trialRecordFlags(user),
+    deleted:false,
+    createdAt:serverTimestamp(),
+    createdAtMs:Date.now()
+  };
+}
+async function ensureStaffTargetBonusNotification(bonusId,rewardId,row,user){
+  try{
+    const rewardSnap=await getDocFromServer(doc(db,TARGET_BONUS_REWARDS_TABLE,rewardId)).catch(()=>null);
+    const reward=rewardSnap?.exists()?rewardSnap.data()||{}:{};
+    if(reward.staffNotificationSent===true||Number(reward.staffNotifiedAtMs||0)>0)return false;
+    const result=await notifyStaffTargetBonus({id:bonusId,docId:bonusId,...row},user);
+    if(!result)return false;
+    await setDoc(doc(db,TARGET_BONUS_REWARDS_TABLE,rewardId),{
+      staffNotificationSent:true,
+      staffNotificationStatus:'sent',
+      staffNotifiedAt:serverTimestamp(),
+      staffNotifiedAtMs:Date.now()
+    },{merge:true}).catch(e=>console.warn('target reward notif flag gagal',e?.code||e?.message||e));
+    return true;
+  }catch(e){
+    console.warn('ensure notif bonus target gagal',e?.code||e?.message||e);
+    return false;
+  }
+}
+async function ensureStaffTargetBonusNotifications(summary,plan,amount){
+  if(Number(amount||0)<=0)return [];
+  const sent=[];
+  for(const user of plan.users||[]){
+    const username=targetUserKey(user);
+    if(!username)continue;
+    const bonusId=targetBonusDocId(summary.dateKey,username), rewardId=targetRewardDocId(summary.dateKey,username);
+    const fallback=targetBonusPayload(summary,user,amount);
+    const existingBonus=await getDocFromServer(doc(db,'manualBonuses',bonusId)).catch(()=>null);
+    const row=existingBonus?.exists()?{...fallback,...(existingBonus.data()||{})}:fallback;
+    const ok=await ensureStaffTargetBonusNotification(bonusId,rewardId,row,user);
+    if(ok)sent.push(username);
+  }
+  return sent;
 }
 async function ensureTargetNotification(summary,plan){
   const id=targetNotificationDocId(summary.dateKey), payload={
@@ -839,12 +902,13 @@ async function applyDailyTargetBonus(){
     const latest=await getDocFromServer(doc(db,DAILY_TARGETS_TABLE,targetDailyDocId(summary.dateKey))).catch(()=>null);
     const latestData=latest?.exists()?latest.data():state.data.dailyTarget||{};
     if(latest?.exists())state.data.dailyTarget={...state.data.dailyTarget,...latestData};
+    const plan=dailyTargetRewardPlan(summary.dateKey), amount=Number(summary.bonusAmount||0);
     if(latestData?.bonusApplied===true){
+      await ensureStaffTargetBonusNotifications(summary,plan,amount);
       await saveDailyTargetStatus({bonusApplied:true,rewardedUsers:latestData.rewardedUsers||[]});
       return;
     }
     await saveDailyTargetStatus({});
-    const plan=dailyTargetRewardPlan(summary.dateKey), amount=Number(summary.bonusAmount||0);
     if(amount<=0){
       await saveDailyTargetStatus({activeUsers:plan.activeUsers,rewardedUsers:[],bonusApplied:false});
       return;
@@ -855,29 +919,9 @@ async function applyDailyTargetBonus(){
       if(!username)continue;
       const bonusId=targetBonusDocId(summary.dateKey,username), rewardId=targetRewardDocId(summary.dateKey,username);
       const existingBonus=await getDocFromServer(doc(db,'manualBonuses',bonusId)).catch(()=>null);
-      const payload={
-        user:username,
-        targetUsername:username,
-        name:user.name||username,
-        userRole:user.role||'staff',
-        role:user.role||'staff',
-        bonusGroup:'staff',
-        amount,
-        dateKey:summary.dateKey,
-        monthKey:summary.dateKey.slice(0,7),
-        type:'daily_target_bonus',
-        source:'daily_target',
-        note:'Bonus target omzet harian tercapai',
-        description:'Bonus otomatis karena target omzet harian gabungan tercapai',
-        action:'add',
-        ...trialRecordFlags(user),
-        deleted:false,
-        createdAt:serverTimestamp(),
-        createdAtMs:Date.now()
-      };
+      const payload=targetBonusPayload(summary,user,amount);
       if(!existingBonus?.exists()){
         await setDoc(doc(db,'manualBonuses',bonusId),payload,{merge:false});
-        await notifyStaffTargetBonus({id:bonusId,docId:bonusId,...payload},user);
         if(username===key(state.user?.username)){
           state.data.manual=mergeRowsById(state.data.manual,[{id:bonusId,docId:bonusId,...payload}]).filter(b=>!deleted(b));
         }
@@ -895,6 +939,7 @@ async function applyDailyTargetBonus(){
         rewardedAt:serverTimestamp(),
         rewardedAtMs:Date.now()
       },{merge:true}).catch(e=>console.warn('targetBonusRewards gagal',e?.code||e?.message||e));
+      await ensureStaffTargetBonusNotification(bonusId,rewardId,existingBonus?.exists()?{...payload,...(existingBonus.data()||{})}:payload,user);
     }
     await saveDailyTargetStatus({activeUsers:plan.activeUsers,rewardedUsers:rewarded,bonusApplied:true});
     await ensureTargetNotification(summary,{...plan,rewardedUsers:rewarded});
