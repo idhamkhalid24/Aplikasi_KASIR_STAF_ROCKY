@@ -843,11 +843,12 @@ function targetBonusPayload(summary,user,amount){
     createdAtMs:Date.now()
   };
 }
-async function ensureStaffTargetBonusNotification(bonusId,rewardId,row,user){
+async function ensureStaffTargetBonusNotification(bonusId,rewardId,row,user,options={}){
   try{
+    const force=options.force===true;
     const rewardSnap=await getDocFromServer(doc(db,TARGET_BONUS_REWARDS_TABLE,rewardId)).catch(()=>null);
     const reward=rewardSnap?.exists()?rewardSnap.data()||{}:{};
-    if(reward.staffNotificationSent===true||Number(reward.staffNotifiedAtMs||0)>0)return false;
+    if(!force&&(reward.staffNotificationSent===true||Number(reward.staffNotifiedAtMs||0)>0))return false;
     const result=await notifyStaffTargetBonus({id:bonusId,docId:bonusId,...row},user);
     if(!result)return false;
     await setDoc(doc(db,TARGET_BONUS_REWARDS_TABLE,rewardId),{
@@ -861,6 +862,46 @@ async function ensureStaffTargetBonusNotification(bonusId,rewardId,row,user){
     console.warn('ensure notif bonus target gagal',e?.code||e?.message||e);
     return false;
   }
+}
+async function ensureDailyTargetBonusRows(summary,plan,amount){
+  const rewarded=[];
+  if(Number(amount||0)<=0)return rewarded;
+  for(const user of plan.users||[]){
+    const username=targetUserKey(user);
+    if(!username)continue;
+    const bonusId=targetBonusDocId(summary.dateKey,username), rewardId=targetRewardDocId(summary.dateKey,username);
+    const existingBonus=await getDocFromServer(doc(db,'manualBonuses',bonusId)).catch(()=>null);
+    const existingData=existingBonus?.exists()?existingBonus.data()||{}:null;
+    const existingActive=!!existingData&&!deleted(existingData);
+    const payload=targetBonusPayload(summary,user,amount);
+    if(!existingActive){
+      await setDoc(doc(db,'manualBonuses',bonusId),payload,{merge:false});
+      if(username===key(state.user?.username)){
+        state.data.manual=mergeRowsById(state.data.manual,[{id:bonusId,docId:bonusId,...payload}]).filter(b=>!deleted(b));
+      }
+    }
+    rewarded.push(username);
+    const notified=await ensureStaffTargetBonusNotification(bonusId,rewardId,existingActive?{...payload,...existingData,id:bonusId,docId:bonusId}:payload,user,{force:!existingActive});
+    await setDoc(doc(db,TARGET_BONUS_REWARDS_TABLE,rewardId),{
+      id:rewardId,
+      dateKey:summary.dateKey,
+      user:username,
+      targetUsername:username,
+      amount,
+      manualBonusId:bonusId,
+      type:'daily_target_bonus',
+      source:'daily_target',
+      rewardedAt:serverTimestamp(),
+      rewardedAtMs:Date.now(),
+      ...(notified?{staffNotificationSent:true,staffNotificationStatus:'sent',staffNotifiedAt:serverTimestamp(),staffNotifiedAtMs:Date.now()}: {})
+    },{merge:true}).catch(e=>console.warn('targetBonusRewards gagal',e?.code||e?.message||e));
+  }
+  return rewarded;
+}
+function mergeTargetRewardedUsers(...groups){
+  const set=new Set();
+  groups.flat().forEach(u=>{const k=key(u);if(k)set.add(k)});
+  return [...set];
 }
 async function ensureStaffTargetBonusNotifications(summary,plan,amount){
   if(Number(amount||0)<=0)return [];
@@ -909,8 +950,8 @@ async function applyDailyTargetBonus(){
     if(latest?.exists())state.data.dailyTarget={...state.data.dailyTarget,...latestData};
     const plan=dailyTargetRewardPlan(summary.dateKey), amount=Number(summary.bonusAmount||0);
     if(latestData?.bonusApplied===true){
-      await ensureStaffTargetBonusNotifications(summary,plan,amount);
-      await saveDailyTargetStatus({bonusApplied:true,rewardedUsers:latestData.rewardedUsers||[]});
+      const rewarded=await ensureDailyTargetBonusRows(summary,plan,amount);
+      await saveDailyTargetStatus({bonusApplied:true,rewardedUsers:mergeTargetRewardedUsers(latestData.rewardedUsers||[],rewarded)});
       return;
     }
     await saveDailyTargetStatus({});
@@ -918,34 +959,7 @@ async function applyDailyTargetBonus(){
       await saveDailyTargetStatus({activeUsers:plan.activeUsers,rewardedUsers:[],bonusApplied:false});
       return;
     }
-    const rewarded=[];
-    for(const user of plan.users){
-      const username=targetUserKey(user);
-      if(!username)continue;
-      const bonusId=targetBonusDocId(summary.dateKey,username), rewardId=targetRewardDocId(summary.dateKey,username);
-      const existingBonus=await getDocFromServer(doc(db,'manualBonuses',bonusId)).catch(()=>null);
-      const payload=targetBonusPayload(summary,user,amount);
-      if(!existingBonus?.exists()){
-        await setDoc(doc(db,'manualBonuses',bonusId),payload,{merge:false});
-        if(username===key(state.user?.username)){
-          state.data.manual=mergeRowsById(state.data.manual,[{id:bonusId,docId:bonusId,...payload}]).filter(b=>!deleted(b));
-        }
-      }
-      rewarded.push(username);
-      await setDoc(doc(db,TARGET_BONUS_REWARDS_TABLE,rewardId),{
-        id:rewardId,
-        dateKey:summary.dateKey,
-        user:username,
-        targetUsername:username,
-        amount,
-        manualBonusId:bonusId,
-        type:'daily_target_bonus',
-        source:'daily_target',
-        rewardedAt:serverTimestamp(),
-        rewardedAtMs:Date.now()
-      },{merge:true}).catch(e=>console.warn('targetBonusRewards gagal',e?.code||e?.message||e));
-      await ensureStaffTargetBonusNotification(bonusId,rewardId,existingBonus?.exists()?{...payload,...(existingBonus.data()||{})}:payload,user);
-    }
+    const rewarded=await ensureDailyTargetBonusRows(summary,plan,amount);
     await saveDailyTargetStatus({activeUsers:plan.activeUsers,rewardedUsers:rewarded,bonusApplied:true});
     await ensureTargetNotification(summary,{...plan,rewardedUsers:rewarded});
     notifyTargetReachedInApp();
