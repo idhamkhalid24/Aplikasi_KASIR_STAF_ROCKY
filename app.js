@@ -1724,7 +1724,8 @@ async function latestBonusSnapshotForSave(){
       dailyBonusPercent:hasBonusValue(fresh.dailyBonusPercent)?Number(fresh.dailyBonusPercent):null,
       active:fresh.active!==false,
       deviceId:isDailyUser(fresh)?'':String(fresh.deviceId||state.user?.deviceId||''),
-      deviceResetAtMs:Number(fresh.deviceResetAtMs||state.user?.deviceResetAtMs||0)
+      deviceResetAtMs:Number(fresh.deviceResetAtMs||state.user?.deviceResetAtMs||0),
+      ...trialSessionFields(fresh)
     };
     const freshBonus=bonusSnap.exists()?normalizeBonusSettings(bonusSnap.data()):normalizeBonusSettings(DEFAULT_BONUS);
     state.user=freshUser;
