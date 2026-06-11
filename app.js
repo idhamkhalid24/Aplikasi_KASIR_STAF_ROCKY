@@ -230,7 +230,7 @@ function onSnapshot(refOrQuery,next,errorCb){
 
 const OFFICE_LOC={lat:-6.786168,lng:106.780918};
 const RADIUS_LIMIT=200, MEMBER_URL='https://idhamkhalid24.github.io/kode-khusus-member/';
-const SESSION='rocky_firebase_session_v1', LEGACY_SESSION='rocky_staff_compact_manual_v1', PENDING_KEY='rocky_staff_pending_sync_v2', MANUAL_BONUS_SEEN='rocky_staff_manual_bonus_seen_v1', FIRST_TX_PARTY_SEEN='rocky_staff_first_tx_party_seen_v1', DEVICE_ID_KEY='rocky_staff_device_id_v1', DEVICE_USER_KEY='rocky_staff_device_user_v1', ADMIN=['admin'];
+const SESSION='rocky_firebase_session_v1', LEGACY_SESSION='rocky_staff_compact_manual_v1', PENDING_KEY='rocky_staff_pending_sync_v2', MANUAL_BONUS_SEEN='rocky_staff_manual_bonus_seen_v1', TARGET_NOTICE_SEEN='rocky_staff_target_notice_seen_v1', FIRST_TX_PARTY_SEEN='rocky_staff_first_tx_party_seen_v1', DEVICE_ID_KEY='rocky_staff_device_id_v1', DEVICE_USER_KEY='rocky_staff_device_user_v1', ADMIN=['admin'];
 const DEFAULT_BONUS={transactionBonusRate:.015,transactionBonusPercent:1.5,closingBonusPerMinute:100,closingDeadlineTime:'18:00',closingDeadlineHour:18,closingDeadlineMinute:0,closingDeadlineMinutes:1080};
 const DAILY_TARGET_AMOUNT=2500000;
 const BONUS_TARGET_AMOUNT=10000;
@@ -274,9 +274,10 @@ let staffRealtimeStartedFor='';
 function defaultDailyTargetState(dateKey=todayKey()){
   return{dateKey,targetAmount:DAILY_TARGET_AMOUNT,bonusAmount:BONUS_TARGET_AMOUNT,totalAmount:0,progressPercent:0,reached:false,bonusApplied:false,activeUsers:[],rewardedUsers:[],updatedAtMs:0};
 }
-const state={user:null,page:'home',pos:null,busy:false,lastSyncMs:0,syncing:false,syncError:'',data:{tx:[],att:[],closings:[],manual:[],unlockRequests:[],targetTx:[],targetUsers:[],targetAtt:[],targetSettings:{targetAmount:DAILY_TARGET_AMOUNT,bonusAmount:BONUS_TARGET_AMOUNT},dailyTarget:defaultDailyTargetState(),bonus:{...DEFAULT_BONUS},headerGuideNote:DEFAULT_HEADER_GUIDE_NOTE,staffDailyNote:{note:DEFAULT_STAFF_DAILY_NOTE,enabled:true},receiptSettings:{...DEFAULT_RECEIPT_TEXT_SETTINGS}}};
+const state={user:null,page:'home',pos:null,busy:false,lastSyncMs:0,syncing:false,syncError:'',data:{tx:[],att:[],closings:[],manual:[],unlockRequests:[],targetTx:[],targetUsers:[],targetAtt:[],targetSettings:{targetAmount:DAILY_TARGET_AMOUNT,bonusAmount:BONUS_TARGET_AMOUNT},dailyTarget:defaultDailyTargetState(),targetNotification:null,bonus:{...DEFAULT_BONUS},headerGuideNote:DEFAULT_HEADER_GUIDE_NOTE,staffDailyNote:{note:DEFAULT_STAFF_DAILY_NOTE,enabled:true},receiptSettings:{...DEFAULT_RECEIPT_TEXT_SETTINGS}}};
 let dailyTargetApplyTimer=0;
 let dailyTargetApplying=false;
+let targetNoticeAnnounced=new Set();
 let clockInInFlight=false;
 let deviceSessionTimer=null;
 const $=id=>document.getElementById(id), page=$('page');
@@ -396,7 +397,8 @@ function clearSessionAndRender(msg){
   stopDeviceSessionWatch();
   clearStaffRealtime();
   clearAndroidStaffSession();
-  state.user=null;state.pos=null;state.syncError='';state.lastSyncMs=0;state.data={tx:[],att:[],closings:[],manual:[],unlockRequests:[],targetTx:[],targetUsers:[],targetAtt:[],targetSettings:{targetAmount:DAILY_TARGET_AMOUNT,bonusAmount:BONUS_TARGET_AMOUNT},dailyTarget:defaultDailyTargetState(),bonus:{...DEFAULT_BONUS},headerGuideNote:DEFAULT_HEADER_GUIDE_NOTE,staffDailyNote:{note:DEFAULT_STAFF_DAILY_NOTE,enabled:true},receiptSettings:{...DEFAULT_RECEIPT_TEXT_SETTINGS}};
+  targetNoticeAnnounced=new Set();
+  state.user=null;state.pos=null;state.syncError='';state.lastSyncMs=0;state.data={tx:[],att:[],closings:[],manual:[],unlockRequests:[],targetTx:[],targetUsers:[],targetAtt:[],targetSettings:{targetAmount:DAILY_TARGET_AMOUNT,bonusAmount:BONUS_TARGET_AMOUNT},dailyTarget:defaultDailyTargetState(),targetNotification:null,bonus:{...DEFAULT_BONUS},headerGuideNote:DEFAULT_HEADER_GUIDE_NOTE,staffDailyNote:{note:DEFAULT_STAFF_DAILY_NOTE,enabled:true},receiptSettings:{...DEFAULT_RECEIPT_TEXT_SETTINGS}};
   if(msg)toast(msg);
   renderLogin();
 }
@@ -582,6 +584,64 @@ function targetDailyDocId(dateKey=todayKey()){const d=String(dateKey||todayKey()
 function targetBonusDocId(dateKey,username){const d=String(dateKey||todayKey()).slice(0,10),u=key(username);return isTrialUser()?`trial_targetbonus_${d}_${u}`:`targetbonus_${d}_${u}`}
 function targetRewardDocId(dateKey,username){const d=String(dateKey||todayKey()).slice(0,10),u=key(username);return isTrialUser()?`trial_targetreward_${d}_${u}`:`targetreward_${d}_${u}`}
 function targetNotificationDocId(dateKey=todayKey()){const d=String(dateKey||todayKey()).slice(0,10);return isTrialUser()?`trial_targetnotif_${d}_${key(state.user?.username)}`:`targetnotif_${d}`}
+function targetNoticeSeenKey(){return TARGET_NOTICE_SEEN+'_'+key(state.user?.username||'guest')}
+function getTargetNoticeSeen(){try{const raw=JSON.parse(localStorage.getItem(targetNoticeSeenKey())||'[]');return new Set(Array.isArray(raw)?raw.map(String):[])}catch(e){return new Set()}}
+function saveTargetNoticeSeen(set){try{localStorage.setItem(targetNoticeSeenKey(),JSON.stringify([...set].slice(-180)))}catch(e){}}
+function targetNoticeId(s=state.data.dailyTarget||{}){
+  const d=String(s.dateKey||todayKey()).slice(0,10), u=key(state.user?.username||'');
+  return `target_reached_${d}_${u}_${Number(s.targetAmount||0)}`;
+}
+function currentUserTargetRewarded(s=state.data.dailyTarget||{}){
+  const u=key(state.user?.username||'');
+  if(!u||isDailyUser(state.user))return false;
+  const d=String(s.dateKey||todayKey()).slice(0,10);
+  const savedRewarded=Array.isArray(s.rewardedUsers)?s.rewardedUsers.map(key):[];
+  if(savedRewarded.includes(u))return true;
+  return dailyTargetRewardPlan(d).rewardedUsers.map(key).includes(u);
+}
+function unreadTargetNotice(){
+  if(!state.user)return null;
+  const s=syncDailyTargetState();
+  if(String(s.dateKey||'').slice(0,10)!==todayKey()||!s.reached||!currentUserTargetRewarded(s))return null;
+  const id=targetNoticeId(s);
+  if(getTargetNoticeSeen().has(id))return null;
+  return{id,dateKey:s.dateKey,targetAmount:Number(s.targetAmount||0),totalAmount:Number(s.totalAmount||0),bonusAmount:Number(s.bonusAmount||0)};
+}
+function markTargetNoticeSeen(notice=unreadTargetNotice()){
+  if(!notice)return;
+  const seen=getTargetNoticeSeen();
+  seen.add(notice.id);
+  saveTargetNoticeSeen(seen);
+}
+function dismissTargetNotice(){
+  markTargetNoticeSeen();
+  closeModal();
+  render();
+}
+function targetReachedNoticeCard(){
+  const n=unreadTargetNotice();
+  if(!n)return '';
+  return `<div class="card target-reached-alert"><div class="between"><div style="display:flex;align-items:center;gap:9px;min-width:0"><span class="target-reached-ico">✓</span><div style="min-width:0"><div class="label">Target Hari Ini Tercapai</div><div class="stat-val">Rp ${rp(n.totalAmount)}</div><div class="hint" style="margin-top:2px">Bonus target Rp ${rp(n.bonusAmount)} masuk.</div></div></div><button class="btn success" onclick="dismissTargetNotice()">OK</button></div></div>`;
+}
+function showTargetReachedParty(notice){
+  document.querySelectorAll('.manual-bonus-party').forEach(el=>el.remove());
+  const wrap=document.createElement('div');
+  wrap.className='manual-bonus-party';
+  const pieces=Array.from({length:34},()=>`<i style="--x:${Math.round(Math.random()*250-125)}px;--y:${Math.round(Math.random()*-190-45)}px;--r:${Math.round(Math.random()*720-360)}deg;--d:${(Math.random()*.20).toFixed(2)}s"></i>`).join('');
+  wrap.innerHTML=`<div class="manual-bonus-confetti">${pieces}</div><div class="manual-bonus-box"><div class="manual-bonus-emoji">✓</div><div class="manual-bonus-title">TARGET HARI INI TERCAPAI</div><div class="manual-bonus-sub">Bonus target otomatis masuk</div><div class="manual-bonus-amount">Rp ${rp(notice.bonusAmount||0)}</div><div class="manual-bonus-note">Omset hari ini Rp ${rp(notice.totalAmount||0)}</div><button class="manual-bonus-close" onclick="closeManualBonusParty()" type="button">Tutup</button></div>`;
+  (document.querySelector('.app')||document.body).appendChild(wrap);
+  requestAnimationFrame(()=>wrap.classList.add('show'));
+}
+function notifyTargetReachedInApp(){
+  const notice=unreadTargetNotice();
+  if(!notice||targetNoticeAnnounced.has(notice.id))return;
+  targetNoticeAnnounced.add(notice.id);
+  render();
+  try{if(navigator.vibrate)navigator.vibrate([90,45,90,45,130])}catch(e){}
+  playBonusSound();
+  toast('Target hari ini tercapai');
+  showTargetReachedParty(notice);
+}
 function targetNumberSetting(data,keys,fallback){
   for(const k of keys){
     const n=Number(data?.[k]);
@@ -764,6 +824,7 @@ async function ensureTargetNotification(summary,plan){
     createdAtMs:Date.now()
   };
   const inserted=await insertDocIfAbsent(TARGET_NOTIFICATIONS_TABLE,id,payload);
+  if(inserted)state.data.targetNotification={id,...payload};
   if(inserted&&!isTrialUser())await notifyTargetAchievedOnce(summary,plan);
 }
 async function applyDailyTargetBonus(){
@@ -837,6 +898,7 @@ async function applyDailyTargetBonus(){
     }
     await saveDailyTargetStatus({activeUsers:plan.activeUsers,rewardedUsers:rewarded,bonusApplied:true});
     await ensureTargetNotification(summary,{...plan,rewardedUsers:rewarded});
+    notifyTargetReachedInApp();
     if(rewarded.includes(key(state.user?.username))){
       render();
       notifyNewManualBonuses();
@@ -1165,6 +1227,7 @@ function startStaffRealtime(){
     state.data.targetTx=sortDesc(snap.docs.map(x=>({id:x.id,...x.data()})));
     syncDailyTargetState();
     render();
+    notifyTargetReachedInApp();
     scheduleDailyTargetCheck();
   },err=>console.warn('Target omzet transaksi realtime gagal',err?.code||err?.message||err)));
 
@@ -1173,6 +1236,7 @@ function startStaffRealtime(){
     state.data.targetAtt=dedupeAttendanceRows(snap.docs.map(x=>({id:x.id,...x.data()})));
     syncDailyTargetState();
     render();
+    notifyTargetReachedInApp();
     scheduleDailyTargetCheck();
   },err=>console.warn('Target omzet absen realtime gagal',err?.code||err?.message||err)));
 
@@ -1181,13 +1245,21 @@ function startStaffRealtime(){
     state.data.targetUsers=snap.docs.map(x=>({id:x.id,username:key((x.data()||{}).username||x.id),...x.data()}));
     syncDailyTargetState();
     render();
+    notifyTargetReachedInApp();
     scheduleDailyTargetCheck();
   },err=>console.warn('Target omzet user realtime gagal',err?.code||err?.message||err)));
 
   staffRealtimeUnsubs.push(onSnapshot(doc(db,DAILY_TARGETS_TABLE,targetDailyDocId(d)),snap=>{
     if(snap.exists())syncDailyTargetState(snap.data()||{});
     render();
+    notifyTargetReachedInApp();
   },err=>console.warn('Status target harian realtime gagal',err?.code||err?.message||err)));
+
+  staffRealtimeUnsubs.push(onSnapshot(doc(db,TARGET_NOTIFICATIONS_TABLE,targetNotificationDocId(d)),snap=>{
+    state.data.targetNotification=snap.exists()?{id:snap.id,...(snap.data()||{})}:null;
+    notifyTargetReachedInApp();
+    render();
+  },err=>console.warn('Notifikasi target harian realtime gagal',err?.code||err?.message||err)));
 
   staffRealtimeUnsubs.push(onSnapshot(doc(db,TARGET_SETTINGS_TABLE,'daily_target'),snap=>{
     if(snap.exists()){
@@ -2187,7 +2259,7 @@ function home(){const tx=todayTx(), a=todayAtt(), c=todayClosing(), emptyStockCa
     page.innerHTML=`${top('Mode Harian',state.user?.name||'Karyawan Harian')}${trialModeCard()}${manualBonusNoticeCard()}<div class="hero daily-income-hero"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0,5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard('daily')}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
     return;
   }
-  const mainLabel=c?'Closing Hari Ini':'Absen Hari Ini';const mainValue=c?closingTimeText(c):(a?timeID(ms(a)):'--:--');const mainFoot=c?'sudah closing':(a?'sudah absen':'belum absen');const mainClass=c?'closed':(a?'ok':'wait');page.innerHTML=`${top('Mode Staff',state.user?.name||'Karyawan Staff')}${trialModeCard()}${manualBonusNoticeCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0,5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()}<div class="stat"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Bonus Bulan Ini ++</div><button class="refresh-icon-btn" onclick="refresh()" aria-label="Refresh bonus"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg></button></div><div class="big" style="color:var(--blue)">Rp ${rp(totalBonus())}</div><div class="bonus-note">Bonus bulan ${monthID(monthKey())}</div>${todayClosingBonusInline()}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`}
+  const mainLabel=c?'Closing Hari Ini':'Absen Hari Ini';const mainValue=c?closingTimeText(c):(a?timeID(ms(a)):'--:--');const mainFoot=c?'sudah closing':(a?'sudah absen':'belum absen');const mainClass=c?'closed':(a?'ok':'wait');page.innerHTML=`${top('Mode Staff',state.user?.name||'Karyawan Staff')}${trialModeCard()}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0,5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()}<div class="stat"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Bonus Bulan Ini ++</div><button class="refresh-icon-btn" onclick="refresh()" aria-label="Refresh bonus"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg></button></div><div class="big" style="color:var(--blue)">Rp ${rp(totalBonus())}</div><div class="bonus-note">Bonus bulan ${monthID(monthKey())}</div>${todayClosingBonusInline()}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`}
 function history(){const items=sortDesc(todayTx());const printAllCard=items.length?`<div class="card" style="margin-bottom:8px"><button class="btn primary block" onclick="printTodayTransactions()">🧾 Cetak Semua Transaksi Hari Ini</button><div class="hint" style="margin-top:6px">Cetak ${items.length} transaksi hari ini dalam 1 struk.</div></div>`:'';const body=items.length?`<div class="tx-table"><div class="tx-head"><span>History Transaksi</span><span></span><span></span></div><div class="tx-list">${items.map(txItem).join('')}</div></div>`:'<div class="empty">Belum ada transaksi hari ini.</div>';page.innerHTML=`${top('Riwayat Hari Ini',`${items.length} transaksi · Rp ${rp(todayTotal())}`)}${syncBar()}${printAllCard}${body}`}
 
 const __baseHomeWithUnlockCard=home;
@@ -2571,6 +2643,9 @@ async function saveTx(printAfterSave=false,paymentMethod='',draft=null){
     playSuccessSound();
     await logAudit('transaction_create',{id,user:u,amount,note,paymentMethod:payment,paymentLabel:paymentText});
     if(!isTrialRecord(savedTx))notifyAdminNewTransaction(savedTx);
+    state.data.targetTx=mergeRowsById(state.data.targetTx,[savedTx]);
+    syncDailyTargetState();
+    scheduleDailyTargetCheck();
     render();
     if(firstTxToday)showFirstTxParty(amount,note);
     if(printAfterSave){
@@ -2646,6 +2721,8 @@ async function clockIn(){
     const existing=await serverAttendanceToday(u,d);
     if(existing){
       state.data.att=dedupeAttendanceRows([{id:existing.id,...existing},...state.data.att]);
+      state.data.targetAtt=dedupeAttendanceRows([{id:existing.id,...existing},...state.data.targetAtt]);
+      syncDailyTargetState();
       render();
       return toast('Sudah absen hari ini');
     }
@@ -2660,6 +2737,8 @@ async function clockIn(){
     render();
     await setDoc(doc(db,'attendance',id),{...payload,createdAt:serverTimestamp(),syncedAt:serverTimestamp(),syncedAtMs:Date.now()},{merge:true});
     state.data.att=dedupeAttendanceRows(state.data.att.map(a=>a.id===id?{...a,pending:false}:a));
+    state.data.targetAtt=dedupeAttendanceRows([{id,...payload,pending:false},...state.data.targetAtt]);
+    syncDailyTargetState();
     removePending(id);
     if(!isTrialRecord(payload))await notifyAdminAttendance({id,...payload,pending:false},'masuk');
     toast('Absen berhasil');
@@ -2673,6 +2752,8 @@ async function clockIn(){
       const now=Date.now();
       const payload={user:u,name:state.user.name||u,dateKey:d,monthKey:d.slice(0,7),createdAtMs:now,loc:pos||null,lat:pos?.lat||null,lng:pos?.lng||null,...trialRecordFlags(state.user),deleted:false,clientId:id,source:'trx_staff_sesuai_index'};
       state.data.att=dedupeAttendanceRows([{id,...payload,pending:true},...state.data.att]);
+      state.data.targetAtt=dedupeAttendanceRows([{id,...payload,pending:true},...state.data.targetAtt]);
+      syncDailyTargetState();
       addPending({type:'att_add',id,user:u,payload,createdAtMs:now});
       toast('Koneksi gagal. Absen disimpan lokal & akan sync otomatis.');
     }
@@ -3003,7 +3084,7 @@ try{
   window.addEventListener('online',()=>{syncBelanjakuBridgeQueue().then(r=>{if(r.sent)toast('Data Belanjaku terkirim')}).catch(()=>{})});
   window.addEventListener('focus',()=>{syncBelanjakuBridgeQueue().catch(()=>{})});
 }catch(e){}
-window.requestOpenPrayerAyat=requestOpenPrayerAyat;window.openPrayerAyat=openPrayerAyat;window.togglePrayerAyat=togglePrayerAyat;window.stopPrayerAyat=stopPrayerAyat;window.openStaffNoteLink=openStaffNoteLink;window.login=login;window.logout=logout;window.toggleTheme=toggleTheme;window.openHeaderGuideDetail=openHeaderGuideDetail;window.refresh=refresh;window.hardRefreshApp=hardRefreshApp;window.retrySync=retrySync;window.go=go;window.appBack=appBack;window.openTx=openTx;window.requestFeatureUnlock=requestFeatureUnlock;window.openEmptyStock=openEmptyStock;window.addEmptyStockVariantRow=addEmptyStockVariantRow;window.removeEmptyStockVariantRow=removeEmptyStockVariantRow;window.submitEmptyStock=submitEmptyStock;window.syncBelanjakuBridgeQueue=syncBelanjakuBridgeQueue;window.saveTx=saveTx;window.confirmTxPayment=confirmTxPayment;window.reopenTxDraft=reopenTxDraft;window.cancelTxPaymentChoice=cancelTxPaymentChoice;window.delTx=delTx;window.closeModal=closeModal;window.closeFirstTxParty=closeFirstTxParty;window.closeManualBonusParty=closeManualBonusParty;window.updateLocation=updateLocation;window.clockIn=clockIn;window.formatRupiahInput=formatRupiahInput;window.printReceiptFromTx=printReceiptFromTx;window.printTodayTransactions=printTodayTransactions;window.copyReceiptText=copyReceiptText;window.shareReceiptText=shareReceiptText;window.nativePrintReceiptText=nativePrintReceiptText;window.directPrintReceiptText=directPrintReceiptText;window.browserPrintReceiptText=browserPrintReceiptText;
+window.requestOpenPrayerAyat=requestOpenPrayerAyat;window.openPrayerAyat=openPrayerAyat;window.togglePrayerAyat=togglePrayerAyat;window.stopPrayerAyat=stopPrayerAyat;window.openStaffNoteLink=openStaffNoteLink;window.login=login;window.logout=logout;window.toggleTheme=toggleTheme;window.openHeaderGuideDetail=openHeaderGuideDetail;window.dismissManualBonusNotice=dismissManualBonusNotice;window.dismissTargetNotice=dismissTargetNotice;window.refresh=refresh;window.hardRefreshApp=hardRefreshApp;window.retrySync=retrySync;window.go=go;window.appBack=appBack;window.openTx=openTx;window.requestFeatureUnlock=requestFeatureUnlock;window.openEmptyStock=openEmptyStock;window.addEmptyStockVariantRow=addEmptyStockVariantRow;window.removeEmptyStockVariantRow=removeEmptyStockVariantRow;window.submitEmptyStock=submitEmptyStock;window.syncBelanjakuBridgeQueue=syncBelanjakuBridgeQueue;window.saveTx=saveTx;window.confirmTxPayment=confirmTxPayment;window.reopenTxDraft=reopenTxDraft;window.cancelTxPaymentChoice=cancelTxPaymentChoice;window.delTx=delTx;window.closeModal=closeModal;window.closeFirstTxParty=closeFirstTxParty;window.closeManualBonusParty=closeManualBonusParty;window.updateLocation=updateLocation;window.clockIn=clockIn;window.formatRupiahInput=formatRupiahInput;window.printReceiptFromTx=printReceiptFromTx;window.printTodayTransactions=printTodayTransactions;window.copyReceiptText=copyReceiptText;window.shareReceiptText=shareReceiptText;window.nativePrintReceiptText=nativePrintReceiptText;window.directPrintReceiptText=directPrintReceiptText;window.browserPrintReceiptText=browserPrintReceiptText;
 setupAutoSync();
 // Pull-to-refresh dimatikan supaya tidak ada read tambahan tanpa sengaja.
 // Refresh manual dan realtime tetap aktif.
