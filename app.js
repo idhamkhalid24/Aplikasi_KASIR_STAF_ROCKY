@@ -436,7 +436,7 @@ async function validateCurrentDeviceSession({silent=true,force=false}={}){
 }
 function startDeviceSessionWatch(){
   stopDeviceSessionWatch();
-  if(!state.user||isDailyUser(state.user))return;
+  if(!state.user||isDailyUser(state.user)||isTrialUser(state.user))return;
   deviceSessionTimer=setInterval(()=>validateCurrentDeviceSession({silent:true}),DEVICE_SESSION_CHECK_MS);
 }
 function stopDeviceSessionWatch(){
@@ -458,7 +458,7 @@ function sortDesc(a){return [...(a||[])].sort((x,y)=>ms(y)-ms(x))}
 function isAdmin(u){return key(u?.role)==='admin'||ADMIN.includes(key(u?.username||u?.id))}
 function isDailyUser(user=state.user){const r=key(user?.role);return r==='harian'||r==='daily'||r==='karyawan_harian'}
 function isDaily(){return isDailyUser(state.user)}
-function isTrialUser(user=state.user){const value=String(user?.accountType||user?.mode||'').toLowerCase();return !!user&&(user.isDummy===true||user.trialMode===true||user.dummy===true||value==='dummy'||value==='trial')}
+function isTrialUser(user=state.user){const value=String(user?.accountType||user?.mode||user?.type||'').toLowerCase(),role=String(user?.role||'').toLowerCase(),username=key(user?.username||user?.id||user?.user||'');return !!user&&(user.isDummy===true||user.trialMode===true||user.dummy===true||user.dummyMode===true||user.isTrial===true||user.trial===true||user.excludeFromReports===true||user.excludeFromReport===true||value==='dummy'||value==='dumy'||value==='trial'||role==='dummy'||role==='dumy'||role==='trial'||username==='dummy'||username.startsWith('dummy_')||username.includes('_dummy')||username==='dumy'||username.startsWith('dumy_')||username.includes('_dumy')||username==='trial'||username.startsWith('trial_')||username.includes('_trial'))}
 function trialRecordFlags(user=state.user){return isTrialUser(user)?{isDummy:true,trialMode:true,accountType:'dummy',excludeFromReports:true}:{isDummy:false,trialMode:false,accountType:'normal',excludeFromReports:false}}
 function isTrialRecord(rec){if(!rec)return false;if(rec.isDummy===true||rec.trialMode===true||rec.excludeFromReports===true||String(rec.accountType||'').toLowerCase()==='dummy')return true;const u=key(rec.user||rec.username||rec.targetUsername||'');if(!u)return false;if(key(state.user?.username)===u)return isTrialUser(state.user);const found=(state.data.targetUsers||[]).find(x=>key(x.username||x.id)===u);return isTrialUser(found)}
 function recordMatchesCurrentAccount(rec){return isTrialUser()?isTrialRecord(rec):!isTrialRecord(rec)}
@@ -544,7 +544,7 @@ function unreadManualBonusRows(){
   if(!state.user)return [];
   const seen=getManualSeen(), d=todayKey();
   return sortDesc((state.data.manual||[]).filter(b=>{
-    if(!b||deleted(b)||manualBonusDate(b)!==d||Number(b.amount||0)<=0||!canReceiveManualBonusRow(b))return false;
+    if(!b||deleted(b)||isTargetAutoBonusRow(b)||manualBonusDate(b)!==d||Number(b.amount||0)<=0||!canReceiveManualBonusRow(b))return false;
     return !manualBonusIsSeen(b,seen);
   }));
 }
@@ -626,14 +626,14 @@ function dismissTargetNotice(){
 function targetReachedNoticeCard(){
   const n=unreadTargetNotice();
   if(!n)return '';
-  return `<div class="card target-reached-alert"><div class="between"><div style="display:flex;align-items:center;gap:9px;min-width:0"><span class="target-reached-ico">✓</span><div style="min-width:0"><div class="label">Target Hari Ini Tercapai</div><div class="stat-val">Rp ${rp(n.totalAmount)}</div><div class="hint" style="margin-top:2px">Bonus target Rp ${rp(n.bonusAmount)} masuk.</div></div></div><button class="btn success" onclick="dismissTargetNotice()">OK</button></div></div>`;
+  return `<div class="card target-reached-alert"><div class="between"><div style="display:flex;align-items:center;gap:9px;min-width:0"><span class="target-reached-ico">✓</span><div style="min-width:0"><div class="label">Target Hari Ini Tercapai</div><div class="hint" style="margin-top:2px">Bonus target otomatis masuk.</div></div></div><button class="btn success" onclick="dismissTargetNotice()">OK</button></div></div>`;
 }
 function showTargetReachedParty(notice){
   document.querySelectorAll('.manual-bonus-party').forEach(el=>el.remove());
   const wrap=document.createElement('div');
   wrap.className='manual-bonus-party';
   const pieces=Array.from({length:34},()=>`<i style="--x:${Math.round(Math.random()*250-125)}px;--y:${Math.round(Math.random()*-190-45)}px;--r:${Math.round(Math.random()*720-360)}deg;--d:${(Math.random()*.20).toFixed(2)}s"></i>`).join('');
-  wrap.innerHTML=`<div class="manual-bonus-confetti">${pieces}</div><div class="manual-bonus-box"><div class="manual-bonus-emoji">✓</div><div class="manual-bonus-title">TARGET HARI INI TERCAPAI</div><div class="manual-bonus-sub">Bonus target otomatis masuk</div><div class="manual-bonus-amount">Rp ${rp(notice.bonusAmount||0)}</div><div class="manual-bonus-note">Omset hari ini Rp ${rp(notice.totalAmount||0)}</div><button class="manual-bonus-close" onclick="closeManualBonusParty()" type="button">Tutup</button></div>`;
+  wrap.innerHTML=`<div class="manual-bonus-confetti">${pieces}</div><div class="manual-bonus-box"><div class="manual-bonus-emoji">✓</div><div class="manual-bonus-title">TARGET HARI INI TERCAPAI</div><div class="manual-bonus-sub">Bonus target otomatis masuk</div><button class="manual-bonus-close" onclick="closeManualBonusParty()" type="button">Tutup</button></div>`;
   (document.querySelector('.app')||document.body).appendChild(wrap);
   requestAnimationFrame(()=>wrap.classList.add('show'));
 }
@@ -952,7 +952,7 @@ async function ensureTargetNotification(summary,plan){
     dateKey:summary.dateKey,
     type:'daily_target_reached',
     title:'Target omzet harian tercapai',
-    message:`Target Rp${rp(summary.targetAmount)} tercapai dengan omzet Rp ${rp(summary.totalAmount)}`,
+    message:'Target omzet harian sudah tercapai. Bonus target otomatis masuk.',
     targetAmount:summary.targetAmount,
     totalAmount:summary.totalAmount,
     reachedAt:serverTimestamp(),
