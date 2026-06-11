@@ -741,7 +741,7 @@ function notifyStaffTargetBonus(row={},user={}){
   try{
     const username=key(row.user||row.username||user.username||'');
     const amount=Number(row.amount||0);
-    if(!username||amount<=0||isTrialRecord(row)||isTrialUser(user))return Promise.resolve(null);
+    if(!username||amount<=0)return Promise.resolve(null);
     const role=String(row.userRole||row.role||user.role||'staff');
     return fetch(ROCKY_STAFF_NOTIFY_MANUAL_BONUS_URL,{method:'POST',headers:{'Content-Type':'application/json','X-Notify-Secret':ROCKY_ADMIN_NOTIFY_SECRET},body:JSON.stringify({secret:ROCKY_ADMIN_NOTIFY_SECRET,targetUsername:username,username,user:username,name:row.name||user.name||username,amount,note:row.note||'Bonus target omzet harian tercapai',action:'add',dateKey:String(row.dateKey||''),monthKey:String(row.monthKey||''),bonusId:String(row.id||row.docId||''),type:'daily_target_bonus',source:'daily_target',role,userRole:role,actualRole:role,bonusGroup:'staff',isDaily:false,dailyMode:false,actualDaily:false,canReceiveStaffNotifications:true,notificationAudience:'staff',createdByName:'Target Otomatis Rocky'})}).catch(e=>console.warn('Notif bonus target staff gagal',e?.message||e));
   }catch(e){
