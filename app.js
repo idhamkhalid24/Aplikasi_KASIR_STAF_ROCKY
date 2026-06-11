@@ -497,8 +497,8 @@ function txBonusRate(t){
 function txBonusValue(t){return Math.round(Number(t?.amount||0)*txBonusRate(t))}
 function txBonusSum(list){return (list||[]).reduce((sum,t)=>sum+txBonusValue(t),0)}
 function roleLabel(){return isDaily()?'Karyawan Harian':'Karyawan Staff'}
-function roleCard(){const lock=missedAttendanceLockForDate();const locked=!!lock||isClosedToday()||(!isDaily()&&!todayAtt());const label=locked?'Terkunci':'Terbuka';const cls=locked?'red':'green';const note=lock?`tidak absen ${dateID(lock.missedDate)}`:(isClosedToday()?'sudah closing':(isDaily()?'siap transaksi':(todayAtt()?'sudah absen':'belum absen')));const ico=locked?'!':'OK';return `<div class="role-card ${locked?'locked':'open'}"><div class="between"><div><div class="role-title">Status Transaksi</div><div class="hint" style="margin-top:3px">${note}</div></div><div class="lock-status ${locked?'locked':'open'}"><span class="lock-ico">${ico}</span><span class="pill ${cls}">${label}</span></div></div></div>`}
-function headerTxStatus(){if(!state.user)return '';const locked=!!missedAttendanceLockForDate()||isClosedToday()||(!isDaily()&&!todayAtt());const label=locked?'Terkunci':'Terbuka';const ico=locked?'!':'OK';return `<span class="trx-head-status ${locked?'locked':'open'}"><span class="lock-ico">${ico}</span>${label}</span>`}
+function roleCard(){const trial=isTrialUser(),lock=trial?null:missedAttendanceLockForDate();const locked=trial?false:(!!lock||isClosedToday()||(!isDaily()&&!todayAtt()));const label=locked?'Terkunci':'Terbuka';const cls=trial?'amber':(locked?'red':'green');const note=trial?'mode trial siap transaksi':(lock?`tidak absen ${dateID(lock.missedDate)}`:(isClosedToday()?'sudah closing':(isDaily()?'siap transaksi':(todayAtt()?'sudah absen':'belum absen'))));const ico=locked?'!':'OK';return `<div class="role-card ${locked?'locked':'open'}"><div class="between"><div><div class="role-title">Status Transaksi</div><div class="hint" style="margin-top:3px">${note}</div></div><div class="lock-status ${locked?'locked':'open'}"><span class="lock-ico">${ico}</span><span class="pill ${cls}">${label}</span></div></div></div>`}
+function headerTxStatus(){if(!state.user)return '';const locked=isTrialUser()?false:(!!missedAttendanceLockForDate()||isClosedToday()||(!isDaily()&&!todayAtt()));const label=locked?'Terkunci':'Terbuka';const ico=locked?'!':'OK';return `<span class="trx-head-status ${locked?'locked':'open'}"><span class="lock-ico">${ico}</span>${label}</span>`}
 function txDate(t){return String(t.dateKey||(ms(t)?todayKey(new Date(ms(t))):'')).slice(0,10)}
 function txMonth(t){return String(t.monthKey||txDate(t).slice(0,7))}
 function attDate(a){return String(a.dateKey||(ms(a)?todayKey(new Date(ms(a))):'')).slice(0,10)}
@@ -696,6 +696,11 @@ function dailyTargetSummary(dateKey=todayKey()){
 }
 function targetAttendanceUsers(dateKey=todayKey()){
   const d=String(dateKey||todayKey()).slice(0,10), set=new Set();
+  if(isTrialUser()){
+    const u=key(state.user?.username);
+    if(u)set.add(u);
+    return set;
+  }
   dedupeAttendanceRows(state.data.targetAtt||[]).forEach(a=>{if(!deleted(a)&&attDate(a)===d){if(isTrialUser()){if(isTrialRecord(a)&&key(a.user)===key(state.user?.username))set.add(key(a.user))}else if(!isTrialRecord(a))set.add(key(a.user))}});
   return set;
 }
@@ -1120,7 +1125,7 @@ function openHeaderGuideDetail(){
 function headerIconGuide(){
   return `<div class="card header-guide-card is-compact"><div class="between"><div class="header-guide-mini-row"><span class="header-guide-mini-ico">?</span><div style="min-width:0"><div class="label">Panduan Icon Header</div><div class="hint" style="margin-top:2px">Klik buka untuk lihat pesan dan keterangan tombol atas.</div></div></div><button class="header-guide-open-btn" onclick="openHeaderGuideDetail()" aria-label="Buka Panduan Icon Header">Buka</button></div></div>`;
 }
-function showStaffAbsenFab(){return !!state.user&&state.page==='home'&&!isDaily()&&!todayAtt()&&!isClosedToday()&&!missedAttendanceLockForDate()}
+function showStaffAbsenFab(){return !!state.user&&state.page==='home'&&!isTrialUser()&&!isDaily()&&!todayAtt()&&!isClosedToday()&&!missedAttendanceLockForDate()}
 function nav(){const n=$('nav'),f=$('fab'),af=$('absenFab');if(!state.user){n.style.display='none';f.style.display='none';if(af)af.style.display='none';return}n.style.display='flex';f.style.display=state.page==='home'?'block':'none';if(af)af.style.display=showStaffAbsenFab()?'flex':'none';document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));$(`nav-${state.page}`)?.classList.add('active')}
 function renderLogin(){nav();page.innerHTML=`<div class="login"><div class="login-card"><div class="hero" style="text-align:center"><div class="big">ROCKY HIJAB</div><div class="sub">Koleksi Terbaik Untuk Muslimah Hebat</div></div><div class="card" style="margin-top:10px"><div class="field"><div class="label">Username Staff</div><input id="lu" autocomplete="username" placeholder="username"></div><div class="field"><div class="label">PIN</div><input id="lp" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" placeholder="PIN"></div><button class="btn primary block" onclick="login()">Masuk</button><div class="hint" style="margin-top:8px;text-align:center">Login Menggunakan Username Masing-Masing</div></div></div></div>`}
 let androidStaffSessionSignature='';
@@ -1613,7 +1618,7 @@ function pendingUnlockForMissedAttendance(targetDate=todayKey(),missedDate=previ
 }
 function latestMissedAttendanceUnlock(){return missedAttendanceUnlockRows().find(r=>key(r.user)===key(state.user?.username))||null}
 function missedAttendanceLockForDate(date=todayKey(),unlockRowsOverride=null){
-  if(!state.user||isDaily()||todayAtt())return null;
+  if(!state.user||isTrialUser()||isDaily()||todayAtt())return null;
   const target=String(date||todayKey()).slice(0,10), missed=previousDateKey(target), u=key(state.user.username);
   if(!validDateKey(target)||!validDateKey(missed))return null;
   if(hasAttendOn(missed))return null;
@@ -1625,12 +1630,13 @@ function missedAttendanceLockText(lock,action='transaksi'){
   return `${label} terkunci karena tidak ada absen tanggal ${dateID(lock?.missedDate)}. Minta buka fitur ke admin dulu.`;
 }
 function txBlockedMessage(){
+  if(isTrialUser())return 'Mode trial siap transaksi';
   const lock=missedAttendanceLockForDate();
   if(lock)return missedAttendanceLockText(lock,'transaksi');
   if(isClosedToday())return 'Transaksi sudah closing hari ini';
   return 'Absen dulu sebelum transaksi';
 }
-function canTx(){if(missedAttendanceLockForDate())return false;if(isClosedToday())return false;if(isDaily())return true;return !!todayAtt()}
+function canTx(){if(isTrialUser())return true;if(missedAttendanceLockForDate())return false;if(isClosedToday())return false;if(isDaily())return true;return !!todayAtt()}
 function upsertRows(listName,rows){
   if(!Array.isArray(rows)||!rows.length)return;
   const map=new Map((state.data[listName]||[]).map(x=>[String(x.id||''),x]));
@@ -1643,6 +1649,7 @@ function serverClosingHit(c,u,d){
 async function verifyAbsenceOpenServer(dateKeyForWork=todayKey(),action='transaksi'){
   const u=key(state.user?.username), target=String(dateKeyForWork||todayKey()).slice(0,10), missed=previousDateKey(target);
   if(!u)return {ok:false,msg:'Sesi login tidak valid. Login ulang.'};
+  if(isTrialUser())return {ok:true};
   if(isDaily())return {ok:true};
   try{
     const reads=[
@@ -1667,6 +1674,7 @@ async function verifyAbsenceOpenServer(dateKeyForWork=todayKey(),action='transak
 async function verifyTransactionAllowedServer(dateKeyForTx=todayKey()){
   const u=key(state.user?.username), d=String(dateKeyForTx||todayKey()).slice(0,10);
   if(!u)return {ok:false,msg:'Sesi login tidak valid. Login ulang.'};
+  if(isTrialUser())return {ok:true};
   const unlockCheck=await verifyAbsenceOpenServer(d,'transaksi');
   if(!unlockCheck.ok)return unlockCheck;
   try{
@@ -1743,7 +1751,7 @@ async function latestBonusSnapshotForSave(){
   }
 }
 
-function statusPill(){if(isClosedToday())return `<span class="pill amber">Sudah closing</span>`;if(isDaily())return `<span class="pill blue">Karyawan harian</span>`;const a=todayAtt();return a?`<span class="pill green">Sudah absen · ${timeID(ms(a))}</span>`:`<span class="pill red">Belum absen</span>`}
+function statusPill(){if(isTrialUser())return `<span class="pill amber">Mode Trial</span>`;if(isClosedToday())return `<span class="pill amber">Sudah closing</span>`;if(isDaily())return `<span class="pill blue">Karyawan harian</span>`;const a=todayAtt();return a?`<span class="pill green">Sudah absen · ${timeID(ms(a))}</span>`:`<span class="pill red">Belum absen</span>`}
 function locText(){if(!state.pos)return `<button class="pill blue" onclick="updateLocation()">Ambil GPS</button>`;const dist=distance(state.pos.lat,state.pos.lng,OFFICE_LOC.lat,OFFICE_LOC.lng);return dist<=RADIUS_LIMIT?`<span class="pill green">Radius · ${Math.round(dist)}m</span>`:`<span class="pill red">Diluar · ${Math.round(dist)}m</span>`}
 function txItem(t){
   const pending=t.pending===true;
@@ -1761,6 +1769,7 @@ function findTxById(id){return liveTx().find(t=>String(t.id)===String(id))}
 
 function unlockHomeCard(){
   if(!state.user)return '';
+  if(isTrialUser())return '';
   if(isDaily())return '';
   const lock=missedAttendanceLockForDate();
   if(!lock)return '';
