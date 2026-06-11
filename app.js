@@ -253,6 +253,7 @@ const ROCKY_ADMIN_NOTIFY_ATTENDANCE_URL=ROCKY_ADMIN_NOTIFY_WORKER_BASE_URL+'/not
 const ROCKY_ADMIN_NOTIFY_TRANSACTION_DELETE_URL=ROCKY_ADMIN_NOTIFY_WORKER_BASE_URL+'/notify-transaction-delete';
 const ROCKY_ADMIN_NOTIFY_UNLOCK_URL=ROCKY_ADMIN_NOTIFY_WORKER_BASE_URL+'/notify-feature-unlock';
 const ROCKY_ADMIN_NOTIFY_TARGET_URL=ROCKY_ADMIN_NOTIFY_WORKER_BASE_URL+'/notify-target-achieved';
+const ROCKY_STAFF_NOTIFY_MANUAL_BONUS_URL=ROCKY_ADMIN_NOTIFY_WORKER_BASE_URL+'/notify-staff-manual-bonus';
 const ROCKY_ADMIN_NOTIFY_SECRET='rockyNotifRahasia2026';
 const REFRESH_COOLDOWN_MS=30000;
 
@@ -736,6 +737,18 @@ function notifyTargetAchievedOnce(summary,plan){
     return Promise.resolve(null);
   }
 }
+function notifyStaffTargetBonus(row={},user={}){
+  try{
+    const username=key(row.user||row.username||user.username||'');
+    const amount=Number(row.amount||0);
+    if(!username||amount<=0||isTrialRecord(row)||isTrialUser(user))return Promise.resolve(null);
+    const role=String(row.userRole||row.role||user.role||'staff');
+    return fetch(ROCKY_STAFF_NOTIFY_MANUAL_BONUS_URL,{method:'POST',headers:{'Content-Type':'application/json','X-Notify-Secret':ROCKY_ADMIN_NOTIFY_SECRET},body:JSON.stringify({secret:ROCKY_ADMIN_NOTIFY_SECRET,targetUsername:username,username,user:username,name:row.name||user.name||username,amount,note:row.note||'Bonus target omzet harian tercapai',action:'add',dateKey:String(row.dateKey||''),monthKey:String(row.monthKey||''),bonusId:String(row.id||row.docId||''),type:'daily_target_bonus',source:'daily_target',role,userRole:role,actualRole:role,bonusGroup:'staff',isDaily:false,dailyMode:false,actualDaily:false,canReceiveStaffNotifications:true,notificationAudience:'staff',createdByName:'Target Otomatis Rocky'})}).catch(e=>console.warn('Notif bonus target staff gagal',e?.message||e));
+  }catch(e){
+    console.warn('Notif bonus target staff gagal',e?.message||e);
+    return Promise.resolve(null);
+  }
+}
 async function ensureTargetNotification(summary,plan){
   const id=targetNotificationDocId(summary.dateKey), payload={
     dateKey:summary.dateKey,
@@ -803,6 +816,7 @@ async function applyDailyTargetBonus(){
       };
       if(!existingBonus?.exists()){
         await setDoc(doc(db,'manualBonuses',bonusId),payload,{merge:false});
+        await notifyStaffTargetBonus({id:bonusId,docId:bonusId,...payload},user);
         if(username===key(state.user?.username)){
           state.data.manual=mergeRowsById(state.data.manual,[{id:bonusId,docId:bonusId,...payload}]).filter(b=>!deleted(b));
         }
