@@ -626,14 +626,14 @@ function dismissTargetNotice(){
 function targetReachedNoticeCard(){
   const n=unreadTargetNotice();
   if(!n)return '';
-  return `<div class="card target-reached-alert"><div class="between"><div style="display:flex;align-items:center;gap:9px;min-width:0"><span class="target-reached-ico">✓</span><div style="min-width:0"><div class="label">Target Hari Ini Tercapai</div><div class="hint" style="margin-top:2px">Bonus target otomatis masuk.</div></div></div><button class="btn success" onclick="dismissTargetNotice()">OK</button></div></div>`;
+  return `<div class="card target-reached-alert"><div class="between"><div style="display:flex;align-items:center;gap:9px;min-width:0"><span class="target-reached-ico">✓</span><div style="min-width:0"><div class="label">Target Hari Ini Tercapai</div><div class="stat-val">Rp ${rp(n.bonusAmount)}</div><div class="hint" style="margin-top:2px">Bonus target otomatis masuk.</div></div></div><button class="btn success" onclick="dismissTargetNotice()">OK</button></div></div>`;
 }
 function showTargetReachedParty(notice){
   document.querySelectorAll('.manual-bonus-party').forEach(el=>el.remove());
   const wrap=document.createElement('div');
   wrap.className='manual-bonus-party';
   const pieces=Array.from({length:34},()=>`<i style="--x:${Math.round(Math.random()*250-125)}px;--y:${Math.round(Math.random()*-190-45)}px;--r:${Math.round(Math.random()*720-360)}deg;--d:${(Math.random()*.20).toFixed(2)}s"></i>`).join('');
-  wrap.innerHTML=`<div class="manual-bonus-confetti">${pieces}</div><div class="manual-bonus-box"><div class="manual-bonus-emoji">✓</div><div class="manual-bonus-title">TARGET HARI INI TERCAPAI</div><div class="manual-bonus-sub">Bonus target otomatis masuk</div><button class="manual-bonus-close" onclick="closeManualBonusParty()" type="button">Tutup</button></div>`;
+  wrap.innerHTML=`<div class="manual-bonus-confetti">${pieces}</div><div class="manual-bonus-box"><div class="manual-bonus-emoji">✓</div><div class="manual-bonus-title">TARGET HARI INI TERCAPAI</div><div class="manual-bonus-sub">Bonus target otomatis masuk</div><div class="manual-bonus-amount">Rp ${rp(notice.bonusAmount||0)}</div><button class="manual-bonus-close" onclick="closeManualBonusParty()" type="button">Tutup</button></div>`;
   (document.querySelector('.app')||document.body).appendChild(wrap);
   requestAnimationFrame(()=>wrap.classList.add('show'));
 }
@@ -801,7 +801,7 @@ async function insertDocIfAbsent(table,id,payload){
 }
 function notifyTargetAchievedOnce(summary,plan){
   try{
-    return fetch(ROCKY_ADMIN_NOTIFY_TARGET_URL,{method:'POST',headers:{'Content-Type':'application/json','X-Notify-Secret':ROCKY_ADMIN_NOTIFY_SECRET},body:JSON.stringify({secret:ROCKY_ADMIN_NOTIFY_SECRET,dateKey:summary.dateKey,targetAmount:summary.targetAmount,totalAmount:summary.totalAmount,activeUsers:plan.activeUsers,rewardedUsers:plan.rewardedUsers})}).catch(e=>console.warn('Notif target gagal',e?.message||e));
+    return fetch(ROCKY_ADMIN_NOTIFY_TARGET_URL,{method:'POST',headers:{'Content-Type':'application/json','X-Notify-Secret':ROCKY_ADMIN_NOTIFY_SECRET},body:JSON.stringify({secret:ROCKY_ADMIN_NOTIFY_SECRET,dateKey:summary.dateKey,targetAmount:summary.targetAmount,totalAmount:summary.totalAmount,bonusAmount:summary.bonusAmount,activeUsers:plan.activeUsers,rewardedUsers:plan.rewardedUsers})}).catch(e=>console.warn('Notif target gagal',e?.message||e));
   }catch(e){
     console.warn('Notif target gagal',e?.message||e);
     return Promise.resolve(null);
@@ -952,9 +952,10 @@ async function ensureTargetNotification(summary,plan){
     dateKey:summary.dateKey,
     type:'daily_target_reached',
     title:'Target omzet harian tercapai',
-    message:'Target omzet harian sudah tercapai. Bonus target otomatis masuk.',
+    message:`Target omzet harian sudah tercapai. Bonus target Rp ${rp(summary.bonusAmount)} otomatis masuk.`,
     targetAmount:summary.targetAmount,
     totalAmount:summary.totalAmount,
+    bonusAmount:summary.bonusAmount,
     reachedAt:serverTimestamp(),
     reachedAtMs:Date.now(),
     read:false,
