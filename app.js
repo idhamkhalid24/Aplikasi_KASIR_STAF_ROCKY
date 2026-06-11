@@ -168,6 +168,10 @@ async function setDoc(ref,payload,options={}){
   return ref;
 }
 async function addDoc(colRef,payload){const ref=doc(db,colRef.collectionName,makeId());await setDoc(ref,payload||{});return ref;}
+async function deleteDoc(ref){
+  const {error}=await supabase.from(ref.collectionName).delete().eq('id',ref.id);
+  if(error)throw error;
+}
 function onSnapshot(refOrQuery,next,errorCb){
   let stopped=false;
   let lastSignature='';
@@ -339,7 +343,7 @@ async function isLocalDeviceStillOwnedBy(boundUser,deviceId){
     if(!snap.exists())return false;
     const raw=snap.data()||{};
     const data={id:snap.id,username:raw.username||snap.id,...raw};
-    if(isDailyUser(data)||data.active===false||deleted(data))return false;
+    if(isDailyUser(data)||isTrialUser(data)||data.active===false||deleted(data))return false;
     return String(data.deviceId||'').trim()===deviceId && data.deviceLocked!==false;
   }catch(e){
     console.warn('device owner check skipped',e?.code||e?.message||e);
@@ -348,19 +352,20 @@ async function isLocalDeviceStillOwnedBy(boundUser,deviceId){
 }
 async function verifyDeviceLockForLogin(userData,username){
   const u=key(username||userData?.username||userData?.id), deviceId=getDeviceId(), bound=localDeviceUser();
-  if(isDailyUser(userData)){
+  if(isDailyUser(userData)||isTrialUser(userData)){
     try{
       await setDoc(doc(db,'users',u),{
         deviceId:'',
         deviceLocked:false,
         deviceUser:'',
         deviceApp:'staff',
-        deviceLabel:'Harian bebas login',
+        deviceLabel:isTrialUser(userData)?'Dummy bebas login':'Harian bebas login',
         devicePolicy:'open_any_device',
         deviceLastLoginAt:serverTimestamp(),
         deviceLastLoginAtMs:Date.now()
       },{merge:true});
-    }catch(e){console.warn('daily device free update skipped',e?.code||e)}
+    }catch(e){console.warn('open device free update skipped',e?.code||e)}
+    if(isTrialUser(userData))clearLocalDeviceUser();
     return {ok:true,deviceId:'',exempt:true};
   }
   if(bound&&bound!==u){
@@ -403,7 +408,7 @@ function clearSessionAndRender(msg){
   renderLogin();
 }
 function isDeviceSessionInvalid(fresh){
-  if(!fresh||isDailyUser(fresh))return '';
+  if(!fresh||isDailyUser(fresh)||isTrialUser(fresh)||isTrialUser(state.user))return '';
   const serverReset=Number(fresh.deviceResetAtMs||0), localReset=Number(state.user?.deviceResetAtMs||0);
   if(serverReset&&serverReset>localReset)return 'Device akun ini sudah direset admin. Silakan login ulang.';
   const serverDeviceId=String(fresh.deviceId||'').trim(), localDeviceId=getDeviceId();
@@ -411,7 +416,7 @@ function isDeviceSessionInvalid(fresh){
   return '';
 }
 async function validateCurrentDeviceSession({silent=true,force=false}={}){
-  if(!state.user||isDailyUser(state.user))return true;
+  if(!state.user||isDailyUser(state.user)||isTrialUser(state.user))return true;
   const nowMs=Date.now();
   if(!force&&lastDeviceSessionCheckAt&&nowMs-lastDeviceSessionCheckAt<DEVICE_SESSION_ACTION_CACHE_MS)return true;
   try{
@@ -903,6 +908,30 @@ function mergeTargetRewardedUsers(...groups){
   groups.flat().forEach(u=>{const k=key(u);if(k)set.add(k)});
   return [...set];
 }
+function isTargetAutoBonusRow(row={}){
+  return String(row.source||'')==='daily_target'||String(row.type||'')==='daily_target_bonus'||String(row.id||row.docId||'').startsWith('targetbonus_')||String(row.id||row.docId||'').startsWith('trial_targetbonus_');
+}
+async function revokeDailyTargetBonuses(summary,plan,previous={}){
+  const d=String(summary?.dateKey||todayKey()).slice(0,10), nowMs=Date.now();
+  const users=mergeTargetRewardedUsers(plan?.rewardedUsers||[],previous?.rewardedUsers||[],state.data.dailyTarget?.rewardedUsers||[],(plan?.users||[]).map(u=>u?.username||u?.id));
+  for(const username of users){
+    const bonusId=targetBonusDocId(d,username), rewardId=targetRewardDocId(d,username);
+    try{
+      const snap=await getDocFromServer(doc(db,'manualBonuses',bonusId)).catch(()=>null);
+      const row=snap?.exists()?{id:bonusId,...(snap.data()||{})}:null;
+      if(row&&!deleted(row)&&isTargetAutoBonusRow(row)){
+        await setDoc(doc(db,'manualBonuses',bonusId),{deleted:true,status:'deleted',deletedAt:serverTimestamp(),deletedAtMs:nowMs,deletedBy:'target_auto',deletedByName:'Target Otomatis Rocky',deleteReason:'Omzet turun di bawah target harian',updatedAt:serverTimestamp(),updatedAtMs:nowMs},{merge:true});
+        state.data.manual=state.data.manual.map(b=>String(b.id||b.docId)===bonusId?{...b,deleted:true,status:'deleted',deletedAtMs:nowMs}:b).filter(b=>!deleted(b));
+      }
+      await setDoc(doc(db,TARGET_BONUS_REWARDS_TABLE,rewardId),{deleted:true,resetAt:serverTimestamp(),resetAtMs:nowMs,resetBy:'target_auto',resetByName:'Target Otomatis Rocky',resetReason:'Omzet turun di bawah target harian',staffNotificationSent:false,staffNotificationStatus:'reset',staffNotifiedAtMs:0,updatedAt:serverTimestamp(),updatedAtMs:nowMs},{merge:true}).catch(()=>{});
+    }catch(e){
+      console.warn('rollback bonus target gagal',username,e?.code||e?.message||e);
+    }
+  }
+  await deleteDoc(doc(db,TARGET_NOTIFICATIONS_TABLE,targetNotificationDocId(d))).catch(()=>{});
+  state.data.targetNotification=null;
+  await saveDailyTargetStatus({bonusApplied:false,rewardedUsers:[]});
+}
 async function ensureStaffTargetBonusNotifications(summary,plan,amount){
   if(Number(amount||0)<=0)return [];
   const sent=[];
@@ -942,7 +971,10 @@ async function applyDailyTargetBonus(){
   try{
     const summary=dailyTargetSummary();
     if(!summary.reached){
-      await saveDailyTargetStatus({});
+      const plan=dailyTargetRewardPlan(summary.dateKey);
+      const latest=await getDocFromServer(doc(db,DAILY_TARGETS_TABLE,targetDailyDocId(summary.dateKey))).catch(()=>null);
+      const latestData=latest?.exists()?latest.data():state.data.dailyTarget||{};
+      await revokeDailyTargetBonuses(summary,plan,latestData);
       return;
     }
     const latest=await getDocFromServer(doc(db,DAILY_TARGETS_TABLE,targetDailyDocId(summary.dateKey))).catch(()=>null);
@@ -2748,6 +2780,9 @@ async function delTx(id){
   try{
     await setDoc(doc(db,'transactions',id),{deleted:true,deletedAt:serverTimestamp(),deletedAtMs:Date.now(),deletedBy:state.user.username,deletedByName:state.user.name},{merge:true});
     state.data.tx=state.data.tx.map(x=>String(x.id)===String(id)?{...x,deleted:true,deletedAtMs:Date.now(),deletedBy:state.user.username,deletedByName:state.user.name}:x);
+    state.data.targetTx=state.data.targetTx.map(x=>String(x.id)===String(id)?{...x,deleted:true,deletedAtMs:Date.now(),deletedBy:state.user.username,deletedByName:state.user.name}:x);
+    syncDailyTargetState();
+    scheduleDailyTargetCheck();
     await logAudit('transaction_soft_delete',{id,user:t.user,amount:Number(t.amount||0),note:t.note||'Transaksi'});
     await notifyAdminTransactionDelete({...t,id,deletedBy:state.user.username,deletedByName:state.user.name});
     toast('Transaksi dihapus aman');
@@ -2876,7 +2911,7 @@ async function boot(){
       const rawData=snap.data()||{};
       const data={id:snap.id,username:rawData.username||snap.id,...rawData};
       if(!isAdmin(data)&&data.active!==false&&!deleted(data)&&String(data.pin||'')===pin){
-        if(!isDailyUser(data)&&Number(data.deviceResetAtMs||0)>Number(s.deviceResetAtMs||0)){
+        if(!isDailyUser(data)&&!isTrialUser(data)&&Number(data.deviceResetAtMs||0)>Number(s.deviceResetAtMs||0)){
           const serverDeviceId=String(data.deviceId||'').trim();
           const thisDeviceId=getDeviceId();
           // Kalau reset lama sudah dipakai login ulang di device ini, jangan logout lagi.
