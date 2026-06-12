@@ -343,7 +343,7 @@ async function isLocalDeviceStillOwnedBy(boundUser,deviceId){
     if(!snap.exists())return false;
     const raw=snap.data()||{};
     const data={id:snap.id,username:raw.username||snap.id,...raw};
-    if(isDailyUser(data)||isTrialUser(data)||data.active===false||deleted(data))return false;
+    if(isDeviceFreeUser(data)||data.active===false||deleted(data))return false;
     return String(data.deviceId||'').trim()===deviceId && data.deviceLocked!==false;
   }catch(e){
     console.warn('device owner check skipped',e?.code||e?.message||e);
@@ -352,14 +352,15 @@ async function isLocalDeviceStillOwnedBy(boundUser,deviceId){
 }
 async function verifyDeviceLockForLogin(userData,username){
   const u=key(username||userData?.username||userData?.id), deviceId=getDeviceId(), bound=localDeviceUser();
-  if(isDailyUser(userData)||isTrialUser(userData)){
+  if(isDeviceFreeUser(userData)){
+    const deviceLabel=isTrialUser(userData)?'Dummy bebas login':(isRismaSpecialUser(userData)?'Risma bebas login':'Harian bebas login');
     try{
       await setDoc(doc(db,'users',u),{
         deviceId:'',
         deviceLocked:false,
         deviceUser:'',
         deviceApp:'staff',
-        deviceLabel:isTrialUser(userData)?'Dummy bebas login':'Harian bebas login',
+        deviceLabel,
         devicePolicy:'open_any_device',
         deviceLastLoginAt:serverTimestamp(),
         deviceLastLoginAtMs:Date.now()
@@ -408,7 +409,7 @@ function clearSessionAndRender(msg){
   renderLogin();
 }
 function isDeviceSessionInvalid(fresh){
-  if(!fresh||isDailyUser(fresh)||isTrialUser(fresh)||isTrialUser(state.user))return '';
+  if(!fresh||isDeviceFreeUser(fresh)||isDeviceFreeUser(state.user))return '';
   const serverReset=Number(fresh.deviceResetAtMs||0), localReset=Number(state.user?.deviceResetAtMs||0);
   if(serverReset&&serverReset>localReset)return 'Device akun ini sudah direset admin. Silakan login ulang.';
   const serverDeviceId=String(fresh.deviceId||'').trim(), localDeviceId=getDeviceId();
@@ -416,7 +417,7 @@ function isDeviceSessionInvalid(fresh){
   return '';
 }
 async function validateCurrentDeviceSession({silent=true,force=false}={}){
-  if(!state.user||isDailyUser(state.user)||isTrialUser(state.user))return true;
+  if(!state.user||isDeviceFreeUser(state.user))return true;
   const nowMs=Date.now();
   if(!force&&lastDeviceSessionCheckAt&&nowMs-lastDeviceSessionCheckAt<DEVICE_SESSION_ACTION_CACHE_MS)return true;
   try{
@@ -436,7 +437,7 @@ async function validateCurrentDeviceSession({silent=true,force=false}={}){
 }
 function startDeviceSessionWatch(){
   stopDeviceSessionWatch();
-  if(!state.user||isDailyUser(state.user)||isTrialUser(state.user))return;
+  if(!state.user||isDeviceFreeUser(state.user))return;
   deviceSessionTimer=setInterval(()=>validateCurrentDeviceSession({silent:true}),DEVICE_SESSION_CHECK_MS);
 }
 function stopDeviceSessionWatch(){
@@ -459,6 +460,9 @@ function isAdmin(u){return key(u?.role)==='admin'||ADMIN.includes(key(u?.usernam
 function isDailyUser(user=state.user){const r=key(user?.role);return r==='harian'||r==='daily'||r==='karyawan_harian'}
 function isDaily(){return isDailyUser(state.user)}
 function isTrialUser(user=state.user){const value=String(user?.accountType||user?.mode||user?.type||'').toLowerCase(),role=String(user?.role||'').toLowerCase(),username=key(user?.username||user?.id||user?.user||'');return !!user&&(user.isDummy===true||user.trialMode===true||user.dummy===true||user.dummyMode===true||user.isTrial===true||user.trial===true||user.excludeFromReports===true||user.excludeFromReport===true||value==='dummy'||value==='dumy'||value==='trial'||role==='dummy'||role==='dumy'||role==='trial'||username==='dummy'||username.startsWith('dummy_')||username.includes('_dummy')||username==='dumy'||username.startsWith('dumy_')||username.includes('_dumy')||username==='trial'||username.startsWith('trial_')||username.includes('_trial'))}
+function isRismaSpecialUser(user=state.user){return key(user?.username||user?.id||user?.user)==='risma'}
+function isDeviceFreeUser(user=state.user){return !!user&&(isDailyUser(user)||isTrialUser(user)||isRismaSpecialUser(user))}
+function isAttendanceFreeUser(user=state.user){return !!user&&(isDailyUser(user)||isTrialUser(user)||isRismaSpecialUser(user))}
 function trialRecordFlags(user=state.user){return isTrialUser(user)?{isDummy:true,trialMode:true,accountType:'dummy',excludeFromReports:true}:{isDummy:false,trialMode:false,accountType:'normal',excludeFromReports:false}}
 function isTrialRecord(rec){if(!rec)return false;if(rec.isDummy===true||rec.trialMode===true||rec.excludeFromReports===true||String(rec.accountType||'').toLowerCase()==='dummy')return true;const u=key(rec.user||rec.username||rec.targetUsername||'');if(!u)return false;if(key(state.user?.username)===u)return isTrialUser(state.user);const found=(state.data.targetUsers||[]).find(x=>key(x.username||x.id)===u);return isTrialUser(found)}
 function recordMatchesCurrentAccount(rec){return isTrialUser()?isTrialRecord(rec):!isTrialRecord(rec)}
@@ -502,8 +506,8 @@ function txBonusRate(t){
 function txBonusValue(t){return Math.round(Number(t?.amount||0)*txBonusRate(t))}
 function txBonusSum(list){return (list||[]).reduce((sum,t)=>sum+txBonusValue(t),0)}
 function roleLabel(){return isDaily()?'Karyawan Harian':'Karyawan Staff'}
-function roleCard(){const trial=isTrialUser(),lock=trial?null:missedAttendanceLockForDate();const locked=trial?false:(!!lock||isClosedToday()||(!isDaily()&&!todayAtt()));const label=locked?'Terkunci':'Terbuka';const cls=trial?'amber':(locked?'red':'green');const note=trial?'mode trial siap transaksi':(lock?`tidak absen ${dateID(lock.missedDate)}`:(isClosedToday()?'sudah closing':(isDaily()?'siap transaksi':(todayAtt()?'sudah absen':'belum absen'))));const ico=locked?'!':'OK';return `<div class="role-card ${locked?'locked':'open'}"><div class="between"><div><div class="role-title">Status Transaksi</div><div class="hint" style="margin-top:3px">${note}</div></div><div class="lock-status ${locked?'locked':'open'}"><span class="lock-ico">${ico}</span><span class="pill ${cls}">${label}</span></div></div></div>`}
-function headerTxStatus(){if(!state.user)return '';const locked=isTrialUser()?false:(!!missedAttendanceLockForDate()||isClosedToday()||(!isDaily()&&!todayAtt()));const label=locked?'Terkunci':'Terbuka';const ico=locked?'!':'OK';return `<span class="trx-head-status ${locked?'locked':'open'}"><span class="lock-ico">${ico}</span>${label}</span>`}
+function roleCard(){const trial=isTrialUser(),free=isAttendanceFreeUser(),lock=free?null:missedAttendanceLockForDate();const locked=trial?false:(!!lock||isClosedToday()||(!free&&!todayAtt()));const label=locked?'Terkunci':'Terbuka';const cls=trial?'amber':(locked?'red':'green');const note=trial?'mode trial siap transaksi':(lock?`tidak absen ${dateID(lock.missedDate)}`:(isClosedToday()?'sudah closing':(isRismaSpecialUser()?'risma bebas absen':(isDaily()?'siap transaksi':(todayAtt()?'sudah absen':'belum absen')))));const ico=locked?'!':'OK';return `<div class="role-card ${locked?'locked':'open'}"><div class="between"><div><div class="role-title">Status Transaksi</div><div class="hint" style="margin-top:3px">${note}</div></div><div class="lock-status ${locked?'locked':'open'}"><span class="lock-ico">${ico}</span><span class="pill ${cls}">${label}</span></div></div></div>`}
+function headerTxStatus(){if(!state.user)return '';const free=isAttendanceFreeUser();const locked=isTrialUser()?false:(!!missedAttendanceLockForDate()||isClosedToday()||(!free&&!todayAtt()));const label=locked?'Terkunci':'Terbuka';const ico=locked?'!':'OK';return `<span class="trx-head-status ${locked?'locked':'open'}"><span class="lock-ico">${ico}</span>${label}</span>`}
 function txDate(t){return String(t.dateKey||(ms(t)?todayKey(new Date(ms(t))):'')).slice(0,10)}
 function txMonth(t){return String(t.monthKey||txDate(t).slice(0,7))}
 function attDate(a){return String(a.dateKey||(ms(a)?todayKey(new Date(ms(a))):'')).slice(0,10)}
@@ -717,7 +721,8 @@ function targetTransactionUsers(dateKey=todayKey()){
 function dailyTargetRewardPlan(dateKey=todayKey()){
   const d=String(dateKey||todayKey()).slice(0,10), attendance=targetAttendanceUsers(d), users=activeTargetUsers();
   const activeUsers=users.map(u=>u.username);
-  const rewardedUsers=users.filter(u=>!isTargetDailyRole(u)&&attendance.has(u.username)).map(u=>u.username);
+  const txUsers=targetTransactionUsers(d);
+  const rewardedUsers=users.filter(u=>u.username==='risma'?txUsers.has('risma'):(!isTargetDailyRole(u)&&attendance.has(u.username))).map(u=>u.username);
   const userMap=new Map(users.map(u=>[u.username,u]));
   return{activeUsers,rewardedUsers,users:rewardedUsers.map(u=>userMap.get(u)).filter(Boolean)};
 }
@@ -1161,9 +1166,10 @@ function staffDailyNoteCard(){
 function headerGuideItems(){
   const themeIcon=getTheme()==='dark'?'☀':'☾';
   const lock=missedAttendanceLockForDate();
-  const locked=!!lock||isClosedToday()||(!isDaily()&&!todayAtt());
+  const free=isAttendanceFreeUser();
+  const locked=!!lock||isClosedToday()||(!free&&!todayAtt());
   const lockIcon=locked?'🔒':'🔓';
-  const lockText=lock?`Transaksi terkunci karena tidak ada absen ${dateID(lock.missedDate)}.`:(locked?'Transaksi terkunci karena belum absen atau sudah closing.':'Transaksi terbuka dan siap digunakan.');
+  const lockText=lock?`Transaksi terkunci karena tidak ada absen ${dateID(lock.missedDate)}.`:(locked?'Transaksi terkunci karena belum absen atau sudah closing.':(isRismaSpecialUser()?'Risma bebas absen dan siap transaksi.':'Transaksi terbuka dan siap digunakan.'));
   return `<div class="header-guide-grid"><div class="header-guide-item"><span class="header-guide-ico">M</span><div><div class="header-guide-title">Member</div><div class="header-guide-desc">Membuka halaman kode khusus member.</div></div></div><div class="header-guide-item"><span class="header-guide-ico">${lockIcon}</span><div><div class="header-guide-title">Status Transaksi</div><div class="header-guide-desc">${lockText}</div></div></div><div class="header-guide-item"><span class="header-guide-ico">↻</span><div><div class="header-guide-title">Refresh</div><div class="header-guide-desc">Muat ulang data, sync pending, dan update bonus terbaru.</div></div></div><div class="header-guide-item"><span class="header-guide-ico">${themeIcon}</span><div><div class="header-guide-title">Tema</div><div class="header-guide-desc">Ganti tampilan gelap atau terang.</div></div></div><div class="header-guide-item"><span class="header-guide-ico">⏻</span><div><div class="header-guide-title">Keluar</div><div class="header-guide-desc">Logout dari akun staff di perangkat ini.</div></div></div><div class="header-guide-item"><span class="header-guide-ico">!</span><div><div class="header-guide-title">Catatan Refresh</div><div class="header-guide-desc">Pakai refresh saat data belum masuk, bonus belum berubah, atau transaksi gagal.</div></div></div></div>`;
 }
 function openHeaderGuideDetail(){
@@ -1172,7 +1178,7 @@ function openHeaderGuideDetail(){
 function headerIconGuide(){
   return `<div class="card header-guide-card is-compact"><div class="between"><div class="header-guide-mini-row"><span class="header-guide-mini-ico">?</span><div style="min-width:0"><div class="label">Panduan Icon Header</div><div class="hint" style="margin-top:2px">Klik buka untuk lihat pesan dan keterangan tombol atas.</div></div></div><button class="header-guide-open-btn" onclick="openHeaderGuideDetail()" aria-label="Buka Panduan Icon Header">Buka</button></div></div>`;
 }
-function showStaffAbsenFab(){return !!state.user&&state.page==='home'&&!isTrialUser()&&!isDaily()&&!todayAtt()&&!isClosedToday()&&!missedAttendanceLockForDate()}
+function showStaffAbsenFab(){return !!state.user&&state.page==='home'&&!isAttendanceFreeUser()&&!todayAtt()&&!isClosedToday()&&!missedAttendanceLockForDate()}
 function nav(){const n=$('nav'),f=$('fab'),af=$('absenFab');if(!state.user){n.style.display='none';f.style.display='none';if(af)af.style.display='none';return}n.style.display='flex';f.style.display=state.page==='home'?'block':'none';if(af)af.style.display=showStaffAbsenFab()?'flex':'none';document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));$(`nav-${state.page}`)?.classList.add('active')}
 function renderLogin(){nav();page.innerHTML=`<div class="login"><div class="login-card"><div class="hero" style="text-align:center"><div class="big">ROCKY HIJAB</div><div class="sub">Koleksi Terbaik Untuk Muslimah Hebat</div></div><div class="card" style="margin-top:10px"><div class="field"><div class="label">Username Staff</div><input id="lu" autocomplete="username" placeholder="username"></div><div class="field"><div class="label">PIN</div><input id="lp" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" placeholder="PIN"></div><button class="btn primary block" onclick="login()">Masuk</button><div class="hint" style="margin-top:8px;text-align:center">Login Menggunakan Username Masing-Masing</div></div></div></div>`}
 let androidStaffSessionSignature='';
@@ -1403,7 +1409,7 @@ function startStaffRealtime(){
       dailyBonusRate:hasBonusValue(fresh.dailyBonusRate)?Number(fresh.dailyBonusRate):null,
       dailyBonusPercent:hasBonusValue(fresh.dailyBonusPercent)?Number(fresh.dailyBonusPercent):null,
       active:fresh.active!==false,
-      deviceId:isDailyUser(fresh)?'':String(fresh.deviceId||state.user?.deviceId||''),
+      deviceId:isDeviceFreeUser(fresh)?'':String(fresh.deviceId||state.user?.deviceId||''),
       deviceResetAtMs:Number(fresh.deviceResetAtMs||state.user?.deviceResetAtMs||0),
       ...trialSessionFields(fresh)
     };
@@ -1486,7 +1492,7 @@ async function loadStaffData(opts={}){
         dailyBonusRate:hasBonusValue(fresh.dailyBonusRate)?Number(fresh.dailyBonusRate):null,
         dailyBonusPercent:hasBonusValue(fresh.dailyBonusPercent)?Number(fresh.dailyBonusPercent):null,
         active:fresh.active!==false,
-        deviceId:isDailyUser(fresh)?'':String(fresh.deviceId||state.user?.deviceId||''),
+        deviceId:isDeviceFreeUser(fresh)?'':String(fresh.deviceId||state.user?.deviceId||''),
         deviceResetAtMs:Number(fresh.deviceResetAtMs||state.user?.deviceResetAtMs||0),
         ...trialSessionFields(fresh)
       };
@@ -1565,7 +1571,7 @@ function monthTotal(){return monthTx().reduce((s,t)=>s+Number(t.amount||0),0)}
 function todayAtt(){const d=todayKey(),u=key(state.user?.username);return dedupeAttendanceRows(state.data.att).find(a=>!deleted(a)&&recordMatchesCurrentAccount(a)&&attDate(a)===d&&(!u||key(a.user)===u))}
 function monthAttendDays(){const m=monthKey(), set=new Set();dedupeAttendanceRows(state.data.att).forEach(a=>{if(!deleted(a)&&recordMatchesCurrentAccount(a)&&attDate(a).startsWith(m))set.add(attDate(a))});return set.size}
 function monthlyAttendancePerformance(){const m=monthKey();const rows=dedupeAttendanceRows(state.data.att).filter(a=>!deleted(a)&&recordMatchesCurrentAccount(a)&&attDate(a).startsWith(m));if(!rows.length)return null;let total=0,count=0;for(const rec of rows){const n=ms(rec);if(!n)continue;const p=parts(new Date(n));total+=Number(p.hour||0)*60+Number(p.minute||0);count++}if(!count)return null;const avg=total/count,h=Math.floor(avg/60),mi=Math.floor(avg%60),label=String(h).padStart(2,'0')+':'+String(mi).padStart(2,'0');return{avgLabel:label,isGood:avg<=440,count}}
-function averageAttendanceCard(){if(isDaily())return '';const p=monthlyAttendancePerformance();if(!p)return `<div class="card avg-att-card"><div class="between"><div class="avg-att-head"><span class="avg-att-ico">⏱</span><div><div class="label">Rata-rata Jam Absen</div><div class="hint" style="margin-top:4px">${monthID(monthKey())} · belum ada data</div></div></div><div class="avg-att-metric"><div class="stat-val" style="color:var(--muted)">--:--</div></div></div></div>`;const cls=p.isGood?'avg-good':'avg-warn',pill=p.isGood?'green':'amber',txt=p.isGood?'Performa baik':'Perlu ditingkatkan';return `<div class="card avg-att-card ${cls}"><div class="between"><div class="avg-att-head"><span class="avg-att-ico">⏱</span><div><div class="label">Rata-rata Jam Absen</div><div class="hint" style="margin-top:4px">${monthID(monthKey())} · ${p.count} hari hadir</div></div></div><div class="avg-att-metric"><div class="stat-val">${p.avgLabel}</div><span class="pill ${pill}">${txt}</span></div></div></div>`}
+function averageAttendanceCard(){if(isDaily()||isRismaSpecialUser())return '';const p=monthlyAttendancePerformance();if(!p)return `<div class="card avg-att-card"><div class="between"><div class="avg-att-head"><span class="avg-att-ico">⏱</span><div><div class="label">Rata-rata Jam Absen</div><div class="hint" style="margin-top:4px">${monthID(monthKey())} · belum ada data</div></div></div><div class="avg-att-metric"><div class="stat-val" style="color:var(--muted)">--:--</div></div></div></div>`;const cls=p.isGood?'avg-good':'avg-warn',pill=p.isGood?'green':'amber',txt=p.isGood?'Performa baik':'Perlu ditingkatkan';return `<div class="card avg-att-card ${cls}"><div class="between"><div class="avg-att-head"><span class="avg-att-ico">⏱</span><div><div class="label">Rata-rata Jam Absen</div><div class="hint" style="margin-top:4px">${monthID(monthKey())} · ${p.count} hari hadir</div></div></div><div class="avg-att-metric"><div class="stat-val">${p.avgLabel}</div><span class="pill ${pill}">${txt}</span></div></div></div>`}
 function hasAttendOn(dateKey){const u=key(state.user?.username),d=String(dateKey||'').slice(0,10);return dedupeAttendanceRows(state.data.att).some(a=>!deleted(a)&&recordMatchesCurrentAccount(a)&&attDate(a)===d&&(!u||key(a.user)===u))}
 function rate(){return userTransactionBonusRate()}
 function manualBonusRowsForDate(dateKey=todayKey()){
@@ -1628,7 +1634,7 @@ function closingTimeText(c){
 }
 function isClosedToday(){const d=todayKey(), u=key(state.user?.username);return state.data.closings.some(c=>c&&c.closed===true&&c.canceled!==true&&!deleted(c)&&String(c.dateKey||'')===d&&((!c.user&&c.scope!=='user')||c.scope==='global'||key(c.user)===u))}
 function delayMin(tm=timeNow(),source=null){const m=String(tm).match(/^(\d{1,2}):(\d{2})$/);if(!m)return 0;return Math.max(0,Number(m[1])*60+Number(m[2])-closingDeadlineMinutes(source))}
-function closingNotice(){if(isDaily()||!todayAtt())return '';const d=delayMin();if(!d||isClosedToday())return '';const rate=userClosingBonusPerMinute();const est=d*rate;return `<div class="card warn" style="margin-bottom:8px"><b>Estimasi bonus closing</b><div class="hint" style="margin-top:4px;color:inherit">Estimasi bonus kamu Rp ${rp(est)} · sejak ${closingDeadlineTimeLabel()} WIB</div></div>`}
+function closingNotice(){if(isDaily()||(!todayAtt()&&!(isRismaSpecialUser()&&todayTx().length)))return '';const d=delayMin();if(!d||isClosedToday())return '';const rate=userClosingBonusPerMinute();const est=d*rate;return `<div class="card warn" style="margin-bottom:8px"><b>Estimasi bonus closing</b><div class="hint" style="margin-top:4px;color:inherit">Estimasi bonus kamu Rp ${rp(est)} · sejak ${closingDeadlineTimeLabel()} WIB</div></div>`}
 function todayClosingBonusNotice(){if(isDaily())return '';const c=todayClosing();if(!c)return '';const val=Math.round(closingBonusValue(c));if(!val)return '';return `<div class="card closing-bonus-card"><div class="between"><div><div class="label">Bonus Closing Hari Ini</div><div class="stat-val" style="font-size:20px;color:var(--green)">Rp ${rp(val)}</div><div class="hint" style="margin-top:3px">Bonus dari closing index hari ini</div></div><span class="pill green">Dapat</span></div></div>`}
 function todayClosingBonusInline(){if(isDaily())return '';const c=todayClosing();if(!c)return '';const val=Math.round(closingBonusValue(c));if(!val)return '';return `<div class="bonus-note" style="margin-top:4px;color:var(--green);font-weight:850">Bonus closing hari ini Rp ${rp(val)}</div>`}
 function validDateKey(v){return /^\d{4}-\d{2}-\d{2}$/.test(String(v||'').slice(0,10))}
@@ -1665,7 +1671,7 @@ function pendingUnlockForMissedAttendance(targetDate=todayKey(),missedDate=previ
 }
 function latestMissedAttendanceUnlock(){return missedAttendanceUnlockRows().find(r=>key(r.user)===key(state.user?.username))||null}
 function missedAttendanceLockForDate(date=todayKey(),unlockRowsOverride=null){
-  if(!state.user||isTrialUser()||isDaily()||todayAtt())return null;
+  if(!state.user||isAttendanceFreeUser()||todayAtt())return null;
   const target=String(date||todayKey()).slice(0,10), missed=previousDateKey(target), u=key(state.user.username);
   if(!validDateKey(target)||!validDateKey(missed))return null;
   if(hasAttendOn(missed))return null;
@@ -1681,9 +1687,10 @@ function txBlockedMessage(){
   const lock=missedAttendanceLockForDate();
   if(lock)return missedAttendanceLockText(lock,'transaksi');
   if(isClosedToday())return 'Transaksi sudah closing hari ini';
+  if(isRismaSpecialUser())return 'Risma siap transaksi tanpa absen';
   return 'Absen dulu sebelum transaksi';
 }
-function canTx(){if(isTrialUser())return true;if(missedAttendanceLockForDate())return false;if(isClosedToday())return false;if(isDaily())return true;return !!todayAtt()}
+function canTx(){if(isTrialUser())return true;if(missedAttendanceLockForDate())return false;if(isClosedToday())return false;if(isAttendanceFreeUser())return true;return !!todayAtt()}
 function upsertRows(listName,rows){
   if(!Array.isArray(rows)||!rows.length)return;
   const map=new Map((state.data[listName]||[]).map(x=>[String(x.id||''),x]));
@@ -1696,8 +1703,7 @@ function serverClosingHit(c,u,d){
 async function verifyAbsenceOpenServer(dateKeyForWork=todayKey(),action='transaksi'){
   const u=key(state.user?.username), target=String(dateKeyForWork||todayKey()).slice(0,10), missed=previousDateKey(target);
   if(!u)return {ok:false,msg:'Sesi login tidak valid. Login ulang.'};
-  if(isTrialUser())return {ok:true};
-  if(isDaily())return {ok:true};
+  if(isAttendanceFreeUser())return {ok:true};
   try{
     const reads=[
       getDocsFromServer(query(collection(db,'attendance'),where('user','==',u),where('dateKey','==',missed),limit(10))),
@@ -1728,7 +1734,7 @@ async function verifyTransactionAllowedServer(dateKeyForTx=todayKey()){
     const reads=[
       getDocsFromServer(query(collection(db,'closings'),where('dateKey','==',d),limit(80)))
     ];
-    if(!isDaily())reads.push(getDocsFromServer(query(collection(db,'attendance'),where('user','==',u),where('dateKey','==',d),limit(10))));
+    if(!isAttendanceFreeUser())reads.push(getDocsFromServer(query(collection(db,'attendance'),where('user','==',u),where('dateKey','==',d),limit(10))));
     const snaps=await Promise.all(reads);
     const closingRows=snaps[0].docs.map(x=>({id:x.id,...x.data()}));
     upsertRows('closings',closingRows);
@@ -1736,7 +1742,7 @@ async function verifyTransactionAllowedServer(dateKeyForTx=todayKey()){
       render();
       return {ok:false,msg:'Transaksi sudah closing hari ini.'};
     }
-    if(!isDaily()){
+    if(!isAttendanceFreeUser()){
       const attRows=snaps[1].docs.map(x=>({id:x.id,...x.data()}));
       upsertRows('att',attRows);
       const hasAtt=attRows.some(a=>!deleted(a)&&key(a.user)===u&&attDate(a)===d);
@@ -1778,7 +1784,7 @@ async function latestBonusSnapshotForSave(){
       dailyBonusRate:hasBonusValue(fresh.dailyBonusRate)?Number(fresh.dailyBonusRate):null,
       dailyBonusPercent:hasBonusValue(fresh.dailyBonusPercent)?Number(fresh.dailyBonusPercent):null,
       active:fresh.active!==false,
-      deviceId:isDailyUser(fresh)?'':String(fresh.deviceId||state.user?.deviceId||''),
+      deviceId:isDeviceFreeUser(fresh)?'':String(fresh.deviceId||state.user?.deviceId||''),
       deviceResetAtMs:Number(fresh.deviceResetAtMs||state.user?.deviceResetAtMs||0),
       ...trialSessionFields(fresh)
     };
@@ -1816,8 +1822,7 @@ function findTxById(id){return liveTx().find(t=>String(t.id)===String(id))}
 
 function unlockHomeCard(){
   if(!state.user)return '';
-  if(isTrialUser())return '';
-  if(isDaily())return '';
+  if(isAttendanceFreeUser())return '';
   const lock=missedAttendanceLockForDate();
   if(!lock)return '';
   const pending=pendingUnlockForMissedAttendance(lock.targetDate,lock.missedDate);
@@ -2367,6 +2372,17 @@ function history(){const items=sortDesc(todayTx());const printAllCard=items.leng
 const __baseHomeWithUnlockCard=home;
 home=function(){
   __baseHomeWithUnlockCard();
+  if(isRismaSpecialUser()&&page){
+    const stat=page.querySelector('.att-status');
+    if(stat){
+      stat.classList.remove('wait','closed');
+      stat.classList.add('ok');
+      const label=stat.querySelector('.stat-label'),val=stat.querySelector('.stat-val'),foot=stat.querySelector('.stat-foot');
+      if(label)label.textContent='Akses Hari Ini';
+      if(val)val.textContent='OK';
+      if(foot)foot.textContent='bebas absen';
+    }
+  }
   const card=unlockHomeCard();
   if(!card||!page)return;
   const stock=page.querySelector('.stock-empty-card');
@@ -2813,6 +2829,7 @@ async function serverAttendanceToday(user,dateKey=todayKey()){
 async function clockIn(){
   if(clockInInFlight||state.busy)return toast('Absen sedang diproses');
   if(!state.user)return toast('Silakan login ulang');
+  if(isRismaSpecialUser())return toast('Risma tidak perlu absen. Transaksi sudah terbuka.');
   const u=key(state.user.username), d=todayKey(), id=attendanceDocId(u,d);
   const lock=missedAttendanceLockForDate(d);
   if(lock)return toast(missedAttendanceLockText(lock,'absen'));
@@ -2912,7 +2929,7 @@ async function boot(){
       const rawData=snap.data()||{};
       const data={id:snap.id,username:rawData.username||snap.id,...rawData};
       if(!isAdmin(data)&&data.active!==false&&!deleted(data)&&String(data.pin||'')===pin){
-        if(!isDailyUser(data)&&!isTrialUser(data)&&Number(data.deviceResetAtMs||0)>Number(s.deviceResetAtMs||0)){
+        if(!isDeviceFreeUser(data)&&Number(data.deviceResetAtMs||0)>Number(s.deviceResetAtMs||0)){
           const serverDeviceId=String(data.deviceId||'').trim();
           const thisDeviceId=getDeviceId();
           // Kalau reset lama sudah dipakai login ulang di device ini, jangan logout lagi.
@@ -3190,6 +3207,7 @@ try{
   window.addEventListener('focus',()=>{syncBelanjakuBridgeQueue().catch(()=>{})});
 }catch(e){}
 window.requestOpenPrayerAyat=requestOpenPrayerAyat;window.openPrayerAyat=openPrayerAyat;window.togglePrayerAyat=togglePrayerAyat;window.stopPrayerAyat=stopPrayerAyat;window.openStaffNoteLink=openStaffNoteLink;window.login=login;window.logout=logout;window.toggleTheme=toggleTheme;window.openHeaderGuideDetail=openHeaderGuideDetail;window.dismissManualBonusNotice=dismissManualBonusNotice;window.dismissTargetNotice=dismissTargetNotice;window.refresh=refresh;window.hardRefreshApp=hardRefreshApp;window.retrySync=retrySync;window.go=go;window.appBack=appBack;window.openTx=openTx;window.requestFeatureUnlock=requestFeatureUnlock;window.openEmptyStock=openEmptyStock;window.addEmptyStockVariantRow=addEmptyStockVariantRow;window.removeEmptyStockVariantRow=removeEmptyStockVariantRow;window.submitEmptyStock=submitEmptyStock;window.syncBelanjakuBridgeQueue=syncBelanjakuBridgeQueue;window.saveTx=saveTx;window.confirmTxPayment=confirmTxPayment;window.reopenTxDraft=reopenTxDraft;window.cancelTxPaymentChoice=cancelTxPaymentChoice;window.delTx=delTx;window.closeModal=closeModal;window.closeFirstTxParty=closeFirstTxParty;window.closeManualBonusParty=closeManualBonusParty;window.updateLocation=updateLocation;window.clockIn=clockIn;window.formatRupiahInput=formatRupiahInput;window.printReceiptFromTx=printReceiptFromTx;window.printTodayTransactions=printTodayTransactions;window.copyReceiptText=copyReceiptText;window.shareReceiptText=shareReceiptText;window.nativePrintReceiptText=nativePrintReceiptText;window.directPrintReceiptText=directPrintReceiptText;window.browserPrintReceiptText=browserPrintReceiptText;
+statusPill=function(){if(isTrialUser())return `<span class="pill amber">Mode Trial</span>`;if(isClosedToday())return `<span class="pill amber">Sudah closing</span>`;if(isRismaSpecialUser())return `<span class="pill green">Risma bebas absen</span>`;if(isDaily())return `<span class="pill blue">Karyawan harian</span>`;const a=todayAtt();return a?`<span class="pill green">Sudah absen · ${timeID(ms(a))}</span>`:`<span class="pill red">Belum absen</span>`};
 setupAutoSync();
 // Pull-to-refresh dimatikan supaya tidak ada read tambahan tanpa sengaja.
 // Refresh manual dan realtime tetap aktif.
