@@ -1806,19 +1806,81 @@ async function latestBonusSnapshotForSave(){
 
 function statusPill(){if(isTrialUser())return `<span class="pill amber">Mode Trial</span>`;if(isClosedToday())return `<span class="pill amber">Sudah closing</span>`;if(isDaily())return `<span class="pill blue">Karyawan harian</span>`;const a=todayAtt();return a?`<span class="pill green">Sudah absen · ${timeID(ms(a))}</span>`:`<span class="pill red">Belum absen</span>`}
 function locText(){if(!state.pos)return `<button class="pill blue" onclick="updateLocation()">Ambil GPS</button>`;const dist=distance(state.pos.lat,state.pos.lng,OFFICE_LOC.lat,OFFICE_LOC.lng);return dist<=RADIUS_LIMIT?`<span class="pill green">Radius · ${Math.round(dist)}m</span>`:`<span class="pill red">Diluar · ${Math.round(dist)}m</span>`}
+let txProductDraftItems=[];
+function txProductItemsFromText(text,fallback='Transaksi'){
+  const lines=String(text||'').split(/\r?\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+  return lines.length?lines:[fallback];
+}
+function txProductTextFromItems(items,fallback='Transaksi'){
+  const lines=(Array.isArray(items)?items:[]).map(x=>String(x||'').replace(/\s+/g,' ').trim()).filter(Boolean);
+  return lines.length?lines.join('\n'):fallback;
+}
+function txProductDraftText(){return txProductTextFromItems(txProductDraftItems,'Transaksi')}
+function txProductItemCount(note){return txProductItemsFromText(note,'Transaksi').length}
+function txProductDisplayHtml(note){
+  const items=txProductItemsFromText(note,'Transaksi');
+  if(items.length===1)return esc(items[0]);
+  return `<ol class="tx-product-render-list">${items.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>`;
+}
+function txProductDetailHtml(note){
+  const items=txProductItemsFromText(note,'Transaksi');
+  return `<ol class="tx-product-render-list">${items.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>`;
+}
+function renderTxProductDraft(){
+  const list=$('txProductList'), add=$('txAddProductBtn'), input=$('txProductInput');
+  if(add)add.disabled=!String(input?.value||'').trim();
+  if(!list)return;
+  if(!txProductDraftItems.length){
+    list.innerHTML='<div class="tx-product-empty">Belum ada barang. Jika kosong, tersimpan sebagai Transaksi.</div>';
+    return;
+  }
+  list.innerHTML=txProductDraftItems.map((item,i)=>`<div class="tx-product-row"><span class="tx-product-no">${i+1}</span><span class="tx-product-name">${esc(item)}</span><button type="button" class="tx-product-remove" onclick="removeTxProductItem(${i})">Hapus</button></div>`).join('');
+}
+function updateTxProductAddButton(){renderTxProductDraft()}
+function addTxProductItem(){
+  const input=$('txProductInput');
+  const value=String(input?.value||'').replace(/\s+/g,' ').trim();
+  if(!value){renderTxProductDraft();input?.focus?.();return}
+  txProductDraftItems.push(value);
+  if(input)input.value='';
+  renderTxProductDraft();
+  setTimeout(()=>input?.focus?.(),0);
+}
+function removeTxProductItem(index){
+  const i=Number(index);
+  if(Number.isInteger(i)&&i>=0&&i<txProductDraftItems.length)txProductDraftItems.splice(i,1);
+  renderTxProductDraft();
+  setTimeout(()=>$('txProductInput')?.focus?.(),0);
+}
+function handleTxProductKey(e){
+  if(e?.key==='Enter'){
+    e.preventDefault();
+    addTxProductItem();
+  }
+}
 function txItem(t){
   const pending=t.pending===true;
   const tag=pending?'<span class="pending-tag">MENUNGGU SYNC</span>':'';
   const canDelete=txDate(t)===todayKey()&&!pending;
   const id=esc(t.id);
-  const printBtn=!pending?`<button class="btn sm tx-print-btn" onclick="printReceiptFromTx('${id}')" aria-label="Cetak struk">🧾</button>`:'';
+  const detailBtn=`<button class="btn sm" onclick="openTxDetail('${id}')" aria-label="Detail transaksi">Detail</button>`;
+  const printBtn=!pending?`<button class="btn sm tx-print-btn" onclick="printReceiptFromTx('${id}')" aria-label="Cetak struk">Cetak</button>`:'';
   const deleteBtn=canDelete?`<button class="btn sm danger tx-del-btn" onclick="delTx('${id}')">Hapus</button>`:'';
-  const action=pending?'<span class="pill amber">Sync</span>':`<div class="tx-action-buttons">${printBtn}${deleteBtn}</div>`;
+  const action=pending?`<div class="tx-action-buttons">${detailBtn}<span class="pill amber">Sync</span></div>`:`<div class="tx-action-buttons">${detailBtn}${printBtn}${deleteBtn}</div>`;
   const pay=txPaymentLabel(t.paymentMethod||t.paymentLabel);
   const payText=pay?` · ${esc(pay)}`:'';
-  return `<div class="tx-row"><div class="tx-name"><div class="tx-title">${esc(t.note||'Transaksi')}</div><div class="tx-meta">${dateID(txDate(t))} · ${timeID(ms(t))}${payText}${tag}</div></div><div class="tx-nominal">Rp ${rp(t.amount)}</div><div class="tx-action">${action}</div></div>`
+  const cashier=esc(t.name||state.user?.name||t.user||'Staff');
+  return `<div class="tx-row"><div class="tx-name"><div class="tx-title">${cashier} · ${timeID(ms(t))} · ${txProductItemCount(t.note)} item${payText}</div><div class="tx-meta">${dateID(txDate(t))}${tag}</div></div><div class="tx-nominal">Rp ${rp(t.amount)}</div><div class="tx-action">${action}</div></div>`
 }
 function findTxById(id){return liveTx().find(t=>String(t.id)===String(id))}
+function openTxDetail(id){
+  const t=findTxById(id);
+  if(!t)return toast('Transaksi tidak ditemukan',true);
+  const pay=txPaymentLabel(t.paymentMethod||t.paymentLabel)||'Cash';
+  const cashier=esc(t.name||state.user?.name||t.user||'Staff');
+  const body=`<div class="tx-detail-box"><div class="tx-meta" style="margin-bottom:8px">${cashier} · ${dateID(txDate(t))} · ${timeID(ms(t))} · ${esc(pay)}</div><div class="tx-nominal" style="margin-bottom:10px">Rp ${rp(t.amount)}</div><div class="tx-meta" style="margin-bottom:6px">Daftar Barang</div>${txProductDetailHtml(t.note||'Transaksi')}</div>`;
+  modal('Detail Transaksi',body,'','tx-modal');
+}
 
 function unlockHomeCard(){
   if(!state.user)return '';
@@ -1956,33 +2018,32 @@ function receiptProductParts(note){
   const lines=String(note||'Transaksi').split(/\r?\n/).map(x=>cleanReceiptLine(x,'',32)).filter(Boolean);
   return lines.length?lines:['Transaksi'];
 }
-function receiptProductBlock(note,{firstPrefix='',indent='',separator='--------'}={}){
+function receiptProductNumbered(note,indent=''){
+  return receiptProductParts(note).map((line,i)=>`${indent}${i+1}. ${line}`).join('\n');
+}
+function receiptProductBlock(note,{firstPrefix='',indent='',separator=''}={}){
   const lines=receiptProductParts(note);
-  const withSeparator=lines.length>1;
-  const out=[];
-  lines.forEach((line,i)=>{
-    out.push(`${i===0?firstPrefix:indent}${line}`);
-    if(withSeparator)out.push(`${indent}${separator}`);
-  });
-  return out.join('\n');
+  return lines.map((line,i)=>`${i===0?firstPrefix:indent}${i+1}. ${line}`).join('\n');
 }
 
 function receiptTextForTx(t){
   const s=receiptSettings();
   const tanggal=`${dateID(txDate(t))} ${timeID(ms(t))}`;
   const kasir=state.user?.name||state.user?.username||t.name||t.user||'-';
-  const productPrefix=receiptLabel(s.productLabel);
-  const indent=' '.repeat(productPrefix.length+1);
-  const produkLine=receiptProductBlock(t.note,{firstPrefix:productPrefix+' ',indent});
   const nominal=Number(t.amount||0);
   const pay=txPaymentLabel(t.paymentMethod||t.paymentLabel);
   const paymentLine=pay?`\n${receiptLabel('Bayar')} ${pay}`:'';
+  const productLabel=cleanReceiptLine(s.productLabel||'Produk','Produk',12);
+  const itemCount=receiptProductParts(t.note).length;
   return `${receiptHeaderLines(s)}
 ----------------------------------------
 ${receiptLabel(s.dateLabel)} ${tanggal}
 ${receiptLabel(s.cashierLabel)} ${kasir}
-${produkLine}${paymentLine}
-${receiptLabel(s.totalLabel)} Rp ${rp(nominal)}
+${productLabel}:
+${receiptProductNumbered(t.note)}${paymentLine}
+
+Jumlah item: ${itemCount}
+Total Bayar: Rp ${rp(nominal)}
 ----------------------------------------
 ${receiptFooterLines(s)}${receiptBottomFeed(s)}
 `;
@@ -2007,10 +2068,10 @@ function receiptTextForTodayTransactions(){
   const rows=items.map((t,i)=>{
     const no=String(i+1).padStart(2,'0');
     const status=t.pending===true?' (MENUNGGU SYNC)':'';
-    const produk=receiptProductBlock(t.note,{firstPrefix:'    ',indent:'    '});
+    const produk=receiptProductNumbered(t.note,'    ');
     const pay=txPaymentLabel(t.paymentMethod||t.paymentLabel);
     const payLine=pay?`\n    Bayar: ${pay}`:'';
-    return `${no}. ${timeID(ms(t))}${status}\n${produk}${payLine}\n    Rp ${rp(t.amount)}`;
+    return `${no}. ${timeID(ms(t))}${status}\n    Produk:\n${produk}${payLine}\n    Jumlah item: ${receiptProductParts(t.note).length}\n    Total Bayar: Rp ${rp(t.amount)}`;
   }).join('\n\n');
   return `${receiptHeaderLines(s)}
 ${s.dailyTitle}
@@ -2021,7 +2082,7 @@ ${receiptLabel(s.countLabel)} ${items.length} trx
 ----------------------------------------
 ${rows}
 ----------------------------------------
-${receiptLabel(s.totalLabel).toUpperCase()} Rp ${rp(total)}
+TOTAL BAYAR Rp ${rp(total)}
 ----------------------------------------
 ${receiptFooterLines(s)}${receiptBottomFeed(s)}
 `;
@@ -2367,7 +2428,7 @@ function home(){const tx=todayTx(), a=todayAtt(), c=todayClosing(), emptyStockCa
     return;
   }
   const mainLabel=c?'Closing Hari Ini':'Absen Hari Ini';const mainValue=c?closingTimeText(c):(a?timeID(ms(a)):'--:--');const mainFoot=c?'sudah closing':(a?'sudah absen':'belum absen');const mainClass=c?'closed':(a?'ok':'wait');page.innerHTML=`${top('Mode Staff',state.user?.name||'Karyawan Staff')}${trialModeCard()}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0,5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()}<div class="stat"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Bonus Bulan Ini ++</div><button class="refresh-icon-btn" onclick="refresh()" aria-label="Refresh bonus"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg></button></div><div class="big" style="color:var(--blue)">Rp ${rp(totalBonus())}</div><div class="bonus-note">Bonus bulan ${monthID(monthKey())}</div>${todayClosingBonusInline()}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`}
-function history(){const items=sortDesc(todayTx());const printAllCard=items.length?`<div class="card" style="margin-bottom:8px"><button class="btn primary block" onclick="printTodayTransactions()">🧾 Cetak Semua Transaksi Hari Ini</button><div class="hint" style="margin-top:6px">Cetak ${items.length} transaksi hari ini dalam 1 struk.</div></div>`:'';const body=items.length?`<div class="tx-table"><div class="tx-head"><span>History Transaksi</span><span></span><span></span></div><div class="tx-list">${items.map(txItem).join('')}</div></div>`:'<div class="empty">Belum ada transaksi hari ini.</div>';page.innerHTML=`${top('Riwayat Hari Ini',`${items.length} transaksi · Rp ${rp(todayTotal())}`)}${syncBar()}${printAllCard}${body}`}
+function history(){const items=sortDesc(todayTx());const printAllCard=items.length?`<div class="card" style="margin-bottom:8px"><button class="btn primary block" onclick="printTodayTransactions()">🧾 Cetak Semua Transaksi Hari Ini</button><div class="hint" style="margin-top:6px">Cetak ${items.length} transaksi hari ini dalam 1 struk.</div></div>`:'';const body=items.length?`<div class="tx-table"><div class="tx-head"><span>Nama / Jam</span><span>Nominal</span><span style="text-align:right">Aksi</span></div><div class="tx-list">${items.map(txItem).join('')}</div></div>`:'<div class="empty">Belum ada transaksi hari ini.</div>';page.innerHTML=`${top('Riwayat Hari Ini',`${items.length} transaksi · Rp ${rp(todayTotal())}`)}${syncBar()}${printAllCard}${body}`}
 
 const __baseHomeWithUnlockCard=home;
 home=function(){
@@ -2622,7 +2683,7 @@ function notifyAdminTransactionDelete(tx={}){
     return null;
   }
 }
-function openTx(draft={}){
+function openTxLegacy(draft={}){
   if(!state.user)return;
   if(!canTx())return toast(txBlockedMessage());
   primeAppSounds();
@@ -2630,6 +2691,30 @@ function openTx(draft={}){
   const defaultAmount=Number(draft?.amount||0);
   const amountValue=defaultAmount>0?`Rp ${rp(defaultAmount)}`:'';
   modal('Transaksi Baru',`<div class="tx-chip"><span>⚡ Input cepat</span><b>${timeNow()} WIB</b></div><div class="field"><div class="label">Nama Produk</div><textarea id="txn" class="tx-product-input" placeholder="Produk...&#10;&#10;&#10;" autocomplete="off" rows="4">${esc(defaultNote)}</textarea></div><div class="field"><div class="label">Nominal Rupiah</div><input id="txa" class="tx-amount-input" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="Rp 0" value="${esc(amountValue)}" oninput="formatRupiahInput(this)" style="text-align:right;font-size:25px;font-weight:950"></div><div class="tx-note-mini">Klik <b>Simpan</b> atau <b>Cetak</b>, lalu pilih metode pembayaran dulu. Transaksi baru dianggap sukses setelah memilih <b>Cash</b> atau <b>QRIS / Transfer</b>.</div>`,`<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;width:100%"><button type="button" class="btn danger" onpointerdown="closeModal(true);event.preventDefault()" ontouchstart="closeModal(true);event.preventDefault()" onclick="closeModal(true)" style="grid-column:1 / -1">Batal</button><button class="btn success" onclick="saveTx(true)" style="background:var(--green);border-color:var(--green);color:#fff">Cetak</button><button class="btn primary" onclick="saveTx(false)">Simpan</button></div>`,'tx-modal')
+}
+function openTx(draft={}){
+  if(!state.user)return;
+  if(!canTx())return toast(txBlockedMessage());
+  primeAppSounds();
+  const defaultNote=String(draft?.note||'').trim();
+  txProductDraftItems=defaultNote&&defaultNote!=='Transaksi'?txProductItemsFromText(defaultNote,'Transaksi'):[];
+  const defaultAmount=Number(draft?.amount||0);
+  const amountValue=defaultAmount>0?`Rp ${rp(defaultAmount)}`:'';
+  const body=`<div class="tx-chip"><span>Input cepat</span><b>${timeNow()} WIB</b></div>
+    <div class="field tx-product-builder">
+      <div class="label">Rincian Barang</div>
+      <div class="tx-product-entry">
+        <input id="txProductInput" class="tx-product-input" type="text" placeholder="Nama barang..." autocomplete="off" oninput="updateTxProductAddButton()" onkeydown="handleTxProductKey(event)">
+        <button id="txAddProductBtn" type="button" class="btn primary tx-product-add" onclick="addTxProductItem()" disabled>+ Tambah Barang</button>
+      </div>
+      <div class="tx-product-list-title">Daftar Barang:</div>
+      <div id="txProductList" class="tx-product-list"></div>
+    </div>
+    <div class="field"><div class="label">Total Bayar</div><input id="txa" class="tx-amount-input" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="Rp 0" value="${esc(amountValue)}" oninput="formatRupiahInput(this)" style="text-align:right;font-size:25px;font-weight:950"></div>
+    <div class="tx-note-mini">Klik <b>Simpan</b> atau <b>Cetak</b>, lalu pilih metode pembayaran dulu. Transaksi baru dianggap sukses setelah memilih <b>Cash</b> atau <b>QRIS / Transfer</b>.</div>`;
+  const actions=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;width:100%"><button type="button" class="btn danger" onpointerdown="closeModal(true);event.preventDefault()" ontouchstart="closeModal(true);event.preventDefault()" onclick="closeModal(true)" style="grid-column:1 / -1">Batal</button><button class="btn success" onclick="saveTx(true)" style="background:var(--green);border-color:var(--green);color:#fff">Cetak</button><button class="btn primary" onclick="saveTx(false)">Simpan</button></div>`;
+  modal('Transaksi Baru',body,actions,'tx-modal');
+  setTimeout(()=>{renderTxProductDraft();$('txProductInput')?.focus?.();},30);
 }
 function openTxPaymentChoice(draft){
   txPaymentSubmitting=false;
@@ -2686,7 +2771,7 @@ async function confirmTxPayment(paymentMethod,btn,event){
 }
 async function saveTx(printAfterSave=false,paymentMethod='',draft=null){
   primeAppSounds();
-  const amount=Number(draft?.amount||onlyDigits($('txa')?.value)), note=String(draft?.note??$('txn')?.value??'').trim()||'Transaksi';
+  const amount=Number(draft?.amount||onlyDigits($('txa')?.value)), note=String(draft?.note??txProductDraftText()).trim()||'Transaksi';
   if(!amount||amount<=0)return toast('Nominal wajib diisi');
   if(!paymentMethod){
     if(!canTx()){
@@ -3207,6 +3292,7 @@ try{
   window.addEventListener('focus',()=>{syncBelanjakuBridgeQueue().catch(()=>{})});
 }catch(e){}
 window.requestOpenPrayerAyat=requestOpenPrayerAyat;window.openPrayerAyat=openPrayerAyat;window.togglePrayerAyat=togglePrayerAyat;window.stopPrayerAyat=stopPrayerAyat;window.openStaffNoteLink=openStaffNoteLink;window.login=login;window.logout=logout;window.toggleTheme=toggleTheme;window.openHeaderGuideDetail=openHeaderGuideDetail;window.dismissManualBonusNotice=dismissManualBonusNotice;window.dismissTargetNotice=dismissTargetNotice;window.refresh=refresh;window.hardRefreshApp=hardRefreshApp;window.retrySync=retrySync;window.go=go;window.appBack=appBack;window.openTx=openTx;window.requestFeatureUnlock=requestFeatureUnlock;window.openEmptyStock=openEmptyStock;window.addEmptyStockVariantRow=addEmptyStockVariantRow;window.removeEmptyStockVariantRow=removeEmptyStockVariantRow;window.submitEmptyStock=submitEmptyStock;window.syncBelanjakuBridgeQueue=syncBelanjakuBridgeQueue;window.saveTx=saveTx;window.confirmTxPayment=confirmTxPayment;window.reopenTxDraft=reopenTxDraft;window.cancelTxPaymentChoice=cancelTxPaymentChoice;window.delTx=delTx;window.closeModal=closeModal;window.closeFirstTxParty=closeFirstTxParty;window.closeManualBonusParty=closeManualBonusParty;window.updateLocation=updateLocation;window.clockIn=clockIn;window.formatRupiahInput=formatRupiahInput;window.printReceiptFromTx=printReceiptFromTx;window.printTodayTransactions=printTodayTransactions;window.copyReceiptText=copyReceiptText;window.shareReceiptText=shareReceiptText;window.nativePrintReceiptText=nativePrintReceiptText;window.directPrintReceiptText=directPrintReceiptText;window.browserPrintReceiptText=browserPrintReceiptText;
+window.addTxProductItem=addTxProductItem;window.removeTxProductItem=removeTxProductItem;window.handleTxProductKey=handleTxProductKey;window.updateTxProductAddButton=updateTxProductAddButton;window.openTxDetail=openTxDetail;
 statusPill=function(){if(isTrialUser())return `<span class="pill amber">Mode Trial</span>`;if(isClosedToday())return `<span class="pill amber">Sudah closing</span>`;if(isRismaSpecialUser())return `<span class="pill green">Risma bebas absen</span>`;if(isDaily())return `<span class="pill blue">Karyawan harian</span>`;const a=todayAtt();return a?`<span class="pill green">Sudah absen · ${timeID(ms(a))}</span>`:`<span class="pill red">Belum absen</span>`};
 setupAutoSync();
 // Pull-to-refresh dimatikan supaya tidak ada read tambahan tanpa sengaja.
