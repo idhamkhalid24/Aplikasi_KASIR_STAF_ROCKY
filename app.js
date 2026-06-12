@@ -1854,13 +1854,6 @@ function handleTxProductKey(e){
     addTxProductItem();
   }
 }
-function txPaymentBadgeHtml(v){
-  const method=normalizeTxPaymentMethod(v);
-  if(!method)return '';
-  const label=txPaymentLabel(method);
-  const cls=method==='cash'?'cash':'qris';
-  return `<span class="tx-pay-badge ${cls}">${esc(label)}</span>`;
-}
 function txItem(t){
   const pending=t.pending===true;
   const tag=pending?'<span class="pending-tag">MENUNGGU SYNC</span>':'';
@@ -1870,9 +1863,10 @@ function txItem(t){
   const printBtn=!pending?`<button class="btn sm tx-print-btn" onclick="printReceiptFromTx('${id}')" aria-label="Cetak struk">Cetak</button>`:'';
   const deleteBtn=canDelete?`<button class="btn sm danger tx-del-btn" onclick="delTx('${id}')">Hapus</button>`:'';
   const action=pending?`<div class="tx-action-buttons">${detailBtn}<span class="pill amber">Sync</span></div>`:`<div class="tx-action-buttons">${detailBtn}${printBtn}${deleteBtn}</div>`;
-  const payBadge=txPaymentBadgeHtml(t.paymentMethod||t.paymentLabel);
+  const pay=txPaymentLabel(t.paymentMethod||t.paymentLabel);
+  const payText=pay?` · ${esc(pay)}`:'';
   const cashier=esc(t.name||state.user?.name||t.user||'Staff');
-  return `<div class="tx-row"><div class="tx-name"><div class="tx-title"><span class="tx-title-main">${cashier} · ${timeID(ms(t))} · ${txProductItemCount(t.note)} item</span>${payBadge}</div><div class="tx-meta">${dateID(txDate(t))}${tag}</div></div><div class="tx-nominal">Rp ${rp(t.amount)}</div><div class="tx-action">${action}</div></div>`
+  return `<div class="tx-row"><div class="tx-name"><div class="tx-title">${cashier} · ${timeID(ms(t))} · ${txProductItemCount(t.note)} item${payText}</div><div class="tx-meta">${dateID(txDate(t))}${tag}</div></div><div class="tx-nominal">Rp ${rp(t.amount)}</div><div class="tx-action">${action}</div></div>`
 }
 function findTxById(id){return liveTx().find(t=>String(t.id)===String(id))}
 function openTxDetail(id){
