@@ -1812,7 +1812,12 @@ function txProductTextFromItems(items,fallback='Transaksi'){
   const lines=(Array.isArray(items)?items:[]).map(x=>String(x||'').replace(/\s+/g,' ').trim()).filter(Boolean);
   return lines.length?lines.join('\n'):fallback;
 }
-function txProductDraftText(){return txProductTextFromItems(txProductDraftItems,'Transaksi')}
+function txProductDraftText(){
+  const inputValue=String($('txProductInput')?.value||'').replace(/\s+/g,' ').trim();
+  const rows=[...txProductDraftItems];
+  if(inputValue)rows.push(inputValue);
+  return txProductTextFromItems(rows,'Transaksi');
+}
 function txProductItemCount(note){return txProductItemsFromText(note,'Transaksi').length}
 function txProductDisplayHtml(note){
   const items=txProductItemsFromText(note,'Transaksi');
@@ -1828,7 +1833,7 @@ function renderTxProductDraft(){
   if(add)add.disabled=!String(input?.value||'').trim();
   if(!list)return;
   if(!txProductDraftItems.length){
-    list.innerHTML='<div class="tx-product-empty">Belum ada barang. Jika kosong, tersimpan sebagai Transaksi.</div>';
+    list.innerHTML='<div class="tx-product-empty">Ketik 1 barang boleh langsung Simpan/Cetak. Tombol tambah hanya untuk barang berikutnya.</div>';
     return;
   }
   list.innerHTML=txProductDraftItems.map((item,i)=>`<div class="tx-product-row"><span class="tx-product-no">${i+1}</span><span class="tx-product-name">${esc(item)}</span><button type="button" class="tx-product-remove" onclick="removeTxProductItem(${i})">Hapus</button></div>`).join('');
