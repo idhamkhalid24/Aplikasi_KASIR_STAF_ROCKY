@@ -2058,10 +2058,10 @@ function receiptTextForTx(t){
 ${receiptLabel(s.dateLabel)} ${tanggal}
 ${receiptLabel(s.cashierLabel)} ${kasir}
 ${productLabel}:
-${receiptProductNumbered(t.note)}${paymentLine}
+${receiptProductNumbered(t.note)}
 
 Jumlah item: ${itemCount}
-Total Bayar: Rp ${rp(nominal)}
+Total Bayar: Rp ${rp(nominal)}${paymentLine}
 ----------------------------------------
 ${receiptFooterLines(s)}${receiptBottomFeed(s)}
 `;
@@ -2089,7 +2089,7 @@ function receiptTextForTodayTransactions(){
     const produk=receiptProductNumbered(t.note,'    ');
     const pay=txPaymentLabel(t.paymentMethod||t.paymentLabel);
     const payLine=pay?`\n    Bayar: ${pay}`:'';
-    return `${no}. ${timeID(ms(t))}${status}\n    Produk:\n${produk}${payLine}\n    Jumlah item: ${receiptProductParts(t.note).length}\n    Total Bayar: Rp ${rp(t.amount)}`;
+    return `${no}. ${timeID(ms(t))}${status}\n    Produk:\n${produk}\n    Jumlah item: ${receiptProductParts(t.note).length}\n    Total Bayar: Rp ${rp(t.amount)}${payLine}`;
   }).join('\n\n');
   return `${receiptHeaderLines(s)}
 ${s.dailyTitle}
