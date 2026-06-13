@@ -317,6 +317,7 @@ if(window.visualViewport){
 }
 
 function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function escAttr(v){return esc(v)}
 function normalizeStaffNoteUrl(rawUrl){const url=String(rawUrl||'').trim();if(/^https?:\/\//i.test(url))return url;if(/^www\./i.test(url))return 'https://'+url;return url}
 function openStaffNoteLink(e,rawUrl){if(e)e.preventDefault();const url=normalizeStaffNoteUrl(rawUrl);if(!/^https?:\/\//i.test(url))return false;try{const bridge=window.Android,methods=['openExternalUrl','openExternalLink','openUrl','openBrowser'];if(bridge){for(const m of methods){if(typeof bridge[m]==='function'){bridge[m](url);return false}}}}catch(err){console.warn('open external link bridge failed',err)}const opened=window.open(url,'_blank','noopener,noreferrer');if(!opened)window.location.href=url;return false}
 function shortStaffNoteLinkLabel(rawUrl){let clean=String(rawUrl||'').trim(),label=clean.replace(/^https?:\/\//i,'').replace(/^www\./i,'');try{const u=new URL(normalizeStaffNoteUrl(clean));const host=u.hostname.replace(/^www\./i,''),path=u.pathname.replace(/\/+$/,'');const last=decodeURIComponent((path.split('/').filter(Boolean).pop()||'')).replace(/[-_]+/g,' ');label=last?`${host}/…/${last}`:host}catch(e){}return label.length>42?label.slice(0,25)+'…'+label.slice(-12):label}
@@ -1826,7 +1827,7 @@ function txProductDisplayHtml(note){
 }
 function txProductDetailHtml(note){
   const items=txProductItemsFromText(note,'Transaksi');
-  return `<ol class="tx-product-render-list">${items.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>`;
+  return `<ol class="tx-product-mini-list">${items.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>`;
 }
 function renderTxProductDraft(){
   const list=$('txProductList'), add=$('txAddProductBtn'), input=$('txProductInput');
@@ -1867,32 +1868,40 @@ function txPaymentBadgeHtml(v){
   const cls=method==='cash'?'cash':'qris';
   return `<span class="tx-pay-badge ${cls}">${esc(label)}</span>`;
 }
+const TX_HISTORY_ICONS={
+  receipt:'<svg class="tx-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10a2 2 0 0 1 2 2v16l-3-2-3 2-3-2-3 2V5a2 2 0 0 1 2-2z"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h4"/></svg>',
+  list:'<svg class="tx-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h11"/><path d="M8 12h11"/><path d="M8 18h11"/><path d="M5 6h.01"/><path d="M5 12h.01"/><path d="M5 18h.01"/></svg>',
+  print:'<svg class="tx-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V4h10v4"/><path d="M7 18H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M7 14h10v7H7z"/><path d="M17 12h.01"/></svg>',
+  trash:'<svg class="tx-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/></svg>',
+  back:'<svg class="tx-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>'
+};
+function txHistoryIcon(name){return TX_HISTORY_ICONS[name]||''}
 function txItem(t){
   const pending=t.pending===true;
-  const tag=pending?'<span class="pending-tag">MENUNGGU SYNC</span>':'';
   const canDelete=txDate(t)===todayKey()&&!pending;
   const id=esc(t.id);
 
-  const detailBtn=`<button class="btn sm tx-card-btn tx-card-detail" onclick="openTxDetail('${id}')" aria-label="Detail transaksi" title="Detail">☰</button>`;
-  const printBtn=!pending?`<button class="btn sm tx-card-btn tx-card-print" onclick="printReceiptFromTx('${id}')" aria-label="Cetak struk" title="Cetak">🖨</button>`:'';
-  const deleteBtn=canDelete?`<button class="btn sm tx-card-btn tx-card-delete" onclick="delTx('${id}')" aria-label="Hapus transaksi" title="Hapus"><svg class="tx-delete-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/></svg></button>`:'';
+  const detailBtn=`<button class="btn sm tx-card-btn tx-card-detail" onclick="openTxDetail('${id}')" aria-label="Detail transaksi" title="Detail">${txHistoryIcon('list')}</button>`;
+  const printBtn=!pending?`<button class="btn sm tx-card-btn tx-card-print" onclick="printReceiptFromTx('${id}')" aria-label="Cetak struk" title="Cetak">${txHistoryIcon('print')}</button>`:'';
+  const deleteBtn=canDelete?`<button class="btn sm tx-card-btn tx-card-delete" onclick="delTx('${id}')" aria-label="Hapus transaksi" title="Hapus">${txHistoryIcon('trash')}</button>`:'';
   const action=pending?`<div class="tx-card-actions">${detailBtn}<span class="pill amber">Sync</span></div>`:`<div class="tx-card-actions">${detailBtn}${printBtn}${deleteBtn}</div>`;
 
   const payLabel=txPaymentLabel(t.paymentMethod||t.paymentLabel)||'';
-  const payBadge=txPaymentBadgeHtml(t.paymentMethod||t.paymentLabel);
   const cashier=esc(t.name||state.user?.name||t.user||'Staff');
   const itemCount=txProductItemCount(t.note);
-  const dateLabel=dateID(txDate(t));
   const timeLabel=timeID(ms(t));
   const infoPay=payLabel?` · ${esc(payLabel)}`:'';
 
   return `<div class="tx-row tx-row-card-mini">
-    <div class="tx-card-icon">↗</div>
+    <div class="tx-card-icon">${txHistoryIcon('receipt')}</div>
     <div class="tx-card-main">
-      <div class="tx-card-top"><span class="tx-card-amount">Rp ${rp(t.amount)}</span>${payBadge}</div>
-      <div class="tx-card-info">${cashier} · ${dateLabel}, ${timeLabel} · ${itemCount} item${infoPay}</div>
+      <div class="tx-card-name">${cashier}</div>
+      <div class="tx-card-info">${timeLabel} · ${itemCount} item${infoPay}</div>
     </div>
-    <div class="tx-action tx-action-card-mini">${action}</div>
+    <div class="tx-card-side">
+      <div class="tx-card-amount">Rp ${rp(t.amount)}</div>
+      <div class="tx-action tx-action-card-mini">${action}</div>
+    </div>
   </div>`
 }
 function findTxById(id){return liveTx().find(t=>String(t.id)===String(id))}
@@ -1901,8 +1910,19 @@ function openTxDetail(id){
   if(!t)return toast('Transaksi tidak ditemukan',true);
   const pay=txPaymentLabel(t.paymentMethod||t.paymentLabel)||'Cash';
   const cashier=esc(t.name||state.user?.name||t.user||'Staff');
-  const body=`<div class="tx-detail-box"><div class="tx-meta" style="margin-bottom:8px">${cashier} · ${dateID(txDate(t))} · ${timeID(ms(t))} · ${esc(pay)}</div><div class="tx-nominal" style="margin-bottom:10px">Rp ${rp(t.amount)}</div><div class="tx-meta" style="margin-bottom:6px">Daftar Barang</div>${txProductDetailHtml(t.note||'Transaksi')}</div>`;
-  modal('Detail Transaksi',body,`<button type="button" class="btn primary" onpointerdown="closeModal(true);event.preventDefault()" ontouchstart="closeModal(true);event.preventDefault()" onclick="closeModal(true)">Kembali</button>`,'tx-modal');
+  const meta=`${cashier} · ${timeID(ms(t))} · ${esc(pay)}`;
+  const body=`<div class="tx-admin-detail">
+    <div class="tx-detail-card tx-detail-total-card">
+      <div class="tx-detail-label">Total Bayar</div>
+      <div class="tx-detail-amount">Rp ${rp(t.amount)}</div>
+      <div class="tx-detail-meta">${meta}</div>
+    </div>
+    <div class="tx-detail-card tx-detail-products-card">
+      <div class="tx-detail-label">Daftar Barang</div>
+      ${txProductDetailHtml(t.note||'Transaksi')}
+    </div>
+  </div>`;
+  modal('Detail Transaksi',body,`<button type="button" class="btn block" onpointerdown="closeModal(true);event.preventDefault()" ontouchstart="closeModal(true);event.preventDefault()" onclick="closeModal(true)">${txHistoryIcon('back')} Kembali</button>`,'tx-modal tx-admin-detail-modal');
 }
 
 function unlockHomeCard(){
@@ -2451,7 +2471,7 @@ function home(){const tx=todayTx(), a=todayAtt(), c=todayClosing(), emptyStockCa
     return;
   }
   const mainLabel=c?'Closing Hari Ini':'Absen Hari Ini';const mainValue=c?closingTimeText(c):(a?timeID(ms(a)):'--:--');const mainFoot=c?'sudah closing':(a?'sudah absen':'belum absen');const mainClass=c?'closed':(a?'ok':'wait');page.innerHTML=`${top('Mode Staff',state.user?.name||'Karyawan Staff')}${trialModeCard()}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0,5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()}<div class="stat"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Bonus Bulan Ini ++</div><button class="refresh-icon-btn" onclick="refresh()" aria-label="Refresh bonus"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg></button></div><div class="big" style="color:var(--blue)">Rp ${rp(totalBonus())}</div><div class="bonus-note">Bonus bulan ${monthID(monthKey())}</div>${todayClosingBonusInline()}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`}
-function history(){const items=sortDesc(todayTx());const printAllCard=items.length?`<div class="card" style="margin-bottom:8px"><button class="btn primary block" onclick="printTodayTransactions()">🧾 Cetak Semua Transaksi Hari Ini</button><div class="hint" style="margin-top:6px">Cetak ${items.length} transaksi hari ini dalam 1 struk.</div></div>`:'';const body=items.length?`<div class="tx-table"><div class="tx-head"><span>Nama / Jam</span><span>Nominal</span><span style="text-align:right">Aksi</span></div><div class="tx-list">${items.map(txItem).join('')}</div></div>`:'<div class="empty">Belum ada transaksi hari ini.</div>';page.innerHTML=`${top('Riwayat Hari Ini',`${items.length} transaksi · Rp ${rp(todayTotal())}`)}${syncBar()}${printAllCard}${body}`}
+function history(){const items=sortDesc(todayTx());const printAllCard=items.length?`<div class="card" style="margin-bottom:8px"><button class="btn primary block tx-print-all-btn" onclick="printTodayTransactions()">${txHistoryIcon('print')} Cetak Semua Transaksi Hari Ini</button><div class="hint" style="margin-top:6px">Cetak ${items.length} transaksi hari ini dalam 1 struk.</div></div>`:'';const body=items.length?`<div class="tx-table"><div class="tx-head"><span>Nama / Jam</span><span>Nominal</span><span style="text-align:right">Aksi</span></div><div class="tx-list">${items.map(txItem).join('')}</div></div>`:'<div class="empty">Belum ada transaksi hari ini.</div>';page.innerHTML=`${top('Riwayat Hari Ini',`${items.length} transaksi · Rp ${rp(todayTotal())}`)}${syncBar()}${printAllCard}${body}`}
 
 const __baseHomeWithUnlockCard=home;
 home=function(){
@@ -2727,6 +2747,7 @@ function openTx(draft={}){
   txProductDraftItems=defaultNote&&defaultNote!=='Transaksi'?txProductItemsFromText(defaultNote,'Transaksi'):[];
   const defaultAmount=Number(draft?.amount||0);
   const amountValue=defaultAmount>0?`Rp ${rp(defaultAmount)}`:'';
+  const isEdit=!!draft?.editId;
   const body=`<div class="tx-chip"><span>Input cepat</span><b>${timeNow()} WIB</b></div>
     <div class="field tx-product-builder">
       <div class="label">Rincian Barang</div>
@@ -2739,8 +2760,13 @@ function openTx(draft={}){
     </div>
     <div class="field"><div class="label">Total Bayar</div><input id="txa" class="tx-amount-input" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="Rp 0" value="${esc(amountValue)}" oninput="formatRupiahInput(this)" style="text-align:right;font-size:25px;font-weight:950"></div>
     <div class="tx-note-mini">Klik <b>Simpan</b> atau <b>Cetak</b>, lalu pilih metode pembayaran dulu. Transaksi baru dianggap sukses setelah memilih <b>Cash</b> atau <b>QRIS / Transfer</b>.</div>`;
-  const actions=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;width:100%"><button type="button" class="btn danger" onpointerdown="closeModal(true);event.preventDefault()" ontouchstart="closeModal(true);event.preventDefault()" onclick="closeModal(true)" style="grid-column:1 / -1">Batal</button><button class="btn success" onclick="saveTx(true)" style="background:var(--green);border-color:var(--green);color:#fff">Cetak</button><button class="btn primary" onclick="saveTx(false)">Simpan</button></div>`;
-  modal('Transaksi Baru',body,actions,'tx-modal');
+  const encodedDraft=escAttr(JSON.stringify({
+    editId:String(draft?.editId||''),
+    createdAtMs:Number(draft?.createdAtMs||0),
+    paymentMethod:String(draft?.paymentMethod||'')
+  }));
+  const actions=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;width:100%"><button type="button" class="btn danger" onpointerdown="closeModal(true);event.preventDefault()" ontouchstart="closeModal(true);event.preventDefault()" onclick="closeModal(true)" style="grid-column:1 / -1">Batal</button><button class="btn success" onclick="saveTx(true,'',JSON.parse(this.dataset.draft||'{}'))" data-draft="${encodedDraft}" style="background:var(--green);border-color:var(--green);color:#fff">Cetak</button><button class="btn primary" onclick="saveTx(false,'',JSON.parse(this.dataset.draft||'{}'))" data-draft="${encodedDraft}">${isEdit?'Update':'Simpan'}</button></div>`;
+  modal(isEdit?'Edit Transaksi':'Transaksi Baru',body,actions,'tx-modal');
   setTimeout(()=>{renderTxProductDraft();$('txProductInput')?.focus?.();},30);
 }
 function openTxPaymentChoice(draft){
@@ -2748,7 +2774,10 @@ function openTxPaymentChoice(draft){
   pendingTxDraft={
     printAfterSave:Boolean(draft?.printAfterSave),
     amount:Number(draft?.amount||0),
-    note:String(draft?.note||'Transaksi').trim()||'Transaksi'
+    note:String(draft?.note||'Transaksi').trim()||'Transaksi',
+    editId:String(draft?.editId||''),
+    createdAtMs:Number(draft?.createdAtMs||0),
+    paymentMethod:String(draft?.paymentMethod||'')
   };
   modal('Pilih Pembayaran',`<div class="payment-simple-choices"><button type="button" data-payment-choice="cash" class="payment-simple-btn payment-simple-cash" onpointerdown="confirmTxPayment('cash',this,event)" ontouchstart="confirmTxPayment('cash',this,event)" onclick="confirmTxPayment('cash',this,event)"><span>🌟 Cash 🌟</span></button><button type="button" data-payment-choice="qris_transfer" class="payment-simple-btn payment-simple-qris" onpointerdown="confirmTxPayment('qris_transfer',this,event)" ontouchstart="confirmTxPayment('qris_transfer',this,event)" onclick="confirmTxPayment('qris_transfer',this,event)"><span>Qris / Transfer</span></button></div>`,``,'tx-modal payment-picker-modal')
 }
@@ -2799,13 +2828,21 @@ async function confirmTxPayment(paymentMethod,btn,event){
 async function saveTx(printAfterSave=false,paymentMethod='',draft=null){
   primeAppSounds();
   const amount=Number(draft?.amount||onlyDigits($('txa')?.value)), note=String(draft?.note??txProductDraftText()).trim()||'Transaksi';
+  const editId=String(draft?.editId||'');
+  const editTx=editId?findTxById(editId):null;
   if(!amount||amount<=0)return toast('Nominal wajib diisi');
+  if(editId){
+    if(!editTx)return toast('Transaksi edit tidak ditemukan');
+    if(editTx.pending===true)return toast('Transaksi masih menunggu sync');
+    if(txDate(editTx)!==todayKey())return toast('Hanya transaksi hari ini yang bisa diedit');
+    if(key(editTx.user)!==key(state.user?.username))return toast('Tidak bisa edit transaksi orang lain');
+  }
   if(!paymentMethod){
     if(!canTx()){
       closeModal();
       return toast(txBlockedMessage());
     }
-    return openTxPaymentChoice({printAfterSave,amount,note});
+    return openTxPaymentChoice({printAfterSave,amount,note,editId,createdAtMs:Number(draft?.createdAtMs||editTx?.createdAtMs||0),paymentMethod:String(draft?.paymentMethod||editTx?.paymentMethod||'')});
   }
   const payment=normalizeTxPaymentMethod(paymentMethod);
   if(!payment)return toast('Pilih Cash atau QRIS / Transfer dulu');
@@ -2825,8 +2862,8 @@ async function saveTx(printAfterSave=false,paymentMethod='',draft=null){
   const latest=await latestBonusSnapshotForSave();
   showLoad(false);
   if(!latest.ok)return toast(latest.msg||'Gagal cek bonus terbaru. Transaksi belum disimpan.');
-  const firstTxToday=isFirstTxPartyDue();
-  const now=Date.now(), u=key(latest.user.username||state.user.username), id='stafftx_'+u+'_'+now+'_'+Math.random().toString(36).slice(2,7);
+  const firstTxToday=!editId&&isFirstTxPartyDue();
+  const now=Date.now(), u=key(latest.user.username||state.user.username), id=editId||('stafftx_'+u+'_'+now+'_'+Math.random().toString(36).slice(2,7));
   const userRole=latest.userRole;
   const txRate=latest.txRate;
   const txPercent=latest.txPercent;
@@ -2864,6 +2901,40 @@ async function saveTx(printAfterSave=false,paymentMethod='',draft=null){
     clientId:id,
     source:'trx_staff_bonus_per_user_check_on_save'
   };
+  if(editId){
+    const {createdAtMs,createdBy,notifyAdmin,notificationType,notificationStatus,...editCore}=payload;
+    const editPatch={
+      ...editCore,
+      source:editTx.source||payload.source,
+      clientId:editTx.clientId||payload.clientId,
+      createdAtMs:Number(editTx.createdAtMs||createdAtMs||now),
+      createdBy:editTx.createdBy||u,
+      updatedAtMs:now,
+      updatedBy:u,
+      updatedByName:latest.user.name||state.user.name||u
+    };
+    closeModal();
+    try{
+      await setDoc(doc(db,'transactions',editId),{...editPatch,updatedAt:serverTimestamp(),syncedAt:serverTimestamp(),syncedAtMs:Date.now()},{merge:true});
+      const savedTx={...editTx,...editPatch,id:editId,pending:false};
+      state.data.tx=state.data.tx.map(t=>String(t.id)===String(editId)?savedTx:t);
+      state.data.targetTx=mergeRowsById(state.data.targetTx,[savedTx]);
+      await logAudit('transaction_update',{id:editId,user:u,amount,note,paymentMethod:payment,paymentLabel:paymentText});
+      syncDailyTargetState();
+      scheduleDailyTargetCheck();
+      render();
+      if(printAfterSave){
+        toast(`Transaksi ${paymentText} diupdate, mencetak struk`);
+        setTimeout(()=>directPrintReceiptText(receiptTextForTx(savedTx),'Struk Transaksi'),120);
+      }else{
+        toast(`Transaksi diupdate via ${paymentText}`);
+      }
+    }catch(e){
+      console.error(e);
+      toast('Gagal update transaksi: '+(e.message||e));
+    }
+    return;
+  }
   const local={id,...payload,pending:true};
   closeModal();
   state.data.tx=[local,...state.data.tx];
