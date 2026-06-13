@@ -2054,6 +2054,8 @@ function normalizeReceiptSettings(raw={}){
 function receiptSettings(){return normalizeReceiptSettings(state.data.receiptSettings||DEFAULT_RECEIPT_TEXT_SETTINGS)}
 function receiptBottomFeed(s=receiptSettings()){return '\n'.repeat(Math.max(0,Math.min(20,Number(s.bottomFeedLines||0))))}
 function receiptLabel(label,width=8){const s=cleanReceiptLine(label,'-',12);return `${s.length<width?s.padEnd(width,' '):s} :`}
+function receiptSummaryLabel(label){return receiptLabel(label,11)}
+function receiptSummaryLine(label,value,indent=''){return `${indent}${receiptSummaryLabel(label)} ${String(value??'').trim()}`}
 function receiptHeaderLines(s=receiptSettings()){const lines=[s.storeName];if(s.storeSubtext)lines.push(...String(s.storeSubtext).split(/\n/).filter(Boolean));return lines.join('\n')}
 function receiptFooterLines(s=receiptSettings()){return String(s.footerText||DEFAULT_RECEIPT_TEXT_SETTINGS.footerText).split(/\n/).filter(Boolean).join('\n')}
 
@@ -2075,9 +2077,8 @@ function receiptTextForTx(t){
   const kasir=state.user?.name||state.user?.username||t.name||t.user||'-';
   const nominal=Number(t.amount||0);
   const pay=txPaymentLabel(t.paymentMethod||t.paymentLabel);
-  const paymentLine=pay?`\n${receiptLabel('Bayar')} ${pay}`:'';
+  const paymentLine=pay?`\n${receiptSummaryLine('Bayar',pay)}`:'';
   const productLabel=cleanReceiptLine(s.productLabel||'Produk','Produk',12);
-  const itemCount=receiptProductParts(t.note).length;
   return `${receiptHeaderLines(s)}
 ----------------------------------------
 ${receiptLabel(s.dateLabel)} ${tanggal}
@@ -2085,8 +2086,7 @@ ${receiptLabel(s.cashierLabel)} ${kasir}
 ${productLabel}:
 ${receiptProductNumbered(t.note)}
 
-Jumlah item: ${itemCount}
-Total Bayar: Rp ${rp(nominal)}${paymentLine}
+${receiptSummaryLine('Total Bayar',`Rp ${rp(nominal)}`)}${paymentLine}
 ----------------------------------------
 ${receiptFooterLines(s)}${receiptBottomFeed(s)}
 `;
@@ -2113,8 +2113,8 @@ function receiptTextForTodayTransactions(){
     const status=t.pending===true?' (MENUNGGU SYNC)':'';
     const produk=receiptProductNumbered(t.note,'    ');
     const pay=txPaymentLabel(t.paymentMethod||t.paymentLabel);
-    const payLine=pay?`\n    Bayar: ${pay}`:'';
-    return `${no}. ${timeID(ms(t))}${status}\n    Produk:\n${produk}\n    Jumlah item: ${receiptProductParts(t.note).length}\n    Total Bayar: Rp ${rp(t.amount)}${payLine}`;
+    const payLine=pay?`\n${receiptSummaryLine('Bayar',pay,'    ')}`:'';
+    return `${no}. ${timeID(ms(t))}${status}\n    Produk:\n${produk}\n${receiptSummaryLine('Total Bayar',`Rp ${rp(t.amount)}`,'    ')}${payLine}`;
   }).join('\n\n');
   return `${receiptHeaderLines(s)}
 ${s.dailyTitle}
@@ -2125,7 +2125,7 @@ ${receiptLabel(s.countLabel)} ${items.length} trx
 ----------------------------------------
 ${rows}
 ----------------------------------------
-TOTAL BAYAR Rp ${rp(total)}
+${receiptSummaryLine('TOTAL BAYAR',`Rp ${rp(total)}`)}
 ----------------------------------------
 ${receiptFooterLines(s)}${receiptBottomFeed(s)}
 `;
