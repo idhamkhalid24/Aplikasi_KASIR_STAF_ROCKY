@@ -2605,38 +2605,40 @@ function notifyAdminNewTransaction(tx={}){
     const amount=Number(tx.amount||0);
     const staffName=String(tx.name||tx.user||state.user?.name||state.user?.username||'Staff');
     const note=String(tx.note||'Transaksi baru');
-    fetch(ROCKY_ADMIN_NOTIFY_WORKER_URL,{
-      method:'POST',
-      headers:{'Content-Type':'application/json','X-Notify-Secret':ROCKY_ADMIN_NOTIFY_SECRET},
-      body:JSON.stringify({
-        user:staffName,
-        username:String(tx.user||state.user?.username||''),
-        name:staffName,
-        amount,
-        note,
-        paymentMethod:String(tx.paymentMethod||''),
-        paymentLabel:String(tx.paymentLabel||txPaymentLabel(tx.paymentMethod)||''),
-        transactionId:String(tx.id||tx.clientId||''),
-        dateKey:String(tx.dateKey||todayKey())
-      })
-    }).then(async r=>{
-      const data=await r.json().catch(()=>null);
-      if(!r.ok||data?.ok===false)console.warn('Notif admin gagal:',data||r.status);
-      return data;
-    }).catch(err=>console.warn('Notif admin gagal:',err?.message||err));
+    return notifyRockyAdmin(ROCKY_ADMIN_NOTIFY_WORKER_URL,{
+      type:'transaction',
+      title:'Transaksi Baru',
+      staff:staffName,
+      user:staffName,
+      username:String(tx.user||state.user?.username||''),
+      name:staffName,
+      amount,
+      note,
+      paymentMethod:String(tx.paymentMethod||''),
+      paymentLabel:String(tx.paymentLabel||txPaymentLabel(tx.paymentMethod)||''),
+      transactionId:String(tx.id||tx.clientId||''),
+      dateKey:String(tx.dateKey||todayKey()),
+      source:'staff_cashier',
+      app:'Aplikasi_KASIR_STAF_ROCKY',
+      createdAt:new Date().toISOString()
+    },'Notif transaksi admin');
   }catch(err){
     console.warn('Notif admin gagal:',err?.message||err);
   }
 }
 
 async function notifyRockyAdmin(url,payload={},label='Notif admin'){
+  let timeout=null;
   try{
     if(!url||!ROCKY_ADMIN_NOTIFY_SECRET)return null;
+    const controller=(typeof AbortController!=='undefined')?new AbortController():null;
+    if(controller)timeout=setTimeout(()=>controller.abort(),4500);
     const r=await fetch(url,{
       method:'POST',
       keepalive:true,
       headers:{'Content-Type':'application/json','X-Notify-Secret':ROCKY_ADMIN_NOTIFY_SECRET},
-      body:JSON.stringify(payload||{})
+      body:JSON.stringify({...payload,secret:ROCKY_ADMIN_NOTIFY_SECRET}),
+      signal:controller?controller.signal:undefined
     });
     const data=await r.json().catch(()=>null);
     if(!r.ok||data?.ok===false)console.warn(label+' gagal:',data||r.status);
@@ -2644,6 +2646,8 @@ async function notifyRockyAdmin(url,payload={},label='Notif admin'){
   }catch(err){
     console.warn(label+' gagal:',err?.message||err);
     return null;
+  }finally{
+    if(timeout)clearTimeout(timeout);
   }
 }
 function notifyAdminAttendance(att={},action='masuk'){
@@ -2834,6 +2838,9 @@ async function saveTx(printAfterSave=false,paymentMethod='',draft=null){
     isNonCashPayment:payment==='qris_transfer',
     paymentConfirmed:true,
     paymentConfirmedAtMs:now,
+    notifyAdmin:true,
+    notificationType:'staff_transaction',
+    notificationStatus:'pending',
     dateKey:todayKey(),
     monthKey:monthKey(),
     userRole,
