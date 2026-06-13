@@ -2503,12 +2503,12 @@
   display:inline-flex!important;
   align-items:center!important;
   justify-content:center!important;
-  height:17px!important;
-  min-height:17px!important;
+  height:20px!important;
+  min-height:20px!important;
   padding:0 7px!important;
   border-radius:999px!important;
   border:1.2px solid transparent!important;
-  font-size:9px!important;
+  font-size:11px!important;
   font-weight:900!important;
   line-height:1!important;
   letter-spacing:.01em!important;
@@ -2625,13 +2625,13 @@
     font-size:10.8px!important;
   }
   .tx-row-card-mini .tx-pay-badge{
-    height:15px!important;
-    min-height:15px!important;
+    height:18px!important;
+    min-height:18px!important;
     padding:0 6px!important;
-    font-size:8px!important;
+    font-size:10px!important;
   }
   .tx-row-card-mini .tx-card-info{
-    font-size:7.6px!important;
+    font-size:10.8px!important;
   }
   .tx-row-card-mini .tx-card-actions{
     gap:2px!important;
@@ -2886,7 +2886,7 @@
 }
 .tx-row-card-mini .tx-card-info{
   color:var(--text2)!important;
-  font-size:12.5px!important;
+  font-size:13.5px!important;
   font-weight:800!important;
   line-height:1.2!important;
   margin-top:2px!important;
@@ -3069,7 +3069,7 @@
     font-size:12px!important;
   }
   .tx-row-card-mini .tx-card-info{
-    font-size:11.5px!important;
+    font-size:12px!important;
   }
   .tx-row-card-mini .tx-card-side{
     gap:6px!important;
