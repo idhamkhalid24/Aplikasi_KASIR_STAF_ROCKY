@@ -660,14 +660,56 @@ function targetNumberSetting(data,keys,fallback){
   }
   return fallback;
 }
-function normalizeDailyTargetSettings(data={}){
+function normalizeTargetSettingDate(value,fallback=todayKey()){
+  const raw=String(value||'').trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(raw.slice(0,10)))return raw.slice(0,10);
+  let m=raw.match(/^(\d{1,2})$/);
+  if(m){
+    const day=Number(m[1]);
+    if(day>=1&&day<=31)return `${todayKey().slice(0,7)}-${String(day).padStart(2,'0')}`;
+  }
+  m=raw.match(/^(\d{1,2})[\/-](\d{1,2})$/);
+  if(m){
+    const day=Number(m[1]),month=Number(m[2]);
+    if(day>=1&&day<=31&&month>=1&&month<=12)return `${todayKey().slice(0,4)}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+  }
+  return fallback;
+}
+function targetSettingDocId(dateKey=todayKey()){return `daily_target_${normalizeTargetSettingDate(dateKey,todayKey())}`}
+function targetSettingDate(row={}){
+  const idDate=String(row.id||'').match(/^daily_target_(\d{4}-\d{2}-\d{2})$/);
+  return normalizeTargetSettingDate(row.effectiveDate||row.dateKey||row.startDate||row.targetDate||(idDate?idDate[1]:''),'');
+}
+function isDailyTargetSettingRow(row={}){
+  const id=String(row.id||'');
+  return id==='daily_target'||id==='__daily_target'||id==='default'||id.startsWith('daily_target_')||String(row.type||'')==='daily_target_setting'||String(row.targetSettingType||'')==='daily_target';
+}
+function normalizeDailyTargetSettings(data={},fallbackDate=todayKey()){
+  const activeDate=targetSettingDate(data)||normalizeTargetSettingDate(fallbackDate,todayKey());
   return{
+    id:String(data.id||''),
+    dateKey:activeDate,
+    effectiveDate:activeDate,
     targetAmount:targetNumberSetting(data,['targetAmount','dailyTargetAmount','dailyOmzetTarget','omzetTarget'],DAILY_TARGET_AMOUNT),
-    bonusAmount:targetNumberSetting(data,['bonusAmount','bonusTargetAmount','dailyTargetBonusAmount','targetBonusAmount','BONUS_TARGET_AMOUNT'],BONUS_TARGET_AMOUNT)
+    bonusAmount:targetNumberSetting(data,['bonusAmount','bonusTargetAmount','dailyTargetBonusAmount','targetBonusAmount','BONUS_TARGET_AMOUNT'],BONUS_TARGET_AMOUNT),
+    updatedAtMs:Number(data.updatedAtMs||0)
   };
 }
-function dailyTargetSettings(){
-  const settings=normalizeDailyTargetSettings(state.data.targetSettings||{});
+function pickDailyTargetSettings(rows=[],dateKey=todayKey()){
+  const targetDate=normalizeTargetSettingDate(dateKey,todayKey());
+  let best=null,bestDate='',bestUpdated=0;
+  rows.filter(isDailyTargetSettingRow).forEach(row=>{
+    const rowDate=targetSettingDate(row);
+    if(rowDate&&rowDate>targetDate)return;
+    const scoreDate=rowDate||'0000-00-00',updated=Number(row.updatedAtMs||0);
+    if(!best||scoreDate>bestDate||(scoreDate===bestDate&&updated>=bestUpdated)){
+      best=row;bestDate=scoreDate;bestUpdated=updated;
+    }
+  });
+  return best?normalizeDailyTargetSettings(best,targetDate):null;
+}
+function dailyTargetSettings(dateKey=todayKey()){
+  const settings=normalizeDailyTargetSettings(state.data.targetSettings||{},dateKey);
   if(isTrialUser()){
     const target=Number(state.user?.trialTargetAmount||0), bonus=Number(state.user?.trialBonusAmount||0);
     return{targetAmount:target>0?target:10000,bonusAmount:bonus>=0?bonus:1000};
@@ -698,7 +740,7 @@ function dailyTargetTransactions(dateKey=todayKey()){
   }));
 }
 function dailyTargetSummary(dateKey=todayKey()){
-  const d=String(dateKey||todayKey()).slice(0,10), settings=dailyTargetSettings(), targetAmount=Math.max(1,Number(settings.targetAmount||DAILY_TARGET_AMOUNT));
+  const d=String(dateKey||todayKey()).slice(0,10), settings=dailyTargetSettings(d), targetAmount=Math.max(1,Number(settings.targetAmount||DAILY_TARGET_AMOUNT));
   const rows=dailyTargetTransactions(d);
   const totalAmount=rows.reduce((sum,t)=>sum+Number(t.amount||0),0);
   const rawPercent=(totalAmount/targetAmount)*100;
@@ -734,18 +776,31 @@ function syncDailyTargetState(extra={}){
   state.data.dailyTarget={...defaultDailyTargetState(summary.dateKey),...current,...extra,...summary,updatedAtMs:Date.now()};
   return state.data.dailyTarget;
 }
-async function getDailyTargetSettingsFromServer(){
+async function getDailyTargetSettingsFromServer(dateKey=todayKey()){
+  const d=normalizeTargetSettingDate(dateKey,todayKey());
+  try{
+    const snap=await getDocs(query(collection(db,TARGET_SETTINGS_TABLE),limit(1000)));
+    const rows=snap.docs.map(x=>({id:x.id,...x.data()}));
+    const picked=pickDailyTargetSettings(rows,d);
+    if(picked)return picked;
+  }catch(e){
+    console.warn('jadwal target harian belum terbaca',e?.code||e?.message||e);
+  }
   const ids=['daily_target','__daily_target','default'];
   for(const id of ids){
     try{
       const snap=await getDocFromServer(doc(db,TARGET_SETTINGS_TABLE,id));
-      if(snap.exists())return normalizeDailyTargetSettings(snap.data()||{});
+      if(snap.exists()){
+        const data={id:snap.id,...(snap.data()||{})};
+        const rowDate=targetSettingDate(data);
+        if(!rowDate||rowDate<=d)return normalizeDailyTargetSettings(data,d);
+      }
     }catch(e){
       if(id==='daily_target')console.warn('targetSettings belum terbaca',e?.code||e?.message||e);
       break;
     }
   }
-  return dailyTargetSettings();
+  return dailyTargetSettings(d);
 }
 async function loadDailyTargetData({apply=true}={}){
   const d=todayKey();
@@ -755,7 +810,7 @@ async function loadDailyTargetData({apply=true}={}){
       getDocs(query(collection(db,'users'),limit(LIMITS.targetUsers))).catch(()=>querySnapshot([])),
       getDocs(query(collection(db,'attendance'),where('dateKey','==',d),limit(LIMITS.targetAttToday))).catch(()=>querySnapshot([])),
       getDocFromServer(doc(db,DAILY_TARGETS_TABLE,targetDailyDocId(d))).catch(()=>null),
-      getDailyTargetSettingsFromServer()
+      getDailyTargetSettingsFromServer(d)
     ]);
     state.data.targetTx=sortDesc(txSnap.docs.map(x=>({id:x.id,...x.data()})));
     state.data.targetUsers=userSnap.docs.map(x=>({id:x.id,username:key((x.data()||{}).username||x.id),...x.data()}));
@@ -1362,13 +1417,13 @@ function startStaffRealtime(){
     render();
   },err=>console.warn('Notifikasi target harian realtime gagal',err?.code||err?.message||err)));
 
-  staffRealtimeUnsubs.push(onSnapshot(doc(db,TARGET_SETTINGS_TABLE,'daily_target'),snap=>{
-    if(snap.exists()){
-      state.data.targetSettings=normalizeDailyTargetSettings(snap.data()||{});
-      syncDailyTargetState();
-      render();
-      scheduleDailyTargetCheck();
-    }
+  staffRealtimeUnsubs.push(onSnapshot(query(collection(db,TARGET_SETTINGS_TABLE),limit(1000)),snap=>{
+    const rows=snap.docs.map(x=>({id:x.id,...x.data()}));
+    const picked=pickDailyTargetSettings(rows,d);
+    if(picked)state.data.targetSettings=picked;
+    syncDailyTargetState();
+    render();
+    scheduleDailyTargetCheck();
   },err=>console.warn('Setting target harian realtime gagal',err?.code||err?.message||err)));
 
   staffRealtimeUnsubs.push(onSnapshot(doc(db,'closings','__bonus_settings'),snap=>{
