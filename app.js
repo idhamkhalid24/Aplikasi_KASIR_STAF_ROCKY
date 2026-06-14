@@ -1823,11 +1823,17 @@ function txProductItemCount(note){return txProductItemsFromText(note,'Transaksi'
 function txProductDisplayHtml(note){
   const items=txProductItemsFromText(note,'Transaksi');
   if(items.length===1)return esc(items[0]);
-  return `<ol class="tx-product-render-list">${items.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>`;
+  return txProductReceiptHtml(items);
 }
 function txProductDetailHtml(note){
   const items=txProductItemsFromText(note,'Transaksi');
-  return `<ol class="tx-product-mini-list">${items.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>`;
+  return txProductReceiptHtml(items);
+}
+function txProductReceiptHtml(items){
+  const rows=(Array.isArray(items)?items:[]).map(x=>String(x||'').trim()).filter(Boolean);
+  const safeRows=rows.length?rows:['Transaksi'];
+  const sep='-'.repeat(32);
+  return `<div class="tx-product-receipt-list">${safeRows.map(x=>`<div class="tx-product-receipt-row">${esc('> '+x)}</div><div class="tx-product-receipt-sep">${sep}</div>`).join('')}</div>`;
 }
 function renderTxProductDraft(){
   const list=$('txProductList'), add=$('txAddProductBtn'), input=$('txProductInput');
@@ -1837,7 +1843,7 @@ function renderTxProductDraft(){
     list.innerHTML='<div class="tx-product-empty">Ketik 1 barang boleh langsung Simpan/Cetak. Tombol tambah hanya untuk barang berikutnya.</div>';
     return;
   }
-  list.innerHTML=txProductDraftItems.map((item,i)=>`<div class="tx-product-row"><span class="tx-product-no">${i+1}</span><span class="tx-product-name">${esc(item)}</span><button type="button" class="tx-product-remove" onclick="removeTxProductItem(${i})">Hapus</button></div>`).join('');
+  list.innerHTML=txProductDraftItems.map((item,i)=>`<div class="tx-product-row"><span class="tx-product-no">&gt;</span><span class="tx-product-name">${esc(item)}</span><button type="button" class="tx-product-remove" onclick="removeTxProductItem(${i})">Hapus</button></div>`).join('');
 }
 function updateTxProductAddButton(){renderTxProductDraft()}
 function addTxProductItem(){
@@ -2063,11 +2069,13 @@ function receiptProductParts(note){
   return lines.length?lines:['Transaksi'];
 }
 function receiptProductNumbered(note,indent=''){
-  return receiptProductParts(note).map((line,i)=>`${indent}${i+1}. ${line}`).join('\n');
+  const sep='-'.repeat(32);
+  return receiptProductParts(note).flatMap(line=>[`${indent}> ${line}`,`${indent}${sep}`]).join('\n');
 }
 function receiptProductBlock(note,{firstPrefix='',indent='',separator=''}={}){
   const lines=receiptProductParts(note);
-  return lines.map((line,i)=>`${i===0?firstPrefix:indent}${i+1}. ${line}`).join('\n');
+  const sep=separator||'-'.repeat(32);
+  return lines.flatMap(line=>[`${indent}> ${line}`,`${indent}${sep}`]).join('\n');
 }
 
 function receiptTextForTx(t){
@@ -2079,14 +2087,14 @@ function receiptTextForTx(t){
   const paymentLine=pay?`\n${receiptSummaryLine('Bayar',pay)}`:'';
   const productLabel=cleanReceiptLine(s.productLabel||'Produk','Produk',12);
   return `${receiptHeaderLines(s)}
-----------------------------------------
+--------------------------------
 ${receiptLabel(s.dateLabel)} ${tanggal}
 ${receiptLabel(s.cashierLabel)} ${kasir}
 ${productLabel}:
 ${receiptProductNumbered(t.note)}
 
 ${receiptSummaryLine('Total Bayar',`Rp ${rp(nominal)}`)}${paymentLine}
-----------------------------------------
+--------------------------------
 ${receiptFooterLines(s)}${receiptBottomFeed(s)}
 `;
 }
@@ -2117,15 +2125,15 @@ function receiptTextForTodayTransactions(){
   }).join('\n\n');
   return `${receiptHeaderLines(s)}
 ${s.dailyTitle}
-----------------------------------------
+--------------------------------
 ${receiptLabel(s.dateLabel)} ${tanggal}
 ${receiptLabel(s.cashierLabel)} ${kasir}
 ${receiptLabel(s.countLabel)} ${items.length} trx
-----------------------------------------
+--------------------------------
 ${rows}
-----------------------------------------
+--------------------------------
 ${receiptSummaryLine('TOTAL BAYAR',`Rp ${rp(total)}`)}
-----------------------------------------
+--------------------------------
 ${receiptFooterLines(s)}${receiptBottomFeed(s)}
 `;
 }
