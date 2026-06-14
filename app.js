@@ -1805,16 +1805,27 @@ async function latestBonusSnapshotForSave(){
 function statusPill(){if(isTrialUser())return `<span class="pill amber">Mode Trial</span>`;if(isClosedToday())return `<span class="pill amber">Sudah closing</span>`;if(isDaily())return `<span class="pill blue">Karyawan harian</span>`;const a=todayAtt();return a?`<span class="pill green">Sudah absen · ${timeID(ms(a))}</span>`:`<span class="pill red">Belum absen</span>`}
 function locText(){if(!state.pos)return `<button class="pill blue" onclick="updateLocation()">Ambil GPS</button>`;const dist=distance(state.pos.lat,state.pos.lng,OFFICE_LOC.lat,OFFICE_LOC.lng);return dist<=RADIUS_LIMIT?`<span class="pill green">Radius · ${Math.round(dist)}m</span>`:`<span class="pill red">Diluar · ${Math.round(dist)}m</span>`}
 let txProductDraftItems=[];
+function txProductName(value){
+  return String(value||'').replace(/\s+/g,' ').trim().toUpperCase();
+}
+function forceTxProductUppercaseInput(el){
+  if(!el)return;
+  const oldValue=String(el.value||''), nextValue=oldValue.toUpperCase();
+  if(oldValue===nextValue)return;
+  const start=el.selectionStart, end=el.selectionEnd;
+  el.value=nextValue;
+  try{if(typeof start==='number'&&typeof end==='number')el.setSelectionRange(start,end)}catch(e){}
+}
 function txProductItemsFromText(text,fallback='Transaksi'){
-  const lines=String(text||'').split(/\r?\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+  const lines=String(text||'').split(/\r?\n/).map(txProductName).filter(Boolean);
   return lines.length?lines:[fallback];
 }
 function txProductTextFromItems(items,fallback='Transaksi'){
-  const lines=(Array.isArray(items)?items:[]).map(x=>String(x||'').replace(/\s+/g,' ').trim()).filter(Boolean);
+  const lines=(Array.isArray(items)?items:[]).map(txProductName).filter(Boolean);
   return lines.length?lines.join('\n'):fallback;
 }
 function txProductDraftText(){
-  const inputValue=String($('txProductInput')?.value||'').replace(/\s+/g,' ').trim();
+  const inputValue=txProductName($('txProductInput')?.value||'');
   const rows=[...txProductDraftItems];
   if(inputValue)rows.push(inputValue);
   return txProductTextFromItems(rows,'Transaksi');
@@ -1837,6 +1848,7 @@ function txProductReceiptHtml(items){
 }
 function renderTxProductDraft(){
   const list=$('txProductList'), add=$('txAddProductBtn'), input=$('txProductInput');
+  forceTxProductUppercaseInput(input);
   if(add)add.disabled=!String(input?.value||'').trim();
   if(!list)return;
   if(!txProductDraftItems.length){
@@ -1848,7 +1860,7 @@ function renderTxProductDraft(){
 function updateTxProductAddButton(){renderTxProductDraft()}
 function addTxProductItem(){
   const input=$('txProductInput');
-  const value=String(input?.value||'').replace(/\s+/g,' ').trim();
+  const value=txProductName(input?.value||'');
   if(!value){renderTxProductDraft();input?.focus?.();return}
   txProductDraftItems.push(value);
   if(input)input.value='';
@@ -2834,7 +2846,7 @@ async function confirmTxPayment(paymentMethod,btn,event){
 }
 async function saveTx(printAfterSave=false,paymentMethod='',draft=null){
   primeAppSounds();
-  const amount=Number(draft?.amount||onlyDigits($('txa')?.value)), note=String(draft?.note??txProductDraftText()).trim()||'Transaksi';
+  const amount=Number(draft?.amount||onlyDigits($('txa')?.value)), note=txProductTextFromItems(txProductItemsFromText(String(draft?.note??txProductDraftText()).trim(),'Transaksi'),'Transaksi');
   const editId=String(draft?.editId||'');
   const editTx=editId?findTxById(editId):null;
   if(!amount||amount<=0)return toast('Nominal wajib diisi');
