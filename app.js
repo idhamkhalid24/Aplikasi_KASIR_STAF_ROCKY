@@ -1946,7 +1946,6 @@ function renderTxProductDraft(){
   if(add)add.disabled=!String(input?.value||'').trim();
   if(!list)return;
   if(!txProductDraftItems.length){
-    list.innerHTML='<div class="tx-product-empty">Ketik 1 barang boleh langsung Simpan/Cetak. Tombol tambah hanya untuk barang berikutnya.</div>';
     return;
   }
   list.innerHTML=txProductDraftItems.map((item,i)=>`<div class="tx-product-row"><span class="tx-product-no">&gt;</span><span class="tx-product-name">${esc(item)}</span><button type="button" class="tx-product-remove" onclick="removeTxProductItem(${i})">Hapus</button></div>`).join('');
@@ -2869,11 +2868,10 @@ function openTx(draft={}){
         <input id="txProductInput" class="tx-product-input" type="text" placeholder="Nama barang..." autocomplete="off" oninput="updateTxProductAddButton()" onkeydown="handleTxProductKey(event)">
         <button id="txAddProductBtn" type="button" class="btn primary tx-product-add" onclick="addTxProductItem()" disabled>+ Tambah Barang</button>
       </div>
-      <div class="tx-product-list-title">Daftar Barang:</div>
       <div id="txProductList" class="tx-product-list"></div>
     </div>
     <div class="field"><div class="label">Total Bayar</div><input id="txa" class="tx-amount-input" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="Rp 0" value="${esc(amountValue)}" oninput="formatRupiahInput(this)" style="text-align:right;font-size:25px;font-weight:950"></div>
-    <div class="tx-note-mini">Klik <b>Simpan</b> atau <b>Cetak</b>, lalu pilih metode pembayaran dulu. Transaksi baru dianggap sukses setelah memilih <b>Cash</b> atau <b>QRIS / Transfer</b>.</div>`;
+    `;
   const encodedDraft=escAttr(JSON.stringify({
     editId:String(draft?.editId||''),
     createdAtMs:Number(draft?.createdAtMs||0),
