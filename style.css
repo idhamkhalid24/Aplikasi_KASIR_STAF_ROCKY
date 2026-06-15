@@ -2732,6 +2732,7 @@
   white-space:normal!important;
   font-variant-numeric:tabular-nums!important;
   text-align:right!important;
+  text-shadow: 0.5px 0.5px 1px rgba(0,0,0,0.15)!important;
 }
 .tx-row-card-mini .tx-action-card-mini{
   min-width:0!important;
