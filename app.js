@@ -2001,13 +2001,12 @@ function txItem(t){
   const method = normalizeTxPaymentMethod(t.paymentMethod || t.paymentLabel);
   const label = txPaymentLabel(method);
   const payBadge = label ? `<span class="tx-pay-badge ${method === 'cash' ? 'cash' : 'qris'}">${esc(label)}</span>` : '';
-  const itemCount=txProductItemCount(t.note);
   const timeLabel=timeID(ms(t));
   const infoPay=payBadge?` · ${payBadge}`:'';
 
   return `<div class="tx-row tx-row-card-mini">
     <div class="tx-card-main">
-      <div class="tx-card-info">${timeLabel} · ${itemCount} item${infoPay}</div>
+      <div class="tx-card-info">${timeLabel}${infoPay}</div>
     </div>
     <div class="tx-card-side">
       <div class="tx-card-amount">Rp ${rp(t.amount)}</div>
