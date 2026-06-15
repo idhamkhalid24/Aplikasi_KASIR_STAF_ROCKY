@@ -2502,6 +2502,7 @@
   font-size:11.8px!important;
   line-height:1.05!important;
   font-weight:950!important;
+  white-space:nowrap!important;
   white-space:normal!important;
   font-variant-numeric:tabular-nums!important;
 }
@@ -2727,6 +2728,7 @@
   font-size:12px!important;
   font-weight:950!important;
   line-height:1!important;
+  white-space:nowrap!important;
   white-space:normal!important;
   font-variant-numeric:tabular-nums!important;
   text-align:right!important;
@@ -2892,7 +2894,7 @@
 }
 .tx-row-card-mini .tx-card-info{
   color:var(--text2)!important;
-  font-size:13.5px!important;
+  font-size:12px!important;
   font-weight:800!important;
   line-height:1.2!important;
   margin-top:2px!important;
@@ -2910,7 +2912,7 @@
 }
 .tx-row-card-mini .tx-card-amount{
   color:var(--text)!important;
-  font-size:13.5px!important;
+  font-size:13px!important;
   font-weight:900!important;
   line-height:1!important;
   white-space:nowrap!important;
