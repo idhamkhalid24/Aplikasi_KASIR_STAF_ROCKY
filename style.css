@@ -2837,7 +2837,7 @@
 }
 .tx-list{
   display:grid!important;
-  gap:8px!important;
+  gap:4px!important;
 }
 .tx-table .tx-head{
   display:none!important;
@@ -2849,7 +2849,7 @@
   gap:10px!important;
   width:100%!important;
   min-width:0!important;
-  padding:12px 14px!important;
+  padding:8px 14px!important;
   border-radius:16px!important;
   background:var(--card)!important;
   border:1.5px solid var(--line)!important;
@@ -3085,7 +3085,7 @@
   .tx-row.tx-row-card-mini{
     grid-template-columns:minmax(0,1fr) auto!important;
     gap:8px!important;
-    padding:10px 9px!important;
+    padding:6px 9px!important;
     border-radius:14px!important;
   }
   .tx-row-card-mini .tx-card-icon{
