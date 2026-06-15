@@ -2893,7 +2893,7 @@
   text-overflow:ellipsis!important;
 }
 .tx-row-card-mini .tx-card-info{
-  color:var(--text2)!important;
+  color:var(--text)!important;
   font-size:12px!important;
   font-weight:800!important;
   line-height:1.2!important;
@@ -2912,8 +2912,8 @@
 }
 .tx-row-card-mini .tx-card-amount{
   color:var(--text)!important;
-  font-size:13px!important;
-  font-weight:900!important;
+  font-size:15px!important;
+  font-weight:950!important;
   line-height:1!important;
   white-space:nowrap!important;
   font-variant-numeric:tabular-nums!important;
@@ -3103,7 +3103,8 @@
     gap:6px!important;
   }
   .tx-row-card-mini .tx-card-amount{
-    font-size:12px!important;
+    font-size:14px!important;
+    font-weight:950!important;
   }
   .tx-row-card-mini .tx-card-actions{
     gap:5px!important;
