@@ -2502,7 +2502,7 @@
   font-size:11.8px!important;
   line-height:1.05!important;
   font-weight:950!important;
-  white-space:nowrap!important;
+  white-space:normal!important;
   font-variant-numeric:tabular-nums!important;
 }
 .tx-row-card-mini .tx-pay-badge{
@@ -2727,7 +2727,7 @@
   font-size:12px!important;
   font-weight:950!important;
   line-height:1!important;
-  white-space:nowrap!important;
+  white-space:normal!important;
   font-variant-numeric:tabular-nums!important;
   text-align:right!important;
 }
