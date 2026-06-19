@@ -260,6 +260,11 @@ const ROCKY_ADMIN_NOTIFY_TARGET_URL=ROCKY_ADMIN_NOTIFY_WORKER_BASE_URL+'/notify-
 const ROCKY_STAFF_NOTIFY_MANUAL_BONUS_URL=ROCKY_ADMIN_NOTIFY_WORKER_BASE_URL+'/notify-staff-manual-bonus';
 const ROCKY_ADMIN_NOTIFY_SECRET='rockyNotifRahasia2026';
 const REFRESH_COOLDOWN_MS=30000;
+const KAS_PRIBADI_SUPABASE_URL='https://myxrvipyodadnldtomzs.supabase.co';
+const KAS_PRIBADI_SUPABASE_ANON_KEY='sb_publishable_aG-kyasJNCEk2U9fN5T4qg_GfY0FpPH';
+const KAS_PRIBADI_OWNER_ID='rocky-hijab';
+const CASH_DRAWER_TABLE='cash_drawer_audits';
+const cashDrawerClient=createSupabaseClient(KAS_PRIBADI_SUPABASE_URL,KAS_PRIBADI_SUPABASE_ANON_KEY);
 
 // Bridge ke aplikasi Belanjaku: staff bisa lapor barang kosong (nama barang + warna).
 const BELANJAKU_BRIDGE_KEY='stafku_to_belanjaku_barang_kosong_v1';
@@ -278,7 +283,7 @@ let staffRealtimeStartedFor='';
 function defaultDailyTargetState(dateKey=todayKey()){
   return{dateKey,targetAmount:DAILY_TARGET_AMOUNT,bonusAmount:BONUS_TARGET_AMOUNT,totalAmount:0,progressPercent:0,reached:false,bonusApplied:false,activeUsers:[],rewardedUsers:[],updatedAtMs:0};
 }
-const state={user:null,page:'home',pos:null,busy:false,lastSyncMs:0,syncing:false,syncError:'',data:{tx:[],att:[],closings:[],manual:[],unlockRequests:[],targetTx:[],targetUsers:[],targetAtt:[],targetSettings:{targetAmount:DAILY_TARGET_AMOUNT,bonusAmount:BONUS_TARGET_AMOUNT},dailyTarget:defaultDailyTargetState(),targetNotification:null,bonus:{...DEFAULT_BONUS},headerGuideNote:DEFAULT_HEADER_GUIDE_NOTE,staffDailyNote:{note:DEFAULT_STAFF_DAILY_NOTE,enabled:true},receiptSettings:{...DEFAULT_RECEIPT_TEXT_SETTINGS}}};
+const state={user:null,page:'home',pos:null,busy:false,lastSyncMs:0,syncing:false,syncError:'',data:{tx:[],att:[],closings:[],manual:[],unlockRequests:[],targetTx:[],targetUsers:[],targetAtt:[],targetSettings:{targetAmount:DAILY_TARGET_AMOUNT,bonusAmount:BONUS_TARGET_AMOUNT},dailyTarget:defaultDailyTargetState(),targetNotification:null,bonus:{...DEFAULT_BONUS},headerGuideNote:DEFAULT_HEADER_GUIDE_NOTE,staffDailyNote:{note:DEFAULT_STAFF_DAILY_NOTE,enabled:true},receiptSettings:{...DEFAULT_RECEIPT_TEXT_SETTINGS},cashDrawer:null}};
 let dailyTargetApplyTimer=0;
 let dailyTargetApplying=false;
 let targetNoticeAnnounced=new Set();
@@ -405,7 +410,7 @@ function clearSessionAndRender(msg){
   clearStaffRealtime();
   clearAndroidStaffSession();
   targetNoticeAnnounced=new Set();
-  state.user=null;state.pos=null;state.syncError='';state.lastSyncMs=0;state.data={tx:[],att:[],closings:[],manual:[],unlockRequests:[],targetTx:[],targetUsers:[],targetAtt:[],targetSettings:{targetAmount:DAILY_TARGET_AMOUNT,bonusAmount:BONUS_TARGET_AMOUNT},dailyTarget:defaultDailyTargetState(),targetNotification:null,bonus:{...DEFAULT_BONUS},headerGuideNote:DEFAULT_HEADER_GUIDE_NOTE,staffDailyNote:{note:DEFAULT_STAFF_DAILY_NOTE,enabled:true},receiptSettings:{...DEFAULT_RECEIPT_TEXT_SETTINGS}};
+  state.user=null;state.pos=null;state.syncError='';state.lastSyncMs=0;state.data={tx:[],att:[],closings:[],manual:[],unlockRequests:[],targetTx:[],targetUsers:[],targetAtt:[],targetSettings:{targetAmount:DAILY_TARGET_AMOUNT,bonusAmount:BONUS_TARGET_AMOUNT},dailyTarget:defaultDailyTargetState(),targetNotification:null,bonus:{...DEFAULT_BONUS},headerGuideNote:DEFAULT_HEADER_GUIDE_NOTE,staffDailyNote:{note:DEFAULT_STAFF_DAILY_NOTE,enabled:true},receiptSettings:{...DEFAULT_RECEIPT_TEXT_SETTINGS},cashDrawer:null};
   if(msg)toast(msg);
   renderLogin();
 }
@@ -1219,6 +1224,60 @@ function staffDailyNoteCard(){
   const by=data.updatedAtMs?' · Pesan dari Markas':'';
   return `<div class="card staff-home-note-card"><div class="staff-home-note-main"><span class="staff-home-note-ico">📌</span><div style="min-width:0;flex:1"><div class="staff-home-note-title">PENTING</div><div class="staff-home-note-text">${linkText(data.note)}</div><div class="staff-home-note-meta">${esc(updated+by)}</div></div></div></div>`;
 }
+function normalizeCashDrawerStatus(value,diff=0){
+  const raw=String(value||'').toLowerCase();
+  if(['minus','kurang'].includes(raw))return 'minus';
+  if(['lebih','plus'].includes(raw))return 'lebih';
+  if(['pas','sama'].includes(raw))return 'pas';
+  const n=Number(diff||0);
+  if(n<0)return 'minus';
+  if(n>0)return 'lebih';
+  return 'pas';
+}
+function normalizeCashDrawerRow(r={}){
+  const diff=Number(r.difference_amount??r.differenceAmount??0);
+  return {
+    id:r.id||'',
+    dateKey:String(r.date_key||r.dateKey||todayKey()).slice(0,10),
+    status:normalizeCashDrawerStatus(r.status,diff),
+    baseAmount:Number(r.base_amount??r.baseAmount??0),
+    actualAmount:Number(r.actual_amount??r.actualAmount??0),
+    differenceAmount:diff,
+    adjustmentAmount:Number(r.adjustment_amount??r.adjustmentAmount??0),
+    createdAt:r.created_at||r.createdAt||''
+  };
+}
+async function loadCashDrawerStatus(dateKey=todayKey()){
+  try{
+    const {data,error}=await cashDrawerClient
+      .from(CASH_DRAWER_TABLE)
+      .select('id,date_key,status,base_amount,actual_amount,difference_amount,adjustment_amount,created_at')
+      .eq('owner_id',KAS_PRIBADI_OWNER_ID)
+      .eq('date_key',dateKey)
+      .order('created_at',{ascending:false})
+      .limit(1);
+    if(error)throw error;
+    state.data.cashDrawer=(data&&data[0])?normalizeCashDrawerRow(data[0]):null;
+  }catch(e){
+    console.warn('Status laci gagal dimuat',e?.message||e);
+    state.data.cashDrawer=null;
+  }
+  return state.data.cashDrawer;
+}
+function cashDrawerStaffMessage(row=state.data.cashDrawer){
+  if(!row)return 'Belum ada cek laci hari ini.';
+  const amount=Math.abs(Number(row.differenceAmount||0));
+  if(row.status==='minus')return `Cash laci MINUS Rp ${rp(amount)}`;
+  if(row.status==='lebih')return `Cash laci LEBIH Rp ${rp(amount)}`;
+  return 'Cash laci PAS. Tidak ada selisih.';
+}
+function cashDrawerStatusCard(){
+  const row=state.data.cashDrawer, status=row?row.status:'empty';
+  const cardStatus=row?status:'blank';
+  const statusLabel=row?(status==='minus'?'MINUS':status==='lebih'?'LEBIH':'PAS'):'BELUM CEK';
+  const message=cashDrawerStaffMessage(row);
+  return `<div class="cash-drawer-staff-card ${cardStatus}"><div class="cash-drawer-staff-copy"><span class="cash-drawer-staff-label">Status Cash Laci</span><b class="cash-drawer-staff-title">${esc(message)}</b></div><span class="cash-drawer-staff-badge">${esc(statusLabel)}</span></div>`;
+}
 function headerGuideItems(){
   const themeIcon=isNeoTheme()?'M':'NB';
   const lock=missedAttendanceLockForDate();
@@ -1515,6 +1574,7 @@ function startStaffRealtime(){
 async function loadStaffData(opts={}){
   if(!state.user)return;
   const u=key(state.user.username), silent=opts.silent===true, d=todayKey(), prevD=previousDateKey(d), m=monthKey(), monthStart=monthStartKey(m), monthEnd=monthEndKey(m);
+  const cashDrawerLoad=loadCashDrawerStatus(d);
   if(!silent)showLoad(true);
   try{
     // Load awal fokus ke bulan berjalan. Ini menjaga kartu hari ini, bonus bulanan,
@@ -1603,6 +1663,7 @@ async function loadStaffData(opts={}){
     state.syncError=isPermissionError(e)?'Akses Firebase ditolak.':'Gagal memuat data. Coba refresh manual.';
     applyPendingToState();
   }
+  await cashDrawerLoad.catch(()=>null);
   await loadDailyTargetData({apply:true});
   if(!silent)showLoad(false);
   render();
@@ -2583,10 +2644,10 @@ function home(){const tx=todayTx(), a=todayAtt(), c=todayClosing(), emptyStockCa
   if(isDaily()){
     const todayTxBonus=txBonusSum(tx), manualToday=manualBonusToday(), todayBonus=todayTxBonus+manualToday;
     const manualCard='';
-    page.innerHTML=`${top('Mode Harian',state.user?.name||'Karyawan Harian')}${trialModeCard()}${manualBonusNoticeCard()}<div class="hero daily-income-hero"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0,5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard('daily')}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
+    page.innerHTML=`${top('Mode Harian',state.user?.name||'Karyawan Harian')}${trialModeCard()}${manualBonusNoticeCard()}${cashDrawerStatusCard()}<div class="hero daily-income-hero"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0,5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard('daily')}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
     return;
   }
-  const mainLabel=c?'Closing Hari Ini':'Absen Hari Ini';const mainValue=c?closingTimeText(c):(a?timeID(ms(a)):'--:--');const mainFoot=c?'sudah closing':(a?'sudah absen':'belum absen');const mainClass=c?'closed':(a?'ok':'wait');page.innerHTML=`${top('Mode Staff',state.user?.name||'Karyawan Staff')}${trialModeCard()}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0,5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()}<div class="stat"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Bonus Bulan Ini ++</div><button class="refresh-icon-btn" onclick="refresh()" aria-label="Refresh bonus"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg></button></div><div class="big" style="color:var(--blue)">Rp ${rp(totalBonus())}</div><div class="bonus-note">Bonus bulan ${monthID(monthKey())}</div>${todayClosingBonusInline()}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`}
+  const mainLabel=c?'Closing Hari Ini':'Absen Hari Ini';const mainValue=c?closingTimeText(c):(a?timeID(ms(a)):'--:--');const mainFoot=c?'sudah closing':(a?'sudah absen':'belum absen');const mainClass=c?'closed':(a?'ok':'wait');page.innerHTML=`${top('Mode Staff',state.user?.name||'Karyawan Staff')}${trialModeCard()}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${cashDrawerStatusCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0,5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()}<div class="stat"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Bonus Bulan Ini ++</div><button class="refresh-icon-btn" onclick="refresh()" aria-label="Refresh bonus"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg></button></div><div class="big" style="color:var(--blue)">Rp ${rp(totalBonus())}</div><div class="bonus-note">Bonus bulan ${monthID(monthKey())}</div>${todayClosingBonusInline()}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`}
 function history(){const items=sortDesc(todayTx());const printAllCard=items.length?`<div class="card" style="margin-bottom:8px"><button class="btn primary block tx-print-all-btn" onclick="printTodayTransactions()">${txHistoryIcon('print')} Cetak Semua Transaksi Hari Ini</button><div class="hint" style="margin-top:6px">Cetak ${items.length} transaksi hari ini dalam 1 struk.</div></div>`:'';const body=items.length?`<div class="tx-table"><div class="tx-head"><span>Nama / Jam</span><span>Nominal</span><span style="text-align:right">Aksi</span></div><div class="tx-list">${items.map(txItem).join('')}</div></div>`:'<div class="empty">Belum ada transaksi hari ini.</div>';page.innerHTML=`${top('Riwayat Hari Ini',`${items.length} transaksi · Rp ${rp(todayTotal())}`)}${syncBar()}${printAllCard}${body}`}
 
 const __baseHomeWithUnlockCard=home;
