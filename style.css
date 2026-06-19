@@ -244,6 +244,15 @@
     .label{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700}
     .hint{font-size:11.5px;color:var(--muted);line-height:1.45}
     .empty{padding:20px;border:1.5px dashed var(--line2);border-radius:var(--radius);text-align:center;color:var(--muted);font-size:12.5px;background:var(--soft)}
+    .cash-drawer-staff-card{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;margin:0 0 8px;padding:9px 11px;border:1.5px solid #d8e1ff;border-radius:12px;background:#f8fbff;box-shadow:var(--shadow);max-width:100%;min-width:0}
+    .cash-drawer-staff-card.minus{border-color:#fecdd3;background:#fff1f2;color:#be123c}
+    .cash-drawer-staff-card.pas{border-color:#bbf7d0;background:#f0fdf4;color:#15803d}
+    .cash-drawer-staff-card.lebih{border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8}
+    .cash-drawer-staff-card.blank{border-style:solid;color:var(--muted)}
+    .cash-drawer-staff-copy{min-width:0;display:flex;flex-direction:column;gap:2px}
+    .cash-drawer-staff-label{font-size:9px;font-weight:900;line-height:1;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+    .cash-drawer-staff-title{display:block;min-width:0;font-size:12px;font-weight:950;line-height:1.2;letter-spacing:-.01em;color:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .cash-drawer-staff-badge{flex-shrink:0;border-radius:999px;padding:5px 9px;background:#fff;border:1.5px solid currentColor;font-size:10px;font-weight:950;line-height:1;color:inherit}
 
     /* ===== BOTTOM NAV ===== */
     .nav{
@@ -255,14 +264,15 @@
       border:1.5px solid var(--line);
       box-shadow:var(--shadow-md);
       border-radius:24px;
-      display:none;z-index:20;padding:6px;
+      display:none;z-index:20;padding:6px;gap:4px;flex-wrap:nowrap;
     }
     .nav button{
-      flex:1;border-radius:18px;background:transparent;
+      flex:1 1 0;min-width:0;border-radius:18px;background:transparent;
       color:var(--muted);font-size:10.5px;font-weight:700;
       display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
       transition:background .15s,color .15s;
     }
+    .nav span{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .nav button.active{background:var(--blue-light);color:var(--blue)}
     [data-theme="dark"] .nav button.active{background:rgba(92,138,245,.14);color:var(--blue)}
     .nav svg{width:20px;height:20px;stroke:currentColor;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}
