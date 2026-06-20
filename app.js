@@ -1259,24 +1259,24 @@ async function loadCashDrawerStatus(dateKey=todayKey()){
     if(error)throw error;
     state.data.cashDrawer=(data&&data[0])?normalizeCashDrawerRow(data[0]):null;
   }catch(e){
-    console.warn('Status laci gagal dimuat',e?.message||e);
+    console.warn('Status cash fisik gagal dimuat',e?.message||e);
     state.data.cashDrawer=null;
   }
   return state.data.cashDrawer;
 }
 function cashDrawerStaffMessage(row=state.data.cashDrawer){
-  if(!row)return 'Belum ada cek laci hari ini.';
+  if(!row)return 'Belum ada cek cash fisik hari ini.';
   const amount=Math.abs(Number(row.differenceAmount||0));
-  if(row.status==='minus')return `Cash laci MINUS Rp ${rp(amount)}`;
-  if(row.status==='lebih')return `Cash laci LEBIH Rp ${rp(amount)}`;
-  return 'Cash laci PAS. Tidak ada selisih.';
+  if(row.status==='minus')return `Cash fisik MINUS Rp ${rp(amount)}`;
+  if(row.status==='lebih')return `Cash fisik LEBIH Rp ${rp(amount)}`;
+  return 'Cash fisik PAS. Tidak ada selisih.';
 }
 function cashDrawerStatusCard(){
   const row=state.data.cashDrawer, status=row?row.status:'empty';
   const cardStatus=row?status:'blank';
   const statusLabel=row?(status==='minus'?'MINUS':status==='lebih'?'LEBIH':'PAS'):'BELUM CEK';
   const message=cashDrawerStaffMessage(row);
-  return `<div class="cash-drawer-staff-card ${cardStatus}"><div class="cash-drawer-staff-copy"><span class="cash-drawer-staff-label">Status Cash Laci</span><b class="cash-drawer-staff-title">${esc(message)}</b></div><span class="cash-drawer-staff-badge">${esc(statusLabel)}</span></div>`;
+  return `<div class="cash-drawer-staff-card ${cardStatus}"><div class="cash-drawer-staff-copy"><span class="cash-drawer-staff-label">Cash Fisik Hari Ini</span><b class="cash-drawer-staff-title">${esc(message)}</b></div><span class="cash-drawer-staff-badge">${esc(statusLabel)}</span></div>`;
 }
 function headerGuideItems(){
   const themeIcon=isNeoTheme()?'M':'NB';
