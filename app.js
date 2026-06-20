@@ -242,7 +242,6 @@ const TARGET_SETTINGS_TABLE='targetSettings';
 const DAILY_TARGETS_TABLE='dailyTargets';
 const TARGET_BONUS_REWARDS_TABLE='targetBonusRewards';
 const TARGET_NOTIFICATIONS_TABLE='targetNotifications';
-const BONUS_WITHDRAWAL_TYPE='bonus_withdrawal';
 const HEADER_GUIDE_NOTE_DOC_ID='__header_icon_guide_note';
 const DEFAULT_HEADER_GUIDE_NOTE='Bonus adalah apresiasi tambahan dan dapat berubah sewaktu-waktu. Fokus utama tetap pada penjualan, kinerja, pelayanan, dan tanggung jawab kerja.';
 const STAFF_DAILY_NOTE_DOC_ID='__staff_daily_home_note';
@@ -537,17 +536,9 @@ function saveManualSeen(set){try{localStorage.setItem(manualSeenKey(),JSON.strin
 function manualBonusDate(b){
   const raw=String(b?.dateKey||b?.bonusDate||b?.date||'').slice(0,10);
   if(/^\d{4}-\d{2}-\d{2}$/.test(raw))return raw;
-  const fromId=String(b?.id||b?.docId||b?._docId||b?.clientId||'').match(/(\d{4}-\d{2}-\d{2})/);
-  if(fromId)return fromId[1];
   const n=ms(b);
   // Jangan fallback ke hari ini, karena bonus lama tanpa dateKey bisa ikut muncul lagi saat hari/bulan berganti.
   return n?todayKey(new Date(n)):'';
-}
-function manualBonusMonth(b){
-  const raw=String(b?.monthKey||b?.bonusMonth||b?.month||'').slice(0,7);
-  if(/^\d{4}-\d{2}$/.test(raw))return raw;
-  const d=manualBonusDate(b);
-  return d?d.slice(0,7):'';
 }
 function manualBonusFallbackId(b){return `${key(b?.user)}_${manualBonusDate(b)}_${Number(b?.amount||0)}_${ms(b)||''}`}
 function manualBonusId(b){return String(b?.id||b?.docId||b?.clientId||manualBonusFallbackId(b))}
@@ -564,7 +555,7 @@ function unreadManualBonusRows(){
   if(!state.user)return [];
   const seen=getManualSeen(), d=todayKey();
   return sortDesc((state.data.manual||[]).filter(b=>{
-    if(!b||deleted(b)||isTargetAutoBonusRow(b)||isBonusWithdrawalRow(b)||manualBonusDate(b)!==d||Number(b.amount||0)<=0||!canReceiveManualBonusRow(b))return false;
+    if(!b||deleted(b)||isTargetAutoBonusRow(b)||manualBonusDate(b)!==d||Number(b.amount||0)<=0||!canReceiveManualBonusRow(b))return false;
     return !manualBonusIsSeen(b,seen);
   }));
 }
@@ -930,13 +921,6 @@ async function ensureStaffTargetBonusNotification(bonusId,rewardId,row,user,opti
     const rewardSnap=await getDocFromServer(doc(db,TARGET_BONUS_REWARDS_TABLE,rewardId)).catch(()=>null);
     const reward=rewardSnap?.exists()?rewardSnap.data()||{}:{};
     if(!force&&(reward.staffNotificationSent===true||Number(reward.staffNotifiedAtMs||0)>0))return false;
-    
-    if(!isTrialUser()){
-      const dedupId = 'dedup_fcm_' + rewardId;
-      const inserted = await insertDocIfAbsent(TARGET_NOTIFICATIONS_TABLE, dedupId, { type: 'fcm_dedup' });
-      if(!inserted) return false;
-    }
-
     const result=await notifyStaffTargetBonus({id:bonusId,docId:bonusId,...row},user);
     if(!result)return false;
     await setDoc(doc(db,TARGET_BONUS_REWARDS_TABLE,rewardId),{
@@ -967,15 +951,9 @@ async function ensureDailyTargetBonusRows(summary,plan,amount){
       if(username===key(state.user?.username)){
         state.data.manual=mergeRowsById(state.data.manual,[{id:bonusId,docId:bonusId,...payload}]).filter(b=>!deleted(b));
       }
-    }else{
-      const repair={targetUsername:username,dateKey:summary.dateKey,monthKey:summary.dateKey.slice(0,7),type:'daily_target_bonus',source:'daily_target',action:'add',deleted:false,amount};
-      await setDoc(doc(db,'manualBonuses',bonusId),repair,{merge:true}).catch(e=>console.warn('repair bonus target gagal',e?.code||e?.message||e));
-      if(username===key(state.user?.username)){
-        state.data.manual=mergeRowsById(state.data.manual,[{id:bonusId,docId:bonusId,...existingData,...repair}]).filter(b=>!deleted(b));
-      }
     }
     rewarded.push(username);
-    const notified=await ensureStaffTargetBonusNotification(bonusId,rewardId,existingActive?{...existingData,...payload,id:bonusId,docId:bonusId}:payload,user,{force:!existingActive});
+    const notified=await ensureStaffTargetBonusNotification(bonusId,rewardId,existingActive?{...payload,...existingData,id:bonusId,docId:bonusId}:payload,user,{force:!existingActive});
     await setDoc(doc(db,TARGET_BONUS_REWARDS_TABLE,rewardId),{
       id:rewardId,
       dateKey:summary.dateKey,
@@ -999,16 +977,6 @@ function mergeTargetRewardedUsers(...groups){
 }
 function isTargetAutoBonusRow(row={}){
   return String(row.source||'')==='daily_target'||String(row.type||'')==='daily_target_bonus'||String(row.id||row.docId||'').startsWith('targetbonus_')||String(row.id||row.docId||'').startsWith('trial_targetbonus_');
-}
-function isBonusWithdrawalRow(row={}){
-  const type=String(row.type||row.bonusType||'').toLowerCase();
-  const action=String(row.action||row.bonusAction||'').toLowerCase();
-  const source=String(row.source||'').toLowerCase();
-  return type===BONUS_WITHDRAWAL_TYPE||action==='withdraw'||source===BONUS_WITHDRAWAL_TYPE||String(row.id||row.docId||'').startsWith('bonuswd_');
-}
-function bonusWithdrawalAmount(row={}){
-  const raw=Number(row.withdrawalAmount??row.paidAmount??row.amount??0);
-  return Number.isFinite(raw)?Math.abs(raw):0;
 }
 async function revokeDailyTargetBonuses(summary,plan,previous={}){
   const d=String(summary?.dateKey||todayKey()).slice(0,10), nowMs=Date.now();
@@ -1611,7 +1579,7 @@ async function loadStaffData(opts={}){
   try{
     // Load awal fokus ke bulan berjalan. Ini menjaga kartu hari ini, bonus bulanan,
     // absen bulanan, dan closing tetap sama tanpa mengambil riwayat lintas bulan.
-    const [tx,txLegacy,att,attLegacy,prevAtt,manual,manualMonth,manualTarget,manualTrial,manualLegacy,unlockReq,bs,userSnap,guideNoteSnap,staffDailyNoteSnap,receiptTextSnap]=await Promise.all([
+    const [tx,txLegacy,att,attLegacy,prevAtt,manual,manualLegacy,unlockReq,bs,userSnap,guideNoteSnap,staffDailyNoteSnap,receiptTextSnap]=await Promise.all([
       getQueryDocs(
         ()=>query(collection(db,'transactions'),where('user','==',u),where('dateKey','>=',monthStart),where('dateKey','<=',monthEnd),limit(LIMITS.txBonusAll)),
         ()=>query(collection(db,'transactions'),where('user','==',u),limit(LIMITS.txBonusAll))
@@ -1627,12 +1595,6 @@ async function loadStaffData(opts={}){
         ()=>query(collection(db,'manualBonuses'),where('user','==',u),where('dateKey','>=',monthStart),where('dateKey','<=',monthEnd),limit(LIMITS.manualBonusAll)),
         ()=>query(collection(db,'manualBonuses'),where('user','==',u),limit(LIMITS.manualBonusAll))
       ),
-      getQueryDocs(
-        ()=>query(collection(db,'manualBonuses'),where('user','==',u),where('monthKey','==',m),limit(LIMITS.manualBonusAll)),
-        ()=>query(collection(db,'manualBonuses'),where('user','==',u),limit(LIMITS.manualBonusAll))
-      ),
-      getDocs(query(collection(db,'manualBonuses'),where('user','==',u),where('id','>=',`targetbonus_${monthStart}`),where('id','<=',`targetbonus_${monthEnd}\uf8ff`),limit(INITIAL_LEGACY_LIMITS.manual))).catch(()=>querySnapshot([])),
-      getDocs(query(collection(db,'manualBonuses'),where('user','==',u),where('id','>=',`trial_targetbonus_${monthStart}`),where('id','<=',`trial_targetbonus_${monthEnd}\uf8ff`),limit(INITIAL_LEGACY_LIMITS.manual))).catch(()=>querySnapshot([])),
       getDocs(query(collection(db,'manualBonuses'),where('user','==',u),limit(INITIAL_LEGACY_LIMITS.manual))).catch(()=>querySnapshot([])),
       getQueryDocs(
         ()=>query(collection(db,STAFF_UNLOCK_TABLE),where('requestKind','==','unlock'),where('user','==',u),limit(LIMITS.unlockRequests)),
@@ -1659,7 +1621,7 @@ async function loadStaffData(opts={}){
 
     const txRows=mergeRowsById(tx.docs.map(x=>({id:x.id,...x.data()})),txLegacy.docs.map(x=>({id:x.id,...x.data()}))).filter(t=>txMonth(t)===m);
     const attRows=mergeRowsById(att.docs.map(x=>({id:x.id,...x.data()})),attLegacy.docs.map(x=>({id:x.id,...x.data()})),prevAtt.docs.map(x=>({id:x.id,...x.data()}))).filter(a=>attDate(a).startsWith(m)||attDate(a)===prevD);
-    const manualRows=mergeRowsById(manual.docs.map(x=>({...(x.data()||{}),id:x.id,docId:x.id})),manualMonth.docs.map(x=>({...(x.data()||{}),id:x.id,docId:x.id})),manualTarget.docs.map(x=>({...(x.data()||{}),id:x.id,docId:x.id})),manualTrial.docs.map(x=>({...(x.data()||{}),id:x.id,docId:x.id})),manualLegacy.docs.map(x=>({...(x.data()||{}),id:x.id,docId:x.id}))).filter(b=>manualBonusMonth(b)===m);
+    const manualRows=mergeRowsById(manual.docs.map(x=>({...(x.data()||{}),id:x.id,docId:x.id})),manualLegacy.docs.map(x=>({...(x.data()||{}),id:x.id,docId:x.id}))).filter(b=>manualBonusDate(b).startsWith(m));
     const unlockRows=unlockReq.docs.map(x=>({...(x.data()||{}),id:x.id,docId:x.id})).filter(r=>isFeatureUnlockRequest(r));
     state.data.tx=sortDesc(txRows);
     state.data.att=dedupeAttendanceRows(attRows);
@@ -1771,20 +1733,15 @@ function hasAttendOn(dateKey){const u=key(state.user?.username),d=String(dateKey
 function rate(){return userTransactionBonusRate()}
 function manualBonusRowsForDate(dateKey=todayKey()){
   const d=String(dateKey||todayKey()).slice(0,10);
-  return sortDesc((state.data.manual||[]).filter(b=>!deleted(b)&&!isBonusWithdrawalRow(b)&&recordMatchesCurrentAccount(b)&&canReceiveManualBonusRow(b)&&manualBonusDate(b)===d&&Number(b.amount||0)!==0));
+  return sortDesc((state.data.manual||[]).filter(b=>!deleted(b)&&recordMatchesCurrentAccount(b)&&canReceiveManualBonusRow(b)&&manualBonusDate(b)===d&&Number(b.amount||0)!==0));
 }
 function manualBonusRowsForMonth(month=monthKey()){
   const m=String(month||monthKey()).slice(0,7);
-  return sortDesc((state.data.manual||[]).filter(b=>!deleted(b)&&!isBonusWithdrawalRow(b)&&recordMatchesCurrentAccount(b)&&canReceiveManualBonusRow(b)&&manualBonusMonth(b)===m&&Number(b.amount||0)!==0));
+  return sortDesc((state.data.manual||[]).filter(b=>!deleted(b)&&recordMatchesCurrentAccount(b)&&canReceiveManualBonusRow(b)&&manualBonusDate(b).startsWith(m)&&Number(b.amount||0)!==0));
 }
-function manualBonusRowsAll(){return sortDesc((state.data.manual||[]).filter(b=>!deleted(b)&&!isBonusWithdrawalRow(b)&&recordMatchesCurrentAccount(b)&&canReceiveManualBonusRow(b)&&Number(b.amount||0)!==0))}
+function manualBonusRowsAll(){return sortDesc((state.data.manual||[]).filter(b=>!deleted(b)&&recordMatchesCurrentAccount(b)&&canReceiveManualBonusRow(b)&&Number(b.amount||0)!==0))}
 function manualBonusToday(){return manualBonusRowsForDate(todayKey()).reduce((sum,b)=>sum+Number(b.amount||0),0)}
 function manualBonus(){return manualBonusRowsForMonth(monthKey()).reduce((sum,b)=>sum+Number(b.amount||0),0)}
-function bonusWithdrawalRowsForMonth(month=monthKey()){
-  const m=String(month||monthKey()).slice(0,7);
-  return sortDesc((state.data.manual||[]).filter(b=>!deleted(b)&&isBonusWithdrawalRow(b)&&recordMatchesCurrentAccount(b)&&manualBonusMonth(b)===m&&bonusWithdrawalAmount(b)>0));
-}
-function bonusWithdrawn(){return bonusWithdrawalRowsForMonth(monthKey()).reduce((sum,b)=>sum+bonusWithdrawalAmount(b),0)}
 function activeClosings(){return state.data.closings.filter(c=>c&&c.closed===true&&c.canceled!==true&&!deleted(c))}
 function closingScope(c){return String(c?.scope||(c?.user?'user':'global')).toLowerCase()}
 function closingBonusValue(c){
@@ -1817,7 +1774,6 @@ function closingBonus(){return closingBonusRows(monthKey()).reduce((sum,x)=>sum+
 function closingCount(){return closingBonusRows(monthKey()).length}
 function trxBonus(){return txBonusSum(monthTx())}
 function totalBonus(){return trxBonus()+closingBonus()+manualBonus()}
-function remainingBonus(){return Math.max(0,totalBonus()-bonusWithdrawn())}
 function todayClosing(){
   const d=todayKey(), u=key(state.user?.username);
   const rows=state.data.closings.filter(c=>c&&c.closed===true&&c.canceled!==true&&!deleted(c)&&String(c.dateKey||'')===d);
@@ -2691,7 +2647,7 @@ function home(){const tx=todayTx(), a=todayAtt(), c=todayClosing(), emptyStockCa
     page.innerHTML=`${top('Mode Harian',state.user?.name||'Karyawan Harian')}${trialModeCard()}${manualBonusNoticeCard()}${cashDrawerStatusCard()}<div class="hero daily-income-hero"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0,5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard('daily')}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
     return;
   }
-  const mainLabel=c?'Closing Hari Ini':'Absen Hari Ini';const mainValue=c?closingTimeText(c):(a?timeID(ms(a)):'--:--');const mainFoot=c?'sudah closing':(a?'sudah absen':'belum absen');const mainClass=c?'closed':(a?'ok':'wait');const earnedBonus=totalBonus(),takenBonus=bonusWithdrawn(),sisaBonus=remainingBonus();page.innerHTML=`${top('Mode Staff',state.user?.name||'Karyawan Staff')}${trialModeCard()}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${cashDrawerStatusCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0,5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()}<div class="stat"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Sisa Bonus Bulan Ini</div><button class="refresh-icon-btn" onclick="refresh()" aria-label="Refresh bonus"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg></button></div><div class="big" style="color:var(--blue)">Rp ${rp(sisaBonus)}</div><div class="bonus-note">Bonus terhitung ${rp(earnedBonus)} · sudah diambil ${rp(takenBonus)}</div>${todayClosingBonusInline()}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`
+  const mainLabel=c?'Closing Hari Ini':'Absen Hari Ini';const mainValue=c?closingTimeText(c):(a?timeID(ms(a)):'--:--');const mainFoot=c?'sudah closing':(a?'sudah absen':'belum absen');const mainClass=c?'closed':(a?'ok':'wait');page.innerHTML=`${top('Mode Staff',state.user?.name||'Karyawan Staff')}${trialModeCard()}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${cashDrawerStatusCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0,5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()}<div class="stat"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Bonus Bulan Ini ++</div><button class="refresh-icon-btn" onclick="refresh()" aria-label="Refresh bonus"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg></button></div><div class="big" style="color:var(--blue)">Rp ${rp(totalBonus())}</div><div class="bonus-note">Bonus bulan ${monthID(monthKey())}</div>${todayClosingBonusInline()}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`}
 function history(){const items=sortDesc(todayTx());const printAllCard=items.length?`<div class="card" style="margin-bottom:8px"><button class="btn primary block tx-print-all-btn" onclick="printTodayTransactions()">${txHistoryIcon('print')} Cetak Semua Transaksi Hari Ini</button><div class="hint" style="margin-top:6px">Cetak ${items.length} transaksi hari ini dalam 1 struk.</div></div>`:'';const body=items.length?`<div class="tx-table"><div class="tx-head"><span>Nama / Jam</span><span>Nominal</span><span style="text-align:right">Aksi</span></div><div class="tx-list">${items.map(txItem).join('')}</div></div>`:'<div class="empty">Belum ada transaksi hari ini.</div>';page.innerHTML=`${top('Riwayat Hari Ini',`${items.length} transaksi · Rp ${rp(todayTotal())}`)}${syncBar()}${printAllCard}${body}`}
 
 const __baseHomeWithUnlockCard=home;
