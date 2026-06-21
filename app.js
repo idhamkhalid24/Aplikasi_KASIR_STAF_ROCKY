@@ -1509,10 +1509,8 @@ function bonusWithdrawalNoticeCard() {
   const latest = rows[0];
   const amount = bonusWithdrawalAmount(latest);
   const remaining = bonusWithdrawalRemainingAfter(latest);
-  const earned = bonusWithdrawalEarned(latest);
-  const withdrawn = bonusWithdrawalWithdrawnAfter(latest);
   const note = String(latest.note || "Ambil bonus sebagian").trim();
-  return `<div class="card bonus-withdrawal-alert"><div class="between"><div style="display:flex;align-items:center;gap:9px;min-width:0"><span class="bonus-withdrawal-ico">Rp</span><div style="min-width:0"><div class="label">Bonus Sudah Diambil</div><div class="stat-val">Rp ${rp(amount)}</div><div class="hint" style="margin-top:2px">${esc(note)} - sisa bonus Rp ${rp(remaining)}</div><div class="hint" style="margin-top:2px">Bonus terhitung Rp ${rp(earned)} - sudah diambil Rp ${rp(withdrawn)}</div></div></div><button class="btn success" onclick="dismissBonusWithdrawalNotice()">OK</button></div></div>`;
+  return `<div class="card bonus-withdrawal-alert" style="border-color:#fecdd3;background:#fffbfa"><div class="between" style="align-items:center"><div style="display:flex;align-items:center;gap:12px;min-width:0"><div style="background:#ffe4e6;color:#e11d48;width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:900"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg></div><div style="min-width:0"><div class="label" style="color:#e11d48;font-size:11px;letter-spacing:0.5px">BONUS DIAMBIL</div><div class="stat-val" style="color:#111827;font-size:18px;margin-top:2px">Rp ${rp(amount)}</div><div class="hint" style="margin-top:3px;font-weight:600;color:#4b5563;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(note)}</div></div></div><div style="text-align:right;flex-shrink:0"><button class="btn" style="background:#e11d48;color:#fff;min-height:36px;padding:0 16px;border-radius:12px" onclick="dismissBonusWithdrawalNotice()">OK</button><div class="hint" style="margin-top:6px;font-size:10px;font-weight:800;color:#9ca3af">Sisa: Rp ${rp(remaining)}</div></div></div></div>`;
 }
 function showBonusWithdrawalParty(row) {
   document.querySelectorAll(".manual-bonus-party").forEach((el) => el.remove());
@@ -1521,7 +1519,7 @@ function showBonusWithdrawalParty(row) {
   const note = String(row?.note || "Ambil bonus sebagian").trim();
   const wrap = document.createElement("div");
   wrap.className = "manual-bonus-party";
-  wrap.innerHTML = `<div class="manual-bonus-box" style="background:linear-gradient(135deg,#2563eb,#16a34a)"><div class="manual-bonus-title">BONUS SUDAH DIAMBIL</div><div class="manual-bonus-sub">Rincian pengambilan bonus</div><div class="manual-bonus-amount">- Rp ${rp(amount)}</div><div class="manual-bonus-note">${esc(note)}</div><div class="manual-bonus-count">Sisa bonus Rp ${rp(remaining)}</div><button class="manual-bonus-close" onclick="closeManualBonusParty()" type="button">Tutup</button></div>`;
+  wrap.innerHTML = `<div class="manual-bonus-box" style="background:linear-gradient(135deg,#e11d48,#be185d)"><div class="manual-bonus-emoji">💸</div><div class="manual-bonus-title" style="margin-top:8px">BONUS DIAMBIL</div><div class="manual-bonus-sub" style="opacity:0.9">Pengambilan bonus disetujui</div><div class="manual-bonus-amount" style="color:#ffe4e6;font-size:24px;margin:12px 0">- Rp ${rp(amount)}</div><div class="manual-bonus-note" style="background:rgba(255,255,255,0.15);padding:8px 14px;border-radius:12px;display:inline-block;margin:4px 0;font-weight:800">${esc(note)}</div><div style="margin-top:18px;display:flex;flex-direction:column;align-items:center;gap:14px"><div class="manual-bonus-count" style="margin:0;font-size:12px;padding:6px 16px;letter-spacing:0.3px">Sisa bonus: &nbsp;<b style="color:#fff">Rp ${rp(remaining)}</b></div><button class="manual-bonus-close" onclick="closeManualBonusParty()" type="button" style="color:#be185d;margin:0;width:100%">Tutup</button></div></div>`;
   (document.querySelector(".app") || document.body).appendChild(wrap);
   requestAnimationFrame(() => wrap.classList.add("show"));
 }
@@ -4160,17 +4158,7 @@ function bonusWithdrawalRowsForMonth(month = monthKey()) {
   );
 }
 function bonusWithdrawalDetailList(limit = 3) {
-  const rows = bonusWithdrawalRowsForMonth().slice(0, limit);
-  if (!rows.length) return "";
-  return `<div class="bonus-withdrawal-list">${rows
-    .map((b) => {
-      const amount = bonusWithdrawalAmount(b);
-      const remaining = bonusWithdrawalRemainingAfter(b);
-      const date = manualBonusDate(b);
-      const note = String(b.note || "Ambil bonus sebagian").trim();
-      return `<div class="bonus-withdrawal-row"><div><b>Diambil Rp ${rp(amount)}</b><span>${esc(note)}${date ? ` - ${dateID(date)}` : ""}</span></div><strong>Sisa Rp ${rp(remaining)}</strong></div>`;
-    })
-    .join("")}</div>`;
+  return "";
 }
 function bonusWithdrawn() {
   return bonusWithdrawalRowsForMonth(monthKey()).reduce(
@@ -7451,6 +7439,7 @@ function home() {
   window.closeModal = closeModal;
   window.closeFirstTxParty = closeFirstTxParty;
   window.closeManualBonusParty = closeManualBonusParty;
+  window.dismissBonusWithdrawalNotice = dismissBonusWithdrawalNotice;
   window.updateLocation = updateLocation;
   window.clockIn = clockIn;
   window.formatRupiahInput = formatRupiahInput;
