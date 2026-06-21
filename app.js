@@ -327,6 +327,7 @@ const SESSION = "rocky_firebase_session_v1",
   LEGACY_SESSION = "rocky_staff_compact_manual_v1",
   PENDING_KEY = "rocky_staff_pending_sync_v2",
   MANUAL_BONUS_SEEN = "rocky_staff_manual_bonus_seen_v1",
+  BONUS_WITHDRAWAL_SEEN = "rocky_staff_bonus_withdrawal_seen_v1",
   TARGET_NOTICE_SEEN = "rocky_staff_target_notice_seen_v1",
   FIRST_TX_PARTY_SEEN = "rocky_staff_first_tx_party_seen_v1",
   DEVICE_ID_KEY = "rocky_staff_device_id_v1",
@@ -470,6 +471,7 @@ const state = {
 let dailyTargetApplyTimer = 0;
 let dailyTargetApplying = false;
 let targetNoticeAnnounced = new Set();
+let bonusWithdrawalAnnounced = new Set();
 let clockInInFlight = false;
 let deviceSessionTimer = null;
 const $ = (id) => document.getElementById(id),
@@ -758,6 +760,7 @@ function clearSessionAndRender(msg) {
   clearStaffRealtime();
   clearAndroidStaffSession();
   targetNoticeAnnounced = new Set();
+  bonusWithdrawalAnnounced = new Set();
   state.user = null;
   state.pos = null;
   state.syncError = "";
@@ -1424,6 +1427,117 @@ function notifyNewManualBonuses() {
   playBonusSound();
   toast(`Asik dapet bonus Rp ${rp(total)}`);
   showManualBonusParty(total, note, 1);
+}
+
+function bonusWithdrawalSeenKey() {
+  return BONUS_WITHDRAWAL_SEEN + "_" + key(state.user?.username || "guest");
+}
+function getBonusWithdrawalSeen() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(bonusWithdrawalSeenKey()) || "[]");
+    return new Set(Array.isArray(raw) ? raw.map(String) : []);
+  } catch (e) {
+    return new Set();
+  }
+}
+function saveBonusWithdrawalSeen(set) {
+  try {
+    localStorage.setItem(
+      bonusWithdrawalSeenKey(),
+      JSON.stringify([...set].slice(-600)),
+    );
+  } catch (e) {}
+}
+function bonusWithdrawalFallbackId(b) {
+  return `${key(b?.user)}_${manualBonusDate(b)}_${bonusWithdrawalAmount(b)}_${ms(b) || ""}`;
+}
+function bonusWithdrawalId(b) {
+  return String(b?.id || b?.docId || b?.clientId || bonusWithdrawalFallbackId(b));
+}
+function bonusWithdrawalIsSeen(b, seen) {
+  return seen.has(bonusWithdrawalId(b)) || seen.has(bonusWithdrawalFallbackId(b));
+}
+function markBonusWithdrawalsSeen(rows) {
+  const seen = getBonusWithdrawalSeen();
+  (rows || []).forEach((b) => {
+    seen.add(bonusWithdrawalId(b));
+    seen.add(bonusWithdrawalFallbackId(b));
+  });
+  saveBonusWithdrawalSeen(seen);
+}
+function bonusWithdrawalEarned(row = {}) {
+  const saved = Number(row.bonusEarned ?? row.earnedBonus ?? row.totalBonus);
+  return Number.isFinite(saved) && saved > 0 ? saved : totalBonus();
+}
+function bonusWithdrawalWithdrawnAfter(row = {}) {
+  const saved = Number(row.withdrawnAfter ?? row.bonusWithdrawnAfter);
+  return Number.isFinite(saved) && saved >= 0 ? saved : bonusWithdrawn();
+}
+function bonusWithdrawalRemainingAfter(row = {}) {
+  const saved = Number(row.remainingAfter ?? row.remainingBalance ?? row.sisaBonus);
+  if (Number.isFinite(saved) && saved >= 0) return saved;
+  return Math.max(0, bonusWithdrawalEarned(row) - bonusWithdrawalWithdrawnAfter(row));
+}
+function unreadBonusWithdrawalRows() {
+  if (!state.user) return [];
+  const seen = getBonusWithdrawalSeen(),
+    d = todayKey();
+  return sortDesc(
+    (state.data.manual || []).filter((b) => {
+      if (
+        !b ||
+        deleted(b) ||
+        !isBonusWithdrawalRow(b) ||
+        !recordMatchesCurrentAccount(b) ||
+        manualBonusDate(b) !== d ||
+        bonusWithdrawalAmount(b) <= 0 ||
+        !canReceiveManualBonusRow(b)
+      )
+        return false;
+      return !bonusWithdrawalIsSeen(b, seen);
+    }),
+  );
+}
+function dismissBonusWithdrawalNotice() {
+  markBonusWithdrawalsSeen(unreadBonusWithdrawalRows());
+  closeModal();
+  render();
+}
+function bonusWithdrawalNoticeCard() {
+  const rows = unreadBonusWithdrawalRows();
+  if (!rows.length) return "";
+  const latest = rows[0];
+  const amount = bonusWithdrawalAmount(latest);
+  const remaining = bonusWithdrawalRemainingAfter(latest);
+  const earned = bonusWithdrawalEarned(latest);
+  const withdrawn = bonusWithdrawalWithdrawnAfter(latest);
+  const note = String(latest.note || "Ambil bonus sebagian").trim();
+  return `<div class="card bonus-withdrawal-alert"><div class="between"><div style="display:flex;align-items:center;gap:9px;min-width:0"><span class="bonus-withdrawal-ico">Rp</span><div style="min-width:0"><div class="label">Bonus Sudah Diambil</div><div class="stat-val">Rp ${rp(amount)}</div><div class="hint" style="margin-top:2px">${esc(note)} - sisa bonus Rp ${rp(remaining)}</div><div class="hint" style="margin-top:2px">Bonus terhitung Rp ${rp(earned)} - sudah diambil Rp ${rp(withdrawn)}</div></div></div><button class="btn success" onclick="dismissBonusWithdrawalNotice()">OK</button></div></div>`;
+}
+function showBonusWithdrawalParty(row) {
+  document.querySelectorAll(".manual-bonus-party").forEach((el) => el.remove());
+  const amount = bonusWithdrawalAmount(row);
+  const remaining = bonusWithdrawalRemainingAfter(row);
+  const note = String(row?.note || "Ambil bonus sebagian").trim();
+  const wrap = document.createElement("div");
+  wrap.className = "manual-bonus-party";
+  wrap.innerHTML = `<div class="manual-bonus-box" style="background:linear-gradient(135deg,#2563eb,#16a34a)"><div class="manual-bonus-title">BONUS SUDAH DIAMBIL</div><div class="manual-bonus-sub">Rincian pengambilan bonus</div><div class="manual-bonus-amount">- Rp ${rp(amount)}</div><div class="manual-bonus-note">${esc(note)}</div><div class="manual-bonus-count">Sisa bonus Rp ${rp(remaining)}</div><button class="manual-bonus-close" onclick="closeManualBonusParty()" type="button">Tutup</button></div>`;
+  (document.querySelector(".app") || document.body).appendChild(wrap);
+  requestAnimationFrame(() => wrap.classList.add("show"));
+}
+function notifyNewBonusWithdrawals() {
+  const rows = unreadBonusWithdrawalRows();
+  if (!rows.length) return;
+  const latest = rows[0];
+  const id = bonusWithdrawalId(latest);
+  if (bonusWithdrawalAnnounced.has(id)) return;
+  bonusWithdrawalAnnounced.add(id);
+  try {
+    if (navigator.vibrate) navigator.vibrate([70, 40, 90]);
+  } catch (e) {}
+  playBonusSound();
+  toast(`Bonus diambil Rp ${rp(bonusWithdrawalAmount(latest))}`);
+  showBonusWithdrawalParty(latest);
 }
 
 function targetDailyDocId(dateKey = todayKey()) {
@@ -2388,6 +2502,7 @@ async function applyDailyTargetBonus() {
     if (rewarded.includes(key(state.user?.username))) {
       render();
       notifyNewManualBonuses();
+      notifyNewBonusWithdrawals();
     }
   } catch (e) {
     console.warn("bonus target harian gagal", e?.code || e?.message || e);
@@ -3110,6 +3225,7 @@ function startStaffRealtime() {
         );
         render();
         notifyNewManualBonuses();
+        notifyNewBonusWithdrawals();
       },
       (err) => handleRealtimeError("Bonus manual hari ini", err),
     ),
@@ -3793,6 +3909,7 @@ async function loadStaffData(opts = {}) {
   if (!silent) showLoad(false);
   render();
   notifyNewManualBonuses();
+  notifyNewBonusWithdrawals();
   if (!opts.skipFlush) flushPending();
   startStaffRealtime();
 }
@@ -4038,9 +4155,22 @@ function bonusWithdrawalRowsForMonth(month = monthKey()) {
         isBonusWithdrawalRow(b) &&
         recordMatchesCurrentAccount(b) &&
         manualBonusMonth(b) === m &&
-        bonusWithdrawalAmount(b) > 0,
+      bonusWithdrawalAmount(b) > 0,
     ),
   );
+}
+function bonusWithdrawalDetailList(limit = 3) {
+  const rows = bonusWithdrawalRowsForMonth().slice(0, limit);
+  if (!rows.length) return "";
+  return `<div class="bonus-withdrawal-list">${rows
+    .map((b) => {
+      const amount = bonusWithdrawalAmount(b);
+      const remaining = bonusWithdrawalRemainingAfter(b);
+      const date = manualBonusDate(b);
+      const note = String(b.note || "Ambil bonus sebagian").trim();
+      return `<div class="bonus-withdrawal-row"><div><b>Diambil Rp ${rp(amount)}</b><span>${esc(note)}${date ? ` - ${dateID(date)}` : ""}</span></div><strong>Sisa Rp ${rp(remaining)}</strong></div>`;
+    })
+    .join("")}</div>`;
 }
 function bonusWithdrawn() {
   return bonusWithdrawalRowsForMonth(monthKey()).reduce(
@@ -5655,7 +5785,7 @@ function home() {
       manualToday = manualBonusToday(),
       todayBonus = todayTxBonus + manualToday;
     const manualCard = "";
-    page.innerHTML = `${top("Mode Harian", state.user?.name || "Karyawan Harian")}${trialModeCard()}${manualBonusNoticeCard()}${cashDrawerStatusCard()}<div class="hero daily-income-hero"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard("daily")}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
+    page.innerHTML = `${top("Mode Harian", state.user?.name || "Karyawan Harian")}${trialModeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}<div class="hero daily-income-hero"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard("daily")}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
     return;
   }
   const mainLabel = c ? "Closing Hari Ini" : "Absen Hari Ini";
@@ -5665,7 +5795,7 @@ function home() {
   const earnedBonus = totalBonus(),
     takenBonus = bonusWithdrawn(),
     sisaBonus = remainingBonus();
-  page.innerHTML = `${top("Mode Staff", state.user?.name || "Karyawan Staff")}${trialModeCard()}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${cashDrawerStatusCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()}<div class="stat"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Sisa Bonus Bulan Ini</div><button class="refresh-icon-btn" onclick="refresh()" aria-label="Refresh bonus"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg></button></div><div class="big" style="color:var(--blue)">Rp ${rp(sisaBonus)}</div><div class="bonus-note">Bonus terhitung ${rp(earnedBonus)} · sudah diambil ${rp(takenBonus)}</div>${todayClosingBonusInline()}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
+  page.innerHTML = `${top("Mode Staff", state.user?.name || "Karyawan Staff")}${trialModeCard()}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()}<div class="stat"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Sisa Bonus Bulan Ini</div><button class="refresh-icon-btn" onclick="refresh()" aria-label="Refresh bonus"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg></button></div><div class="big" style="color:var(--blue)">Rp ${rp(sisaBonus)}</div><div class="bonus-note">Bonus terhitung ${rp(earnedBonus)} · sudah diambil ${rp(takenBonus)}</div>${bonusWithdrawalDetailList()}${todayClosingBonusInline()}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
 }
   function history() {
     const items = sortDesc(todayTx());
