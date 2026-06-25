@@ -2663,6 +2663,14 @@ function modal(title, body, actions = "", variant = "") {
 }
 
 function closeModal(force = false) {
+  // Cleanup suggest floater
+  try {
+    const floater = document.getElementById("txProductSuggestFloater");
+    if (floater) { floater.style.display = "none"; floater.innerHTML = ""; }
+    txProductSuggestItems = [];
+    txProductSuggestActiveIndex = -1;
+    txProductSuggestTouching = false;
+  } catch(e) {}
   try {
     if (typeof stopPrayerAyat === "function") stopPrayerAyat(false);
   } catch (e) {}
@@ -3779,6 +3787,7 @@ async function loadStaffData(opts = {}) {
       .map((x) => ({ ...(x.data() || {}), id: x.id, docId: x.id }))
       .filter((r) => isFeatureUnlockRequest(r));
     state.data.tx = sortDesc(txRows);
+    seedTxProductHistoryFromTx(state.data.tx);
     state.data.att = dedupeAttendanceRows(attRows);
     state.data.manual = sortDesc(manualRows.filter((b) => !deleted(b)));
     state.data.unlockRequests = sortDesc(unlockRows.filter((r) => !deleted(r)));
@@ -4738,6 +4747,158 @@ function locText() {
     : `<span class="pill red">Diluar · ${Math.round(dist)}m</span>`;
 }
 let txProductDraftItems = [];
+const TX_PRODUCT_HISTORY_KEY = "stafku_product_name_history_v1";
+const TX_PRODUCT_HISTORY_MAX = 300;
+let txProductSuggestActiveIndex = -1;
+let txProductSuggestItems = [];
+let txProductSuggestTouching = false;
+function getTxProductHistory() {
+  try {
+    const raw = localStorage.getItem(TX_PRODUCT_HISTORY_KEY);
+    const arr = JSON.parse(raw || "[]");
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === "string") : [];
+  } catch (e) {
+    return [];
+  }
+}
+function saveTxProductHistory(list) {
+  try {
+    localStorage.setItem(
+      TX_PRODUCT_HISTORY_KEY,
+      JSON.stringify(list.slice(0, TX_PRODUCT_HISTORY_MAX)),
+    );
+  } catch (e) {}
+}
+function addTxProductToHistory(name) {
+  const value = txProductName(name);
+  if (!value) return;
+  let list = getTxProductHistory();
+  list = list.filter((x) => x !== value);
+  list.unshift(value);
+  saveTxProductHistory(list);
+}
+let txProductHistorySeeded = false;
+function seedTxProductHistoryFromTx(txRows) {
+  if (txProductHistorySeeded) return;
+  if (!Array.isArray(txRows) || !txRows.length) return;
+  txProductHistorySeeded = true;
+  try {
+    const existing = getTxProductHistory();
+    const seen = new Set(existing);
+    const fresh = [];
+    for (const t of txRows) {
+      const items = txProductItemsFromText(t?.note || "", "");
+      for (const name of items) {
+        const value = txProductName(name);
+        if (!value || value === "TRANSAKSI" || seen.has(value)) continue;
+        seen.add(value);
+        fresh.push(value);
+      }
+    }
+    if (fresh.length) saveTxProductHistory([...existing, ...fresh]);
+  } catch (e) {}
+}
+function hideTxProductSuggest() {
+  if (txProductSuggestTouching) return;
+  const floater = document.getElementById("txProductSuggestFloater");
+  if (floater) floater.style.display = "none";
+  txProductSuggestItems = [];
+  txProductSuggestActiveIndex = -1;
+}
+function renderTxProductSuggestActive() {
+  const box = $("txProductSuggest");
+  if (!box) return;
+  [...box.children].forEach((el, i) => {
+    el.classList.toggle("active", i === txProductSuggestActiveIndex);
+  });
+}
+function removeTxProductFromHistory(name) {
+  const value = txProductName(name);
+  if (!value) return;
+  const list = getTxProductHistory().filter((x) => x !== value);
+  saveTxProductHistory(list);
+}
+function deleteTxProductSuggest(index, ev) {
+  txProductSuggestTouching = false;
+  ev?.stopPropagation?.();
+  ev?.preventDefault?.();
+  const name = txProductSuggestItems[Number(index)];
+  if (!name) return;
+  removeTxProductFromHistory(name);
+  const input = $("txProductInput");
+  const currentVal = input?.value || "";
+  setTimeout(() => {
+    showTxProductSuggest(currentVal);
+    input?.focus?.();
+  }, 0);
+}
+function showTxProductSuggest(query) {
+  const input = $("txProductInput");
+  if (!input) return hideTxProductSuggest();
+  const q = txProductName(query || "");
+  if (!q) return hideTxProductSuggest();
+  const history = getTxProductHistory();
+  const matches = history.filter((x) => x.includes(q)).slice(0, 8);
+  if (!matches.length) return hideTxProductSuggest();
+  txProductSuggestItems = matches;
+  txProductSuggestActiveIndex = -1;
+
+  // Render dropdown langsung ke body agar tidak ter-clip oleh overflow:auto modal
+  let floater = document.getElementById("txProductSuggestFloater");
+  if (!floater) {
+    floater = document.createElement("div");
+    floater.id = "txProductSuggestFloater";
+    floater.style.cssText = "position:fixed;z-index:9999;background:var(--card,#fff);border:1.5px solid var(--line,#e3e3e3);border-radius:12px;box-shadow:0 10px 24px rgba(0,0,0,.22);overflow:auto;max-height:190px;padding:5px;box-sizing:border-box;";
+    document.body.appendChild(floater);
+  }
+
+  // Posisi mengikuti input
+  const rect = input.getBoundingClientRect();
+  floater.style.left = rect.left + "px";
+  floater.style.top = (rect.bottom + 4) + "px";
+  floater.style.width = rect.width + "px";
+
+  floater.innerHTML = matches
+    .map(
+      (name, i) =>
+        `<div class="tx-product-suggest-item" onpointerdown="pickTxProductSuggest(${i});event.preventDefault();event.stopPropagation()" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 6px 9px 10px;font-size:13px;font-weight:700;border-radius:8px;cursor:pointer;color:var(--text,#111)"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0">${esc(name)}</span><button type="button" onpointerdown="deleteTxProductSuggest(${i},event);event.preventDefault();event.stopPropagation()" aria-label="Hapus riwayat" style="flex:0 0 auto;width:24px;height:24px;border-radius:50%;border:none;background:transparent;color:var(--muted,#888);font-size:16px;line-height:1;font-weight:900;display:flex;align-items:center;justify-content:center;cursor:pointer">×</button></div>`,
+    )
+    .join("");
+  floater.style.display = "block";
+}
+function pickTxProductSuggest(index) {
+  txProductSuggestTouching = false;
+  const name = txProductSuggestItems[Number(index)];
+  const input = $("txProductInput");
+  if (!name || !input) return;
+  // Kosongkan input langsung setelah pick agar suggest tidak muncul lagi
+  txProductSuggestItems = [];
+  txProductSuggestActiveIndex = -1;
+  input.value = "";
+  const floater = document.getElementById("txProductSuggestFloater");
+  if (floater) { floater.style.display = "none"; floater.innerHTML = ""; }
+  // Tambah ke draft list langsung
+  const val = txProductName(name);
+  if (val) {
+    txProductDraftItems.push(val);
+    addTxProductToHistory(val);
+  }
+  renderTxProductDraft();
+  setTimeout(() => {
+    if (input) {
+      input.focus();
+      input.setSelectionRange(0, 0);
+    }
+  }, 0);
+}
+function moveTxProductSuggestActive(dir) {
+  if (!txProductSuggestItems.length) return;
+  const max = txProductSuggestItems.length - 1;
+  txProductSuggestActiveIndex += dir;
+  if (txProductSuggestActiveIndex > max) txProductSuggestActiveIndex = 0;
+  if (txProductSuggestActiveIndex < 0) txProductSuggestActiveIndex = max;
+  renderTxProductSuggestActive();
+}
 function txProductName(value) {
   return String(value || "")
     .replace(/\s+/g, " ")
@@ -4804,6 +4965,7 @@ function renderTxProductDraft() {
   if (add) add.disabled = !String(input?.value || "").trim();
   if (!list) return;
   if (!txProductDraftItems.length) {
+    list.innerHTML = "";
     return;
   }
   list.innerHTML = txProductDraftItems
@@ -4815,6 +4977,7 @@ function renderTxProductDraft() {
 }
 function updateTxProductAddButton() {
   renderTxProductDraft();
+  showTxProductSuggest($("txProductInput")?.value || "");
 }
 function addTxProductItem() {
   const input = $("txProductInput");
@@ -4825,7 +4988,9 @@ function addTxProductItem() {
     return;
   }
   txProductDraftItems.push(value);
+  addTxProductToHistory(value);
   if (input) input.value = "";
+  hideTxProductSuggest();
   renderTxProductDraft();
   setTimeout(() => input?.focus?.(), 0);
 }
@@ -4839,7 +5004,26 @@ function removeTxProductItem(index) {
 function handleTxProductKey(e) {
   if (e?.key === "Enter") {
     e.preventDefault();
+    if (
+      txProductSuggestActiveIndex >= 0 &&
+      txProductSuggestItems[txProductSuggestActiveIndex]
+    ) {
+      pickTxProductSuggest(txProductSuggestActiveIndex);
+      return;
+    }
     addTxProductItem();
+  } else if (e?.key === "ArrowDown") {
+    if (txProductSuggestItems.length) {
+      e.preventDefault();
+      moveTxProductSuggestActive(1);
+    }
+  } else if (e?.key === "ArrowUp") {
+    if (txProductSuggestItems.length) {
+      e.preventDefault();
+      moveTxProductSuggestActive(-1);
+    }
+  } else if (e?.key === "Escape") {
+    hideTxProductSuggest();
   }
 }
 function txPaymentBadgeHtml(v) {
@@ -6226,12 +6410,13 @@ function home() {
     const amountValue = defaultAmount > 0 ? `Rp ${rp(defaultAmount)}` : "";
     const isEdit = !!draft?.editId;
     const body = `<div class="tx-chip"><span>Input cepat</span><b>${timeNow()} WIB</b></div>
-    <div class="field tx-product-builder">
+    <div class="field tx-product-builder" style="position:relative">
       <div class="label">Rincian Barang</div>
       <div class="tx-product-entry">
-        <input id="txProductInput" class="tx-product-input" type="text" placeholder="Nama barang..." autocomplete="off" oninput="updateTxProductAddButton()" onkeydown="handleTxProductKey(event)">
+        <input id="txProductInput" class="tx-product-input" type="text" placeholder="Nama barang..." autocomplete="off" oninput="updateTxProductAddButton()" onkeydown="handleTxProductKey(event)" >
         <button id="txAddProductBtn" type="button" class="btn primary tx-product-add" onclick="addTxProductItem()" disabled>+ Tambah Barang</button>
       </div>
+      <div id="txProductSuggest" class="tx-product-suggest"></div>
       <div id="txProductList" class="tx-product-list"></div>
     </div>
     <div class="field"><div class="label">Total Bayar</div><input id="txa" class="tx-amount-input" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="Rp 0" value="${esc(amountValue)}" oninput="formatRupiahInput(this)" style="text-align:right;font-size:25px;font-weight:950"></div>
@@ -6253,6 +6438,18 @@ function home() {
     setTimeout(() => {
       renderTxProductDraft();
       $("txProductInput")?.focus?.();
+      // Setup click-outside handler untuk hide suggest dropdown
+      function txSuggestOutsideHandler(e) {
+        const floater = document.getElementById("txProductSuggestFloater");
+        const input = $("txProductInput");
+        if (!input) { document.removeEventListener("pointerdown", txSuggestOutsideHandler, true); return; }
+        if (floater && !floater.contains(e.target) && e.target !== input) {
+          txProductSuggestTouching = false;
+          hideTxProductSuggest();
+        }
+      }
+      document.removeEventListener("pointerdown", txSuggestOutsideHandler, true);
+      document.addEventListener("pointerdown", txSuggestOutsideHandler, true);
     }, 30);
   }
   function openTxPaymentChoice(draft) {
@@ -7451,6 +7648,10 @@ function home() {
   window.directPrintReceiptText = directPrintReceiptText;
   window.browserPrintReceiptText = browserPrintReceiptText;
   window.addTxProductItem = addTxProductItem;
+  window.pickTxProductSuggest = pickTxProductSuggest;
+  window.deleteTxProductSuggest = deleteTxProductSuggest;
+  window.showTxProductSuggest = showTxProductSuggest;
+  window.hideTxProductSuggest = hideTxProductSuggest;
   window.removeTxProductItem = removeTxProductItem;
   window.handleTxProductKey = handleTxProductKey;
   window.updateTxProductAddButton = updateTxProductAddButton;
