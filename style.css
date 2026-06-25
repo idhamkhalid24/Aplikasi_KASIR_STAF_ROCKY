@@ -3287,3 +3287,71 @@
   border-color:var(--line)!important;
   color:var(--text)!important;
 }
+
+/* === Autocomplete Riwayat Nama Barang === */
+.tx-product-entry{
+  position:relative!important;
+}
+.tx-product-suggest{
+  display:none;
+  position:relative;
+  left:0;
+  right:0;
+  z-index:60;
+  margin-top:4px;
+  background:var(--card,#fff);
+  border:1.5px solid var(--line,#e3e3e3);
+  border-radius:12px;
+  box-shadow:0 10px 24px rgba(0,0,0,.18);
+  max-height:190px;
+  overflow:auto;
+  padding:5px;
+}
+.tx-product-suggest.show{
+  display:block;
+  margin-bottom:4px;
+}
+.tx-product-suggest-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:9px 6px 9px 10px;
+  font-size:13px;
+  font-weight:700;
+  border-radius:8px;
+  cursor:pointer;
+  color:var(--text,#111);
+}
+.tx-product-suggest-name{
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  flex:1;
+  min-width:0;
+}
+.tx-product-suggest-del{
+  flex:0 0 auto;
+  width:24px;
+  height:24px;
+  border-radius:50%;
+  border:none;
+  background:transparent;
+  color:var(--muted,#888);
+  font-size:16px;
+  line-height:1;
+  font-weight:900;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+.tx-product-suggest-del:active{
+  background:rgba(220,38,38,.14);
+  color:#dc2626;
+}
+.tx-product-suggest-item:active,
+.tx-product-suggest-item.active{
+  background:var(--blue-light,#e8f0ff);
+  color:var(--blue,#2563eb);
+}
