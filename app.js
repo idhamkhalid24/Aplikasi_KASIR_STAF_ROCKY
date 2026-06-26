@@ -209,9 +209,30 @@ async function getDocs(qy) {
       : Math.min(Math.max(hardLimit * 3, hardLimit), 5000);
   if (collectionName === "transactions")
     req = req.order("id", { ascending: false });
-  const { data, error } = await req.limit(fetchLimit);
+    
+  let allData = [];
+  let from = 0;
+  const pageSize = 1000;
+  let error = null;
+
+  while (allData.length < fetchLimit) {
+    let to = Math.min(from + pageSize - 1, fetchLimit - 1);
+    let res = await req.range(from, to);
+    if (res.error) {
+      error = res.error;
+      break;
+    }
+    if (res.data && res.data.length > 0) {
+      allData.push(...res.data);
+    }
+    if (!res.data || res.data.length < (to - from + 1)) {
+      break;
+    }
+    from += (to - from + 1);
+  }
+
   if (error) throw error;
-  let rows = (data || []).map(normalizeRow);
+  let rows = (allData || []).map(normalizeRow);
   // Tetap filter ulang di browser untuk keamanan dan operator selain ==.
   wheres.forEach((c) => {
     rows = rows.filter((row) => compareWhere(row, c));
@@ -4221,8 +4242,19 @@ function closingBonus() {
 function closingCount() {
   return closingBonusRows(monthKey()).length;
 }
+function isDailyRole(role) {
+  return String(role || "").trim().toLowerCase() === "harian";
+}
+function isDailyTransactionRecord(t) {
+  const storedRole = String(t?.userRole || t?.role || '').trim().toLowerCase();
+  if (storedRole && isDailyRole(storedRole)) return true;
+  if (storedRole && !isDailyRole(storedRole)) return false;
+  return isDaily();
+}
 function trxBonus() {
-  return txBonusSum(monthTx());
+  const tx = monthTx();
+  const staffTx = isDaily() ? tx : tx.filter((t) => !isDailyTransactionRecord(t));
+  return txBonusSum(staffTx);
 }
 function totalBonus() {
   return trxBonus() + closingBonus() + manualBonus();
