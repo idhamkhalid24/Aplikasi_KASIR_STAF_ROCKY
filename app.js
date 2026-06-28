@@ -5105,8 +5105,7 @@ function isTxAfterLatestWithdrawal(t) {
   if (!dkTx) return false;
   const dws = state.data.drawerWithdrawals.filter(w => {
     if (w.deleted || w.status === "deleted") return false;
-    if (String(w.dateKey || "").slice(0, 10) !== dkTx) return false;
-    return !w.assignedUser || w.assignedUser === "all" || key(w.assignedUser) === key(state.user?.username);
+    return String(w.dateKey || "").slice(0, 10) === dkTx;
   });
   if (!dws.length) return false;
   let latestDw = dws[0];
