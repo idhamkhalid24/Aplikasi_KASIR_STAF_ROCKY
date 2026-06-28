@@ -2837,7 +2837,7 @@ function top(title, sub) {
     back = canAppBack()
       ? '<button class="top-back-btn" onclick="appBack()" aria-label="Kembali">←</button>'
       : "";
-  return `<div class="top">${back}<div class="brand"><div class="title">${esc(title)}</div><div class="sub">${esc(sub || state.user?.name || "Staff")}</div></div><div class="row"><a class="btn sm member" href="${MEMBER_URL}" target="_blank" rel="noopener">Member</a>${headerTxStatus()}<button class="btn sm" onclick="refresh()">Refresh</button><button class="btn sm" onclick="toggleTheme()">${icon}</button><button class="btn sm danger" onclick="logout()">Keluar</button></div></div>`;
+  return `<div class="top">${back}<div class="brand"><div class="title">${esc(title)}</div><div class="sub">${esc(sub || state.user?.name || "Staff")}</div></div><div class="row"><a class="btn sm member" href="${MEMBER_URL}" target="_blank" rel="noopener">Member</a>${headerTxStatus()}<button class="btn sm" onclick="refresh()">Refresh</button><button class="btn sm" onclick="showForceUpdateConfirm()" title="Update aplikasi dari GitHub" aria-label="Update App" style="padding:0 8px"><svg viewBox="0 0 24 24" style="width:16px;height:16px;display:block;fill:currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12c0 4.42 2.87 8.17 6.84 9.5.5.09.66-.22.66-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.58 9.58 0 0 1 12 6.8c.85.004 1.7.115 2.5.337 1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.16.58.67.48A10.01 10.01 0 0 0 22 12c0-5.52-4.48-10-10-10Z"/></svg></button><button class="btn sm" onclick="toggleTheme()">${icon}</button><button class="btn sm danger" onclick="logout()">Keluar</button></div></div>`;
 }
 function headerGuideNoteText() {
   const note = String(state.data.headerGuideNote || "").trim();
@@ -2962,7 +2962,7 @@ function headerGuideItems() {
       : isRismaSpecialUser()
         ? "Risma bebas absen dan siap transaksi."
         : "Transaksi terbuka dan siap digunakan.";
-  return `<div class="header-guide-grid"><div class="header-guide-item"><span class="header-guide-ico">M</span><div><div class="header-guide-title">Member</div><div class="header-guide-desc">Membuka halaman kode khusus member.</div></div></div><div class="header-guide-item"><span class="header-guide-ico">${lockIcon}</span><div><div class="header-guide-title">Status Transaksi</div><div class="header-guide-desc">${lockText}</div></div></div><div class="header-guide-item"><span class="header-guide-ico">↻</span><div><div class="header-guide-title">Refresh</div><div class="header-guide-desc">Muat ulang data, sync pending, dan update bonus terbaru.</div></div></div><div class="header-guide-item"><span class="header-guide-ico">${themeIcon}</span><div><div class="header-guide-title">Tema</div><div class="header-guide-desc">Ganti tampilan Majoo atau Neo Brutalism.</div></div></div><div class="header-guide-item"><span class="header-guide-ico">⏻</span><div><div class="header-guide-title">Keluar</div><div class="header-guide-desc">Logout dari akun staff di perangkat ini.</div></div></div><div class="header-guide-item"><span class="header-guide-ico">!</span><div><div class="header-guide-title">Catatan Refresh</div><div class="header-guide-desc">Pakai refresh saat data belum masuk, bonus belum berubah, atau transaksi gagal.</div></div></div></div>`;
+  return `<div class="header-guide-grid"><div class="header-guide-item"><span class="header-guide-ico">M</span><div><div class="header-guide-title">Member</div><div class="header-guide-desc">Membuka halaman kode khusus member.</div></div></div><div class="header-guide-item"><span class="header-guide-ico">${lockIcon}</span><div><div class="header-guide-title">Status Transaksi</div><div class="header-guide-desc">${lockText}</div></div></div><div class="header-guide-item"><span class="header-guide-ico">↻</span><div><div class="header-guide-title">Refresh</div><div class="header-guide-desc">Muat ulang data, sync pending, dan update bonus terbaru.</div></div></div><div class="header-guide-item"><span class="header-guide-ico">↯</span><div><div class="header-guide-title">↯ Update</div><div class="header-guide-desc">Hapus cache browser & muat ulang dari server. Pakai ini kalau ada update dari GitHub tapi tampilan masih lama.</div></div></div><div class="header-guide-item"><span class="header-guide-ico">${themeIcon}</span><div><div class="header-guide-title">Tema</div><div class="header-guide-desc">Ganti tampilan Majoo atau Neo Brutalism.</div></div></div><div class="header-guide-item"><span class="header-guide-ico">⏻</span><div><div class="header-guide-title">Keluar</div><div class="header-guide-desc">Logout dari akun staff di perangkat ini.</div></div></div><div class="header-guide-item"><span class="header-guide-ico">!</span><div><div class="header-guide-title">Catatan Refresh</div><div class="header-guide-desc">Pakai refresh saat data belum masuk, bonus belum berubah, atau transaksi gagal.</div></div></div></div>`;
 }
 function openHeaderGuideDetail() {
   modal(
@@ -2989,6 +2989,8 @@ function headerTopIcon(name) {
     neo: '<svg class="top-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 16l3-8 2 8 3-8"/><path d="M7 12h10"/></svg>',
     logout:
       '<svg class="top-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M21 19V5a2 2 0 0 0-2-2h-6"/><path d="M13 21h6a2 2 0 0 0 2-2"/></svg>',
+    github:
+      '<svg class="top-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12c0 4.42 2.87 8.17 6.84 9.5.5.09.66-.22.66-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.58 9.58 0 0 1 12 6.8c.85.004 1.7.115 2.5.337 1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.16.58.67.48A10.01 10.01 0 0 0 22 12c0-5.52-4.48-10-10-10Z"/></svg>',
   };
   return icons[name] || "";
 }
@@ -3014,7 +3016,7 @@ top = function (title, sub) {
   const back = canAppBack()
     ? `<button class="top-back-btn" onclick="appBack()" aria-label="Kembali" title="Kembali">${headerTopIcon("back")}</button>`
     : "";
-  return `<div class="top">${back}<div class="brand"><div class="title">${esc(title)}</div><div class="sub">${esc(sub || state.user?.name || "Staff")}</div></div><div class="row top-actions">${headerTopLink("Member", "member", MEMBER_URL, "member top-member")}${headerTxStatus()}${headerTopAction("Refresh", "refresh", 'onclick="refresh()"', "top-refresh")}${headerTopAction(neo ? "Tema Majoo" : "Tema Neo", neo ? "sun" : "neo", 'onclick="toggleTheme()"', "top-theme")}${headerTopAction("Keluar", "logout", 'onclick="logout()"', "danger top-logout")}</div></div>`;
+  return `<div class="top">${back}<div class="brand"><div class="title">${esc(title)}</div><div class="sub">${esc(sub || state.user?.name || "Staff")}</div></div><div class="row top-actions">${headerTopLink("Member", "member", MEMBER_URL, "member top-member")}${headerTxStatus()}${headerTopAction("Refresh", "refresh", 'onclick="refresh()"', "top-refresh")}${headerTopAction("Update App", "github", 'onclick="showForceUpdateConfirm()"', "top-update")}${headerTopAction(neo ? "Tema Majoo" : "Tema Neo", neo ? "sun" : "neo", 'onclick="toggleTheme()"', "top-theme")}${headerTopAction("Keluar", "logout", 'onclick="logout()"', "danger top-logout")}</div></div>`;
 };
 headerGuideItems = function () {
   const neo = isNeoTheme();
@@ -7536,6 +7538,48 @@ function home() {
       }
     }, 260);
   }
+
+  // FORCE UPDATE: hapus cache browser lalu reload ke URL bersih (bypass cache penuh)
+  async function forceUpdateApp() {
+    try { closeModal(); } catch (e) {}
+    toast("Menghapus cache & update aplikasi...");
+    try {
+      // Hapus semua Cache Storage (PWA / browser cache)
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+      // Unregister Service Worker jika ada
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      }
+    } catch (e) {}
+    // Reload ke URL bersih (tanpa query lama) + timestamp buster
+    setTimeout(() => {
+      try {
+        const base = location.origin + location.pathname;
+        location.replace(base + "?_upd=" + Date.now());
+      } catch (e) {
+        location.reload(true);
+      }
+    }, 300);
+  }
+
+  function showForceUpdateConfirm() {
+    modal(
+      "Update Aplikasi",
+      `<div style="padding:8px 0 4px;text-align:center">
+        <div style="font-size:32px;margin-bottom:8px">🔄</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.6">
+          Cache browser akan dihapus dan aplikasi dimuat ulang dari server.<br>
+          <b>Gunakan ini kalau ada update dari GitHub tapi tampilan di HP masih lama.</b>
+        </div>
+      </div>`,
+      `<button class="btn" onclick="closeModal()">Batal</button>
+       <button class="btn primary" onclick="forceUpdateApp()">Update Sekarang</button>`
+    );
+  }
   function installPullToReload() {
     if (window.__ROCKY_PULL_TO_RELOAD_INSTALLED__) return;
     window.__ROCKY_PULL_TO_RELOAD_INSTALLED__ = true;
@@ -7725,6 +7769,8 @@ function home() {
   window.dismissTargetNotice = dismissTargetNotice;
   window.refresh = refresh;
   window.hardRefreshApp = hardRefreshApp;
+  window.forceUpdateApp = forceUpdateApp;
+  window.showForceUpdateConfirm = showForceUpdateConfirm;
   window.retrySync = retrySync;
   window.go = go;
   window.appBack = appBack;
