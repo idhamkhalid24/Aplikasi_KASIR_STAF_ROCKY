@@ -582,6 +582,7 @@
     }
     .hero-sync b{color:#fff}
     .hero-sync-btn{
+      position:relative !important;z-index:10 !important;
       min-height:26px;border-radius:9px;padding:4px 9px;
       background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);
       color:#fff;font-size:10.5px;font-weight:700;
