@@ -6509,9 +6509,6 @@ function opsAccessCard() {
           <div class="num" style="font-size:22px; color:${cashFisik < 0 ? 'var(--red)' : '#2563eb'}; font-weight:950; line-height:1.08; letter-spacing:-0.5px;">Rp ${rp(cashFisik)}</div>
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
-          <button type="button" onclick="event.stopPropagation(); if(window.loadAdminTransactions) window.loadAdminTransactions(true);" style="background:transparent; border:none; color:#2563eb; padding:2px; cursor:pointer; display:flex; align-items:center; justify-content:center; border-radius:50%;" title="Refresh Cash Fisik">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg>
-          </button>
           <span style="min-height:24px; display:inline-flex; align-items:center; justify-content:center; font-size:8.8px; background:#dbeafe; color:#1d4ed8; border:2px solid #111; border-radius:999px; padding:3px 7px; font-weight:950; box-shadow:2px 2px 0 #111; line-height:1; white-space:nowrap;">HARI INI</span>
           <span style="font-size:16px; color:#2563eb; font-weight:900; transition:transform 0.2s; display:inline-block; transform:rotate(${isOpen ? '180deg' : '0deg'});">▾</span>
         </div>
