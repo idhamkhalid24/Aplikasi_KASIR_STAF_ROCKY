@@ -2837,8 +2837,7 @@ function top(title, sub) {
     back = canAppBack()
       ? '<button class="top-back-btn" onclick="appBack()" aria-label="Kembali">←</button>'
       : "";
-  const syncBtn = `<button class="sync-header-btn" id="syncHeaderBtn" aria-label="Sync data"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring"></span></button>`;
-  return `<div class="top">${back}<div class="brand"><div class="title">${esc(title)}</div><div class="sub">${esc(sub || state.user?.name || "Staff")}</div></div><div class="row"><a class="btn sm member" href="${MEMBER_URL}" target="_blank" rel="noopener">Member</a>${headerTxStatus()}${syncBtn}<button class="btn sm" onclick="toggleTheme()">${icon}</button><button class="btn sm danger" onclick="logout()">Keluar</button></div></div>`;
+  return `<div class="top">${back}<div class="brand"><div class="title">${esc(title)}</div><div class="sub">${esc(sub || state.user?.name || "Staff")}</div></div><div class="row"><a class="btn sm member" href="${MEMBER_URL}" target="_blank" rel="noopener">Member</a>${headerTxStatus()}<button class="btn sm" onclick="toggleTheme()">${icon}</button><button class="btn sm danger" onclick="logout()">Keluar</button></div></div>`;
 }
 function headerGuideNoteText() {
   const note = String(state.data.headerGuideNote || "").trim();
@@ -6509,6 +6508,9 @@ function opsAccessCard() {
           <div class="num" style="font-size:22px; color:${cashFisik < 0 ? 'var(--red)' : '#2563eb'}; font-weight:950; line-height:1.08; letter-spacing:-0.5px;">Rp ${rp(cashFisik)}</div>
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
+          <button type="button" onclick="event.stopPropagation(); if(window.loadAdminTransactions) window.loadAdminTransactions(true);" style="background:transparent; border:none; color:#2563eb; padding:2px; cursor:pointer; display:flex; align-items:center; justify-content:center; border-radius:50%;" title="Refresh Cash Fisik">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg>
+          </button>
           <span style="min-height:24px; display:inline-flex; align-items:center; justify-content:center; font-size:8.8px; background:#dbeafe; color:#1d4ed8; border:2px solid #111; border-radius:999px; padding:3px 7px; font-weight:950; box-shadow:2px 2px 0 #111; line-height:1; white-space:nowrap;">HARI INI</span>
           <span style="font-size:16px; color:#2563eb; font-weight:900; transition:transform 0.2s; display:inline-block; transform:rotate(${isOpen ? '180deg' : '0deg'});">▾</span>
         </div>
@@ -6544,9 +6546,8 @@ function home() {
     const todayTxBonus = txBonusSum(tx),
       manualToday = manualBonusToday(),
       todayBonus = todayTxBonus + manualToday;
-    const syncBtnDaily = `<button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi" style="top:26px; right:16px; background:rgba(255,255,255,0.2); border-color:rgba(255,255,255,0.4); color:#fff;"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring" style="border-color:#fff"></span></button>`;
     const manualCard = "";
-    page.innerHTML = `${top("Mode Harian", state.user?.name || "Karyawan Harian")}${trialModeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}<div class="hero daily-income-hero" style="position:relative">${syncBtnDaily}<div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard("daily")}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
+    page.innerHTML = `${top("Mode Harian", state.user?.name || "Karyawan Harian")}${trialModeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}<div class="hero daily-income-hero" style="position:relative"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard("daily")}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
     return;
   }
   const mainLabel = c ? "Closing Hari Ini" : "Absen Hari Ini";
@@ -6556,7 +6557,7 @@ function home() {
   const earnedBonus = totalBonus(),
     takenBonus = bonusWithdrawn(),
     sisaBonus = remainingBonus();
-  page.innerHTML = `${top("Mode Staff", state.user?.name || "Karyawan Staff")}${trialModeCard()}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero" style="position:relative"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()}<div class="stat"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Bonus Bulan Ini</div><button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring"></span></button></div><div class="big" style="color:var(--blue)">Rp ${rp(sisaBonus)}</div><div class="bonus-note">Bonus terhitung ${rp(earnedBonus)} · sudah diambil ${rp(takenBonus)}</div>${bonusWithdrawalDetailList()}${todayClosingBonusInline()}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
+  page.innerHTML = `${top("Mode Staff", state.user?.name || "Karyawan Staff")}${trialModeCard()}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero" style="position:relative"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()}<div class="stat"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Bonus Bulan Ini</div><button class="refresh-icon-btn" onclick="refresh()" aria-label="Refresh bonus"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg></button></div><div class="big" style="color:var(--blue)">Rp ${rp(sisaBonus)}</div><div class="bonus-note">Bonus terhitung ${rp(earnedBonus)} · sudah diambil ${rp(takenBonus)}</div>${bonusWithdrawalDetailList()}${todayClosingBonusInline()}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
 }
   function drawerWithdrawalCard() {
     const withdrawals = (state.data.drawerWithdrawals || []).filter(w => {
@@ -8038,111 +8039,6 @@ function home() {
     toast("Data diperbarui");
   }
 
-  // === FULL SYNC: tap sekali = sync semua tanpa cooldown ===
-  let _fullSyncing = false;
-  async function fullSync() {
-    if (_fullSyncing || !state.user) return;
-    _fullSyncing = true;
-    const btn = document.querySelector(".sync-header-btn");
-    if (btn) btn.classList.add("syncing");
-    toast("Sinkronisasi semua data...");
-    try {
-      // 1) Flush pending offline data ke server
-      await flushPending();
-      // 2) Matikan realtime lama, paksa subscribe ulang
-      clearStaffRealtime();
-      // 3) Reload semua data dari server (termasuk user profile, bonus, absen, dll)
-      await loadStaffData({ skipFlush: true });
-      // 4) Reload cash drawer & daily target
-      const d = todayKey();
-      await loadCashDrawerStatus(d).catch(() => null);
-      await loadDrawerWithdrawals(d).catch(() => null);
-      await loadDailyTargetData({ apply: true }).catch(() => null);
-      // 5) Reload master produk jika ada
-      if (typeof loadMasterProduk === "function") {
-        loadMasterProduk().catch(() => {});
-      }
-      state.lastSyncMs = Date.now();
-      state.syncError = "";
-      render();
-      toast("✓ Semua data berhasil disinkronkan");
-    } catch (e) {
-      console.error("fullSync error:", e);
-      toast("Gagal sync. Coba lagi atau buka Pusat Sinkronisasi.");
-    } finally {
-      _fullSyncing = false;
-      if (btn) btn.classList.remove("syncing");
-    }
-  }
-
-  // === PUSAT SINKRONISASI MODAL ===
-  function syncCenterRealtimeStatus() {
-    const active = staffRealtimeUnsubs.length > 0;
-    const online = navigator.onLine !== false;
-    if (!online) return { dot: "offline", text: "Offline" };
-    if (active) return { dot: "live", text: "Aktif" };
-    return { dot: "idle", text: "Tidak Aktif" };
-  }
-
-  function showSyncCenter() {
-    const pc = pendingForUser().length;
-    const rt = syncCenterRealtimeStatus();
-    const lastSync = state.lastSyncMs
-      ? syncTimeText()
-      : "Belum pernah";
-    const channelCount = staffRealtimeUnsubs.length;
-    const syncErr = state.syncError
-      ? `<div style="margin-top:6px;padding:6px 10px;border-radius:8px;background:var(--red-light);border:1px solid var(--red-mid);color:var(--red);font-size:11px;font-weight:600">${esc(state.syncError)}</div>`
-      : "";
-
-    const body = `<div class="sync-center-body">
-      <div class="sync-center-status">
-        <div class="sync-status-row">
-          <div class="label"><span class="sync-status-dot ${rt.dot}"></span> Realtime</div>
-          <div class="value" style="color:${rt.dot === "live" ? "var(--green)" : rt.dot === "offline" ? "var(--red)" : "var(--amber)"}">${rt.text}</div>
-        </div>
-        <div class="sync-status-row">
-          <div class="label">🔌 Channel Aktif</div>
-          <div class="value">${channelCount}</div>
-        </div>
-        <div class="sync-status-row">
-          <div class="label">📤 Data Pending</div>
-          <div class="value" style="color:${pc > 0 ? "var(--amber)" : "var(--green)"}">${pc > 0 ? pc + " menunggu" : "Semua terkirim"}</div>
-        </div>
-        <div class="sync-status-row">
-          <div class="label">🕐 Sync Terakhir</div>
-          <div class="value">${esc(lastSync)}</div>
-        </div>
-        <div class="sync-status-row">
-          <div class="label">🌐 Koneksi</div>
-          <div class="value" style="color:${navigator.onLine !== false ? "var(--green)" : "var(--red)"}">${navigator.onLine !== false ? "Online" : "Offline"}</div>
-        </div>
-      </div>
-      ${syncErr}
-      <div class="sync-center-actions">
-        <button class="btn sync-data" onclick="fullSync();closeModal()">
-          <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg>
-          Sync Semua Data
-        </button>
-        <div class="sync-center-divider"></div>
-        <button class="btn sync-reload" onclick="hardRefreshApp()">
-          <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
-          Reload Aplikasi
-        </button>
-        <button class="btn sync-force" onclick="forceUpdateApp()">
-          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
-          Force Update (Hapus Cache)
-        </button>
-      </div>
-      <div class="sync-center-footer">
-        Tap tombol <b>Sync</b> di header untuk sinkronisasi cepat.<br>
-        Tahan tombol <b>Sync</b> untuk membuka panel ini.
-      </div>
-    </div>`;
-
-    modal("Pusat Sinkronisasi", body);
-  }
-
   function hardRefreshApp() {
     try {
       closeModal();
@@ -8392,8 +8288,6 @@ function home() {
   window.dismissManualBonusNotice = dismissManualBonusNotice;
   window.dismissTargetNotice = dismissTargetNotice;
   window.refresh = refresh;
-  window.fullSync = fullSync;
-  window.showSyncCenter = showSyncCenter;
   window.hardRefreshApp = hardRefreshApp;
   window.forceUpdateApp = forceUpdateApp;
   window.showForceUpdateConfirm = showForceUpdateConfirm;
@@ -8450,43 +8344,4 @@ function home() {
   // Pull-to-refresh dimatikan supaya tidak ada read tambahan tanpa sengaja.
   // Refresh manual dan realtime tetap aktif.
   // installPullToReload();
-
-  // === LONG-PRESS DELEGATION: sync header button ===
-  // Tap = fullSync(), Long-press (550ms) = showSyncCenter()
-  {
-    let _syncLP = null;
-    let _syncFired = false;
-    const LP_MS = 550;
-    const isSyncBtn = (el) => el && el.closest && el.closest(".sync-header-btn");
-    document.addEventListener("pointerdown", (e) => {
-      const btn = isSyncBtn(e.target);
-      if (!btn) return;
-      _syncFired = false;
-      btn.classList.add("longpressing");
-      _syncLP = setTimeout(() => {
-        _syncFired = true;
-        btn.classList.remove("longpressing");
-        showSyncCenter();
-      }, LP_MS);
-    });
-    const cancelLP = (e) => {
-      if (_syncLP) { clearTimeout(_syncLP); _syncLP = null; }
-      const btn = document.querySelector(".sync-header-btn.longpressing");
-      if (btn) btn.classList.remove("longpressing");
-    };
-    document.addEventListener("pointerup", (e) => {
-      cancelLP();
-      if (!_syncFired && isSyncBtn(e.target)) {
-        e.preventDefault();
-        fullSync();
-      }
-    });
-    document.addEventListener("pointerleave", cancelLP, true);
-    document.addEventListener("pointercancel", cancelLP);
-    // Prevent default click so tap doesn't fire twice
-    document.addEventListener("click", (e) => {
-      if (isSyncBtn(e.target)) e.preventDefault();
-    });
-  }
-
   boot();
