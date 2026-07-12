@@ -6444,11 +6444,13 @@ function getTodayCashFisik() {
   let opsTotal = 0;
   let qrisTotal = 0;
   let tabunganTotal = 0;
+  let lainnyaTotal = 0;
   for (const t of tx) {
     if (t.type === 'expense') {
       if (String(t.description).startsWith("[OPS]")) opsTotal += Number(t.amount || 0);
       else if (String(t.description).startsWith("[CASHOUT:qris]")) qrisTotal += Number(t.amount || 0);
       else if (String(t.description).startsWith("[CASHOUT:tabungan]")) tabunganTotal += Number(t.amount || 0);
+      else if (String(t.description).startsWith("[CASHOUT:lainnya]")) lainnyaTotal += Number(t.amount || 0);
     }
   }
   const allFirebaseTx = state.data.targetTx || [];
@@ -6469,7 +6471,7 @@ function getTodayCashFisik() {
     }
   }
 
-  const rawBase = globalFbTotal - opsTotal - qrisTotal - tabunganTotal;
+  const rawBase = globalFbTotal - opsTotal - qrisTotal - tabunganTotal - lainnyaTotal;
   const baseAmount = Math.max(0, rawBase);
   const cashFisik = Math.max(0, baseAmount + adjustmentAmount);
   return { cashFisik, opsTotal, qrisTotal, tabunganTotal };
