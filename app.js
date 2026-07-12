@@ -6439,7 +6439,7 @@ window.openOpsModal = () => {
   }, 50);
 };
 
-window.openCashOutModal = () => {
+function getTodayCashFisik() {
   const tx = state.data.adminTransactions || [];
   let opsTotal = 0;
   let qrisTotal = 0;
@@ -6455,7 +6455,28 @@ window.openCashOutModal = () => {
   const globalFbTotal = allFirebaseTx
     .filter(t => !deleted(t) && (t.dateKey || t.date) === todayKey())
     .reduce((sum, t) => sum + Number(t.amount || 0), 0);
-  const cashFisik = globalFbTotal - opsTotal - qrisTotal - tabunganTotal;
+
+  const latestAudit = state.data.cashDrawer;
+  let adjustmentAmount = 0;
+  if (latestAudit && latestAudit.status !== 'pas') {
+    const adjPrefix = `[ADJ-CASH:${latestAudit.id}]`;
+    const hasTx = tx.some(t => String(t.description || '').startsWith(adjPrefix));
+    if (hasTx) {
+      adjustmentAmount = tx.filter(t => String(t.description || '').startsWith(adjPrefix))
+        .reduce((sum, t) => sum + (t.type === 'income' ? Number(t.amount || 0) : -Number(t.amount || 0)), 0);
+    } else {
+      adjustmentAmount = Number(latestAudit.adjustmentAmount || 0);
+    }
+  }
+
+  const rawBase = globalFbTotal - opsTotal - qrisTotal - tabunganTotal;
+  const baseAmount = Math.max(0, rawBase);
+  const cashFisik = Math.max(0, baseAmount + adjustmentAmount);
+  return { cashFisik, opsTotal, qrisTotal, tabunganTotal };
+}
+
+window.openCashOutModal = () => {
+  const { cashFisik, qrisTotal, tabunganTotal } = getTodayCashFisik();
 
   let m = document.getElementById("customCashOutModalWrap");
   if (!m) {
@@ -6537,22 +6558,7 @@ window.closeCashOutModal = () => {
 
 function opsAccessCard() {
   if (!state.data.opsAccess) return "";
-  const tx = state.data.adminTransactions || [];
-  let opsTotal = 0;
-  let qrisTotal = 0;
-  let tabunganTotal = 0;
-  for (const t of tx) {
-    if (t.type === 'expense') {
-      if (String(t.description).startsWith("[OPS]")) opsTotal += Number(t.amount || 0);
-      else if (String(t.description).startsWith("[CASHOUT:qris]")) qrisTotal += Number(t.amount || 0);
-      else if (String(t.description).startsWith("[CASHOUT:tabungan]")) tabunganTotal += Number(t.amount || 0);
-    }
-  }
-  const allFirebaseTx = state.data.targetTx || [];
-  const globalFbTotal = allFirebaseTx
-    .filter(t => !deleted(t) && (t.dateKey || t.date) === todayKey())
-    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
-  const cashFisik = globalFbTotal - opsTotal - qrisTotal - tabunganTotal;
+  const { cashFisik, opsTotal, qrisTotal } = getTodayCashFisik();
   const isOpen = state.data.opsCardOpen === true;
 
   return `
