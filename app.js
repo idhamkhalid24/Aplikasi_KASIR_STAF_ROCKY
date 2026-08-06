@@ -4900,16 +4900,49 @@ let txProductSuggestItems = [];
 let txProductSuggestTouching = false;
 
 let masterProdukList = [];
+let masterProdukData = {}; // map { nama_produk: { is_investor, harga_jual } }
 async function loadMasterProduk() {
   if (!supabase) return;
   try {
-    const { data, error } = await supabase.from('produk').select('nama_produk');
+    const { data, error } = await supabase.from('produk').select('nama_produk, is_investor, harga_jual');
     if (!error && data) {
       masterProdukList = data.map(r => String(r.nama_produk || "").toUpperCase().trim());
+      data.forEach(r => {
+        masterProdukData[String(r.nama_produk || "").toUpperCase().trim()] = {
+          is_investor: !!r.is_investor,
+          harga_jual: Number(r.harga_jual || 0)
+        };
+      });
     }
   } catch (err) {
     console.error("Gagal load produk:", err);
   }
+}
+
+function recalcCartAmount() {
+  const txa = document.getElementById("txa");
+  if (!txa) return;
+  if (!txProductDraftItems || txProductDraftItems.length === 0) {
+    txa.readOnly = false;
+    txa.style.background = "";
+    return;
+  }
+  
+  let total = 0;
+  txProductDraftItems.forEach(item => {
+    const parts = item.split(/ qty /i);
+    const name = parts[0];
+    const q = parseInt(parts[1] || "1", 10) || 1;
+    const harga = masterProdukData[name]?.harga_jual || 0;
+    total += harga * q;
+  });
+  
+  if (total > 0 && !txa.value) { // Hanya auto-isi jika kosong supaya ketikan manual tidak hilang
+    txa.value = total;
+  }
+  
+  txa.readOnly = false;
+  txa.style.background = "";
 }
 setTimeout(loadMasterProduk, 1000);
 function getTxProductHistory() {
@@ -5141,6 +5174,7 @@ function renderTxProductDraft() {
       </div>`;
     })
     .join("");
+  recalcCartAmount();
 }
 function updateTxProductAddButton() {
   renderTxProductDraft();
@@ -5162,6 +5196,8 @@ function addTxProductItem() {
     input?.focus?.();
     return;
   }
+
+  // Validasi campur produk dihapus
 
   txProductDraftItems.push(`${value} qty ${qty}`);
   addTxProductToHistory(value);
@@ -7231,6 +7267,9 @@ function home() {
       );
     const editId = String(draft?.editId || "");
     const editTx = editId ? findTxById(editId) : null;
+
+    // VALIDASI INVESTOR STRICT MODE DIHAPUS
+    const lines = note.split("\n").map(l => l.trim()).filter(Boolean);
     if (!amount || amount <= 0) return toast("Nominal wajib diisi");
     if (editId) {
       if (!editTx) return toast("Transaksi edit tidak ditemukan");
