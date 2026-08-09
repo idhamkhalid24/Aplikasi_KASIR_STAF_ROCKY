@@ -418,6 +418,8 @@ const ROCKY_ADMIN_NOTIFY_TARGET_URL =
   ROCKY_ADMIN_NOTIFY_WORKER_BASE_URL + "/notify-target-achieved";
 const ROCKY_STAFF_NOTIFY_MANUAL_BONUS_URL =
   ROCKY_ADMIN_NOTIFY_WORKER_BASE_URL + "/notify-staff-manual-bonus";
+const ROCKY_INVESTOR_NOTIFY_URL =
+  ROCKY_ADMIN_NOTIFY_WORKER_BASE_URL + "/notify-investor-transaction";
 const ROCKY_ADMIN_NOTIFY_SECRET = "rockyNotifRahasia2026";
 const REFRESH_COOLDOWN_MS = 30000;
 const KAS_PRIBADI_SUPABASE_URL = "https://myxrvipyodadnldtomzs.supabase.co";
@@ -6995,7 +6997,23 @@ function home() {
           createdAt: new Date().toISOString(),
         },
         "Notif transaksi admin",
-      );
+      ).then(() => {
+        // Also notify investors whose products match
+        notifyRockyAdmin(
+          ROCKY_INVESTOR_NOTIFY_URL,
+          {
+            type: "investor_transaction",
+            note,
+            amount,
+            user: staffName,
+            username: String(tx.user || state.user?.username || ""),
+            transactionId: String(tx.id || tx.clientId || ""),
+            dateKey: String(tx.dateKey || todayKey()),
+            source: "staff_cashier",
+          },
+          "Notif investor",
+        ).catch(() => {});
+      });
     } catch (err) {
       console.warn("Notif admin gagal:", err?.message || err);
     }
