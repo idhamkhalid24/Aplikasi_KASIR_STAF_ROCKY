@@ -6485,15 +6485,27 @@ function getTodayCashFisik() {
   let lainnyaTotal = 0;
   for (const t of tx) {
     if (t.type === 'expense') {
-      if (String(t.description).startsWith("[OPS]")) opsTotal += Number(t.amount || 0);
-      else if (String(t.description).startsWith("[CASHOUT:qris]")) qrisTotal += Number(t.amount || 0);
-      else if (String(t.description).startsWith("[CASHOUT:tabungan]")) tabunganTotal += Number(t.amount || 0);
-      else if (String(t.description).startsWith("[CASHOUT:lainnya]")) lainnyaTotal += Number(t.amount || 0);
+      const desc = String(t.description);
+      if (desc.startsWith("[OPS]")) opsTotal += Number(t.amount || 0);
+      else if (desc.startsWith("[CASHOUT:qris]")) {
+        // Abaikan auto-qris dari DB2 biar gak dobel
+        if (!desc.includes('[AUTO-QRIS:') && !/QRIS\s+otomatis\s+kasir/i.test(desc)) {
+          qrisTotal += Number(t.amount || 0);
+        }
+      }
+      else if (desc.startsWith("[CASHOUT:tabungan]")) tabunganTotal += Number(t.amount || 0);
+      else if (desc.startsWith("[CASHOUT:lainnya]")) lainnyaTotal += Number(t.amount || 0);
     }
   }
   const allFirebaseTx = state.data.targetTx || [];
-  const globalFbTotal = allFirebaseTx
-    .filter(t => !deleted(t) && (t.dateKey || t.date) === todayKey())
+  
+  const todayFbTxs = allFirebaseTx.filter(t => !deleted(t) && (t.dateKey || t.date) === todayKey());
+  const globalFbTotal = todayFbTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  const globalFbQrisTotal = todayFbTxs
+    .filter(t => {
+      const pm = String(t.paymentMethod || t.paymentLabel || "").toLowerCase();
+      return pm.includes("qris") || pm.includes("transfer");
+    })
     .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
   const latestAudit = state.data.cashDrawer;
@@ -6509,10 +6521,13 @@ function getTodayCashFisik() {
     }
   }
 
-  const rawBase = globalFbTotal - opsTotal - qrisTotal - tabunganTotal - lainnyaTotal;
+  // qrisTotal asli = (qris manual dari DB2) + (qris live dari Firebase)
+  const finalQrisTotal = qrisTotal + globalFbQrisTotal;
+
+  const rawBase = globalFbTotal - opsTotal - finalQrisTotal - tabunganTotal - lainnyaTotal;
   const baseAmount = Math.max(0, rawBase);
   const cashFisik = Math.max(0, baseAmount + adjustmentAmount);
-  return { cashFisik, opsTotal, qrisTotal, tabunganTotal };
+  return { cashFisik, opsTotal, qrisTotal: finalQrisTotal, tabunganTotal };
 }
 
 window.openCashOutModal = () => {
