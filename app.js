@@ -902,6 +902,11 @@ function todayKey(d = new Date()) {
   const p = parts(d);
   return `${p.year}-${p.month}-${p.day}`;
 }
+function yesterdayKey() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return todayKey(d);
+}
 function monthKey(d = new Date()) {
   return todayKey(d).slice(0, 7);
 }
@@ -3135,7 +3140,13 @@ function renderNow() {
   if (!state.user) return renderLogin();
   syncAndroidStaffSession();
   nav();
-  if (state.page === "history") return history();
+  if (state.page === "history") {
+    // Reset cache kemarin jika sudah ganti hari
+    if (state.staffDrawerYesterday && state.staffDrawerYesterday.dk && state.staffDrawerYesterday.dk !== yesterdayKey()) {
+      state.staffDrawerYesterday = { dws: null, txList: null, loaded: false };
+    }
+    return history();
+  }
   if (state.page === "unlock") return renderUnlockPage();
   return home();
 }
@@ -5262,19 +5273,36 @@ function txHistoryIcon(name) {
   return TX_HISTORY_ICONS[name] || "";
 }
 function isTxAfterLatestWithdrawal(t) {
-  if (!state.data.drawerWithdrawals || !state.data.drawerWithdrawals.length) return false;
   const dkTx = String(txDate(t) || "").slice(0, 10);
   if (!dkTx) return false;
-  const dws = state.data.drawerWithdrawals.filter(w => {
-    if (w.deleted || w.status === "deleted") return false;
-    return String(w.dateKey || "").slice(0, 10) === dkTx;
-  });
-  if (!dws.length) return false;
-  let latestDw = dws[0];
-  for (const w of dws) {
-    if ((w.createdAtMs || 0) > (latestDw.createdAtMs || 0)) latestDw = w;
+
+  let latestMs = 0;
+
+  // Cek admin withdrawal (Firestore)
+  if (state.data.drawerWithdrawals && state.data.drawerWithdrawals.length) {
+    const dws = state.data.drawerWithdrawals.filter(w => {
+      if (w.deleted || w.status === "deleted") return false;
+      return String(w.dateKey || "").slice(0, 10) === dkTx;
+    });
+    if (dws.length) {
+      let latestDw = dws[0];
+      for (const w of dws) {
+        if ((w.createdAtMs || 0) > (latestDw.createdAtMs || 0)) latestDw = w;
+      }
+      latestMs = Number(latestDw.createdAtMs || 0);
+    }
   }
-  return ms(t) > Number(latestDw.createdAtMs || 0);
+
+  // Cek staff reserve (Supabase) khusus hari ini
+  if (dkTx === todayKey() && state.staffChangeReserve && !state.staffChangeReserve.deleted) {
+    const reserveMs = Number(state.staffChangeReserve.created_at_ms || 0);
+    if (reserveMs > latestMs) {
+      latestMs = reserveMs;
+    }
+  }
+
+  if (latestMs === 0) return false;
+  return ms(t) > latestMs;
 }
 function txItem(t) {
   const pending = t.pending === true;
@@ -6674,54 +6702,421 @@ function home() {
     sisaBonus = remainingBonus();
   page.innerHTML = `${top("Mode Staff", state.user?.name || "Karyawan Staff")}${trialModeCard()}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero" style="position:relative"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()}<div class="stat"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Bonus Bulan Ini</div><button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring"></span></button></div><div class="big" style="color:var(--blue)">Rp ${rp(sisaBonus)}</div><div class="bonus-note">Bonus terhitung ${rp(earnedBonus)} · sudah diambil ${rp(takenBonus)}</div>${bonusWithdrawalDetailList()}${todayClosingBonusInline()}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
 }
-  function drawerWithdrawalCard() {
-    const withdrawals = (state.data.drawerWithdrawals || []).filter(w => {
-      if (w.deleted || w.status === "deleted") return false;
-      return !w.assignedUser || w.assignedUser === "all" || key(w.assignedUser) === key(state.user?.username);
-    });
-    if (withdrawals.length === 0) return "";
-    const lastWithdrawal = withdrawals[withdrawals.length - 1];
-    const remainingOwner = Number(lastWithdrawal.remainingAmount || 0);
-    const map = new Map();
-    for (const t of (state.data.targetTx || [])) {
-      if (!deleted(t) && txDate(t) === todayKey()) map.set(t.id, t);
-    }
-    for (const t of todayTx()) {
-      if (!deleted(t)) map.set(t.id, t);
-    }
-    const globalToday = Array.from(map.values());
+  // ===== ESTIMASI UANG LACI KEMARIN =====
+  // State untuk data tarikan laci kemarin
+  if (!state.staffDrawerYesterday) state.staffDrawerYesterday = { dws: null, txList: null, loaded: false };
 
-    const txAfter = globalToday.filter(t => ms(t) > (lastWithdrawal.createdAtMs || 0) && (!t.paymentMethod || (!t.paymentMethod.includes("qris") && !t.paymentMethod.includes("transfer"))));
-    const newCash = txAfter.reduce((sum, t) => sum + Number(t.amount || 0), 0);
-    const estimasi = remainingOwner + newCash;
-    return `<div class="card" style="margin-bottom:8px;background:#f8f9fa;border:1px solid #e9ecef;box-shadow:none">
-      <div style="font-size:12px;font-weight:800;color:#495057;margin-bottom:8px;display:flex;align-items:center;gap:6px"><i class="fas fa-money-bill-wave" style="color:#0ca678"></i> Estimasi Uang Laci</div>
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:4px">
-        <span style="color:#6c757d">Sisa Uang Laci (Owner):</span>
-        <span style="font-weight:600;font-family:monospace">Rp ${rp(remainingOwner)}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:4px">
-        <span style="color:#6c757d">Transaksi Cash Baru:</span>
-        <span style="font-weight:600;font-family:monospace">+ Rp ${rp(newCash)}</span>
-      </div>
-      <div style="border-top:1px dashed #dee2e6;margin:8px 0 6px"></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px">
-        <span style="font-weight:800;color:#343a40">Estimasi Laci:</span>
-        <span style="font-weight:850;color:#0ca678;font-family:monospace">Rp ${rp(estimasi)}</span>
-      </div>
+  async function loadStaffDrawerYesterday() {
+    const dk = yesterdayKey();
+    try {
+      const dwQ = query(collection(db, "drawer_withdrawals"), where("dateKey", "==", dk));
+      const dwSnap = await getDocs(dwQ);
+      const dws = dwSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(w => !w.deleted);
+
+      const txQ = query(collection(db, "transactions"), where("dateKey", "==", dk));
+      const txSnap = await getDocs(txQ);
+      const txList = txSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => !t.deleted);
+
+      state.staffDrawerYesterday = { dws, txList, loaded: true, dk };
+    } catch (e) {
+      console.warn("Gagal load data laci kemarin", e);
+      state.staffDrawerYesterday = { dws: [], txList: [], loaded: true, dk };
+    }
+  }
+
+  function drawerWithdrawalCard() {
+    // ---- Estimasi Kemarin ----
+    const yd = yesterdayKey();
+    let yesterdayNominal = null;
+    let yesterdayLoading = false;
+
+    if (!state.staffDrawerYesterday.loaded) {
+      yesterdayLoading = true;
+    } else {
+      const dws = (state.staffDrawerYesterday.dws || []).filter(w => !w.deleted);
+      const txListYd = state.staffDrawerYesterday.txList || [];
+      if (dws.length) {
+        let latestDw = dws[0];
+        for (const w of dws) { if ((w.createdAtMs || 0) > (latestDw.createdAtMs || 0)) latestDw = w; }
+        const latestTime = Number(latestDw.createdAtMs || 0);
+        const leftAmount = Number(latestDw.remainingAmount || 0);
+        let cashTxAfter = 0;
+        for (const t of txListYd) {
+          if (Number(t.createdAtMs || 0) > latestTime) {
+            const p = String(t.paymentMethod || t.paymentLabel || t.payment || "").toLowerCase();
+            if (!p.includes("qris") && !p.includes("transfer")) cashTxAfter += Number(t.amount || 0);
+          }
+        }
+        yesterdayNominal = leftAmount + cashTxAfter;
+      }
+    }
+
+    const rowStyle = `display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:13px`;
+    const labelStyle = `color:#6c757d;font-weight:600`;
+    const valStyle = `font-weight:900;color:#0ca678;font-family:monospace;font-size:14px`;
+    const naStyle = `font-weight:600;color:#ced4da;font-style:italic;font-size:12px`;
+
+    const ydRow = `<div style="${rowStyle};border-bottom:none">
+      <span style="${labelStyle}">Uang Kemarin</span>
+      <span style="${yesterdayNominal !== null ? valStyle : naStyle}">${yesterdayLoading ? '...' : (yesterdayNominal !== null ? 'Rp ' + rp(yesterdayNominal) : '—')}</span>
+    </div>`;
+
+    return `
+    <div class="card" style="margin-bottom:8px;background:#f8f9fa;border:1px solid #e9ecef;box-shadow:none;padding:12px">
+      ${ydRow}
     </div>`;
   }
+
+
+  // ===== SISA UANG KEMBALIAN STAF =====
+  const CHANGE_RESERVE_TABLE = "staff_change_reserve";
+
+  async function loadStaffChangeReserve() {
+    try {
+      const dk = todayKey();
+      const { data, error } = await supabase
+        .from(CHANGE_RESERVE_TABLE)
+        .select("*")
+        .eq("date_key", dk)
+        .eq("deleted", false)
+        .order("created_at_ms", { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      state.staffChangeReserve = data && data[0] ? data[0] : null;
+    } catch (e) {
+      console.warn("Gagal load sisa kembalian:", e);
+      state.staffChangeReserve = undefined; // undefined = belum dimuat / error
+    }
+  }
+
+  async function saveStaffChangeReserve(amount, note) {
+    console.log("[saveStaffChangeReserve] amount:", amount, "note:", note);
+    // Anti-double: cek dulu
+    await loadStaffChangeReserve();
+    const existing = state.staffChangeReserve;
+    if (existing && !existing.deleted) {
+      const byMe = key(existing.username) === key(state.user?.username);
+      if (!byMe) {
+        toast(`Kembalian sudah disisihkan oleh ${existing.user_name || existing.username}. Minta dihapus dulu.`, true);
+        return;
+      }
+    }
+    if (amount <= 0) { toast("Nominal harus lebih dari 0 (amount: " + amount + ")", true); return; }
+    try {
+      const id = `scr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      const dk = todayKey();
+      const payload = {
+        id,
+        date_key: dk,
+        amount: Number(amount),
+        note: String(note || "").trim(),
+        username: state.user?.username || "",
+        user_name: state.user?.name || state.user?.username || "",
+        created_at_ms: Date.now(),
+        deleted: false
+      };
+      console.log("[saveStaffChangeReserve] payload:", payload);
+      const { data: upsertData, error } = await supabase.from(CHANGE_RESERVE_TABLE).upsert(payload).select();
+      console.log("[saveStaffChangeReserve] result:", upsertData, "error:", error);
+      if (error) throw error;
+      state.staffChangeReserve = payload;
+      toast("Kembalian besok berhasil disimpan ✓");
+      // Re-render history page
+      if (state.page === "history") history();
+    } catch (e) {
+      console.error("[saveStaffChangeReserve] ERROR:", e);
+      toast((e.message || e.details || JSON.stringify(e) || "Gagal simpan kembalian"), true);
+    }
+  }
+
+  window.deleteStaffChangeReserve = async function(id) {
+    const reserve = state.staffChangeReserve;
+    if (!reserve || reserve.id !== id) { toast("Data tidak ditemukan", true); return; }
+    const isOwner = key(reserve.username) === key(state.user?.username);
+    if (!isOwner) { toast("Hanya yang menyisihkan yang bisa menghapus", true); return; }
+    
+    const p = await pinAsk(`Hapus uang kembalian besok?`);
+    if (String(p) !== String(state.user.pin)) {
+      toast("PIN salah!", true);
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from(CHANGE_RESERVE_TABLE)
+        .update({ deleted: true, deleted_at_ms: Date.now() })
+        .eq("id", id);
+      if (error) throw error;
+      state.staffChangeReserve = null;
+      toast("Sisa kembalian dihapus");
+      if (state.page === "history") history();
+    } catch (e) {
+      toast(e.message || "Gagal hapus sisa kembalian", true);
+    }
+  };
+
+  window.openChangeReserveModal = function() {
+    if (!state.data.opsAccess) return toast("Kamu tidak memiliki Akses Oprasional untuk membuat kembalian besok", true);
+    const adminWithdrawnToday = (state.data.drawerWithdrawals || []).some(w => {
+      if (w.deleted || w.status === "deleted") return false;
+      return String(w.dateKey || "").slice(0, 10) === todayKey();
+    });
+    if (adminWithdrawnToday) {
+      return toast("Gagal: Admin sudah menarik uang laci hari ini.", true);
+    }
+
+    const existing = state.staffChangeReserve;
+    if (existing && !existing.deleted) {
+      const byMe = key(existing.username) === key(state.user?.username);
+      if (!byMe) {
+        modal(
+          "Kembalian Sudah Disisihkan",
+          `<div class="hint" style="margin-bottom:12px">Hanya bisa ada <b>satu entri</b> per hari. <br><br><b>${esc(existing.user_name || existing.username)}</b> sudah menyisihkan <b>Rp ${rp(Number(existing.amount || 0))}</b>.<br>Minta mereka menghapus terlebih dahulu.</div>`,
+          `<button class="btn primary" onclick="closeModal()">Tutup</button>`
+        );
+        return;
+      }
+    }
+    const { cashFisik } = getTodayCashFisik();
+
+    let ydNominal = 0;
+    if (state.staffDrawerYesterday && state.staffDrawerYesterday.loaded) {
+      const dws = (state.staffDrawerYesterday.dws || []).filter(w => !w.deleted);
+      const txListYd = state.staffDrawerYesterday.txList || [];
+      if (dws.length) {
+        let latestDw = dws[0];
+        for (const w of dws) { if ((w.createdAtMs || 0) > (latestDw.createdAtMs || 0)) latestDw = w; }
+        const latestTime = Number(latestDw.createdAtMs || 0);
+        const leftAmount = Number(latestDw.remainingAmount || 0);
+        let cashTxAfter = 0;
+        for (const t of txListYd) {
+          if (Number(t.createdAtMs || 0) > latestTime) {
+            const p = String(t.paymentMethod || t.paymentLabel || t.payment || "").toLowerCase();
+            if (!p.includes("qris") && !p.includes("transfer")) cashTxAfter += Number(t.amount || 0);
+          }
+        }
+        ydNominal = leftAmount + cashTxAfter;
+      }
+    }
+
+    window._calcReservePreview = function(inp) {
+      const v = Number((inp.value || "").replace(/\D/g, ""));
+      const total = cashFisik + ydNominal - v;
+      const el = document.getElementById("calcTotalDisetor");
+      const elV = document.getElementById("calcKembalianBesok");
+      if(el) el.textContent = "Rp " + rp(total);
+      if(elV) elV.textContent = "- Rp " + rp(v);
+    };
+
+    modal(
+      "Buat Kembalian Besok",
+      `<div class="hint" style="margin-bottom:12px">Masukkan nominal uang kembalian untuk besok yang kamu sisihkan dari laci hari ini.</div>
+      <input type="tel" id="changeReserveAmount" class="input" placeholder="Nominal (Rp)" inputmode="numeric" oninput="formatRupiahInput(this); window._calcReservePreview(this)" style="width:100%;box-sizing:border-box;font-size:18px;font-weight:800;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--card2);color:var(--text);outline:none;font-family:monospace;margin-bottom:10px">
+      <input type="text" id="changeReserveNote" class="input" placeholder="Catatan (opsional)" style="width:100%;box-sizing:border-box;font-size:14px;padding:10px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--card2);color:var(--text);outline:none;margin-bottom:12px">
+      
+      <div style="background:var(--card2);border:1.5px solid var(--line);border-radius:12px;padding:12px;font-size:12px;color:var(--text)">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="color:var(--text-soft)">Cash fisik hari ini:</span>
+          <span style="font-weight:700">Rp ${rp(cashFisik)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="color:var(--text-soft)">Ditambah uang kemarin:</span>
+          <span style="font-weight:700">Rp ${rp(ydNominal)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+          <span style="color:var(--text-soft)">Dikurangi kembalian besok:</span>
+          <span style="font-weight:700;color:#e03131" id="calcKembalianBesok">- Rp 0</span>
+        </div>
+        <div style="border-top:1px dashed var(--line);padding-top:8px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-weight:800">Sisa yang harus disetor:</span>
+          <span style="font-weight:900;font-size:14px;color:#0ca678" id="calcTotalDisetor">Rp ${rp(cashFisik + ydNominal)}</span>
+        </div>
+      </div>`,
+      `<button class="btn" onclick="closeModal()">Batal</button><button class="btn primary" onclick="(async()=>{const a=Number((document.getElementById('changeReserveAmount')?.value||'').replace(/\\D/g,''));const n=document.getElementById('changeReserveNote')?.value||'';closeModal();await window.__saveStaffChangeReserve(a,n);})()">Simpan</button>`
+    );
+  };
+  window.__saveStaffChangeReserve = saveStaffChangeReserve;
+
+  function staffChangeReserveCard() {
+    const reserve = state.staffChangeReserve;
+    const myKey = key(state.user?.username);
+
+    const withdrawalsToday = (state.data.drawerWithdrawals || []).filter(w => {
+      if (w.deleted || w.status === "deleted") return false;
+      return String(w.dateKey || "").slice(0, 10) === todayKey();
+    });
+    const adminWithdrawnToday = withdrawalsToday.length > 0;
+
+    let contentHtml = "";
+    if (reserve === undefined) {
+      contentHtml = `<div style="font-size:12px;color:#adb5bd;font-style:italic">Memuat data...</div>`;
+    } else if (!reserve) {
+      if (adminWithdrawnToday) {
+        const lastDw = withdrawalsToday[withdrawalsToday.length - 1];
+        const reserveTime = Number(lastDw.createdAtMs || 0);
+        const baseAmount = Number(lastDw.remainingAmount || 0);
+        
+        const map = new Map();
+        for (const t of (state.data.targetTx || [])) {
+          if (!deleted(t) && txDate(t) === todayKey()) map.set(t.id, t);
+        }
+        for (const t of todayTx()) {
+          if (!deleted(t)) map.set(t.id, t);
+        }
+        const globalToday = Array.from(map.values());
+        const txAfter = globalToday.filter(t => {
+          if (ms(t) <= reserveTime) return false;
+          const pm = String(t.paymentMethod || t.paymentLabel || "").toLowerCase();
+          return !pm.includes("qris") && !pm.includes("transfer");
+        });
+        const cashBaru = txAfter.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+        const totalKembalian = baseAmount + cashBaru;
+        
+        const timeLabel = reserveTime
+          ? new Date(reserveTime).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB"
+          : "";
+
+        contentHtml = `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="color:#6c757d;font-weight:600">Admin <i class="fas fa-lock" style="color:#e03131;margin-left:2px" title="Laci Ditutup"></i></span>
+              <span style="font-size:10px;font-weight:700;color:#6c757d;background:#e9ecef;border-radius:99px;padding:1px 6px">${timeLabel}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <span style="font-weight:900;color:#0ca678;font-family:monospace;font-size:14px">Rp ${rp(totalKembalian)}</span>
+            </div>
+          </div>
+        `;
+      } else {
+        if (state.data.opsAccess) {
+          contentHtml = `
+            <div style="font-size:12px;color:#adb5bd;font-style:italic;margin-bottom:10px">Belum ada staf yang membuat kembalian besok hari ini.</div>
+            <button onclick="openChangeReserveModal()" style="width:100%;padding:10px;border-radius:10px;border:2px dashed #0ca678;background:transparent;color:#0ca678;font-size:13px;font-weight:800;cursor:pointer;">+ Buat Kembalian Besok</button>`;
+        } else {
+          contentHtml = `
+            <div style="font-size:12px;color:#adb5bd;font-style:italic;margin-bottom:10px">Akses ditutup</div>
+            <div style="font-size:11px;color:#e03131;background:#fff5f5;padding:8px;border-radius:6px;text-align:center;border:1px dashed #ffc9c9">Hanya staff dengan akses Oprasional</div>`;
+        }
+      }
+    } else {
+      const byMe = key(reserve.username) === myKey;
+      const reserveTime = Number(reserve.created_at_ms || 0);
+      const baseAmount = Number(reserve.amount || 0);
+      const timeLabel = reserveTime
+        ? new Date(reserveTime).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB"
+        : "";
+
+      // Hitung transaksi cash BARU setelah kembalian diset (sama persis logika admin)
+      const map = new Map();
+      for (const t of (state.data.targetTx || [])) {
+        if (!deleted(t) && txDate(t) === todayKey()) map.set(t.id, t);
+      }
+      for (const t of todayTx()) {
+        if (!deleted(t)) map.set(t.id, t);
+      }
+      const globalToday = Array.from(map.values());
+      const txAfter = globalToday.filter(t => {
+        if (ms(t) <= reserveTime) return false;
+        const pm = String(t.paymentMethod || t.paymentLabel || "").toLowerCase();
+        return !pm.includes("qris") && !pm.includes("transfer");
+      });
+      const cashBaru = txAfter.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+      const totalKembalian = baseAmount + cashBaru;
+
+      const noteHtml = reserve.note ? `<div style="font-size:11px;color:#6c757d;margin-top:2px">${esc(reserve.note)}</div>` : "";
+      const deleteBtn = byMe
+        ? `<button onclick="window.deleteStaffChangeReserve('${esc(reserve.id)}')" style="padding:4px 8px;border-radius:6px;border:1.5px solid #e03131;background:#fff5f5;color:#e03131;font-size:10px;font-weight:800;cursor:pointer;flex-shrink:0">Hapus</button>`
+        : `<span style="font-size:10px;color:#adb5bd;font-style:italic">Hanya ${esc(reserve.user_name || reserve.username)} yg bisa hapus</span>`;
+
+      // Hitung total uang disetor khusus untuk pembuat
+      let disetorHtml = "";
+      if (byMe) {
+        const { cashFisik } = getTodayCashFisik();
+        let ydNominal = 0;
+        if (state.staffDrawerYesterday && state.staffDrawerYesterday.loaded) {
+          const dws = (state.staffDrawerYesterday.dws || []).filter(w => !w.deleted);
+          const txListYd = state.staffDrawerYesterday.txList || [];
+          if (dws.length) {
+            let latestDw = dws[0];
+            for (const w of dws) { if ((w.createdAtMs || 0) > (latestDw.createdAtMs || 0)) latestDw = w; }
+            const latestTime = Number(latestDw.createdAtMs || 0);
+            const leftAmount = Number(latestDw.remainingAmount || 0);
+            let cashTxAfter = 0;
+            for (const t of txListYd) {
+              if (Number(t.createdAtMs || 0) > latestTime) {
+                const p = String(t.paymentMethod || t.paymentLabel || t.payment || "").toLowerCase();
+                if (!p.includes("qris") && !p.includes("transfer")) cashTxAfter += Number(t.amount || 0);
+              }
+            }
+            ydNominal = leftAmount + cashTxAfter;
+          } else {
+            let cashSum = 0;
+            for (const t of txListYd) {
+              const p = String(t.paymentMethod || t.paymentLabel || t.payment || "").toLowerCase();
+              if (!p.includes("qris") && !p.includes("transfer")) cashSum += Number(t.amount || 0);
+            }
+            ydNominal = cashSum;
+          }
+        }
+        const totalDisetor = cashFisik + ydNominal - totalKembalian;
+        disetorHtml = `
+          <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #c3fae8;display:flex;justify-content:space-between;align-items:center">
+            <span style="font-weight:800;color:#0ca678;font-size:12px">Total uang laci disetor:</span>
+            <span style="font-weight:900;color:#0ca678;font-size:14px">Rp ${rp(totalDisetor)}</span>
+          </div>`;
+      }
+
+      contentHtml = `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0">
+          <div style="display:flex;flex-direction:column">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="color:#6c757d;font-weight:600">${esc(reserve.user_name || reserve.username)}</span>
+              <span style="font-size:10px;font-weight:700;color:#6c757d;background:#e9ecef;border-radius:99px;padding:1px 6px">${timeLabel}</span>
+            </div>
+            ${noteHtml}
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="font-weight:900;color:#0ca678;font-family:monospace;font-size:14px">Rp ${rp(totalKembalian)}</span>
+            ${deleteBtn}
+          </div>
+        </div>
+        ${disetorHtml}
+        ${!byMe ? `<div style="margin-top:8px;padding:6px 10px;background:#fff9db;border:1px solid #ffd43b;border-radius:8px;font-size:11px;color:#7c5700"><b>Info:</b> acsees di kunci</div>` : ""}`;
+    }
+
+    return `
+    <div class="card" style="margin-bottom:8px;background:#f8fff9;border:1.5px solid #c3fae8;box-shadow:none;padding:12px">
+      ${contentHtml}
+    </div>`;
+  }
+
+  async function loadAndRenderHistory() {
+    // Load data kemarin dan sisa kembalian secara paralel
+    await Promise.all([
+      state.staffDrawerYesterday.loaded ? Promise.resolve() : loadStaffDrawerYesterday(),
+      loadStaffChangeReserve()
+    ]);
+    history();
+  }
+
   function history() {
     const items = sortDesc(todayTx());
     const drawerCard = drawerWithdrawalCard();
+    const reserveCard = staffChangeReserveCard();
     const printAllCard = items.length
       ? `<div class="card" style="margin-bottom:8px"><button class="btn primary block tx-print-all-btn" onclick="printTodayTransactions()">${txHistoryIcon("print")} Cetak Semua Transaksi Hari Ini</button><div class="hint" style="margin-top:6px">Cetak ${items.length} transaksi hari ini dalam 1 struk.</div></div>`
       : "";
     const body = items.length
       ? `<div class="tx-table"><div class="tx-head"><span>Nama / Jam</span><span>Nominal</span><span style="text-align:right">Aksi</span></div><div class="tx-list">${items.map(txItem).join("")}</div></div>`
       : '<div class="empty">Belum ada transaksi hari ini.</div>';
-    page.innerHTML = `${top("Riwayat Hari Ini", `${items.length} transaksi · Rp ${rp(todayTotal())}`)}${syncBar()}${drawerCard}${printAllCard}${body}`;
+    page.innerHTML = `${top("Riwayat Hari Ini", `${items.length} transaksi · Rp ${rp(todayTotal())}`)}${syncBar()}${drawerCard}${reserveCard}${printAllCard}${body}`;
+
+    // Jika belum load data async, load dan re-render
+    if (!state.staffDrawerYesterday.loaded || state.staffChangeReserve === undefined) {
+      loadAndRenderHistory();
+    }
   }
+
 
   const __baseHomeWithUnlockCard = home;
   home = function () {
