@@ -13,7 +13,7 @@ const firebaseConfig = supabaseConfig; // alias lama agar logic lama tetap jalan
 
 // === FIRESTORE COMPAT LAYER DI ATAS SUPABASE ===
 // Menjaga logic staff tetap sama: collection/doc/query/where/limit/getDoc/getDocs/setDoc/addDoc/onSnapshot/serverTimestamp.
-const SUPABASE_FALLBACK_POLL_MS = 2 * 60 * 1000;
+const SUPABASE_FALLBACK_POLL_MS = 15 * 1000;
 const SUPABASE_REALTIME_DEBOUNCE_MS = 450;
 const SUPABASE_UNCHANGED_NOTIFY_MS = 60000;
 const SERVER_TIMESTAMP_SENTINEL = { __supabaseServerTimestamp: true };
@@ -6757,15 +6757,21 @@ function home() {
     const naStyle = `font-weight:600;color:#ced4da;font-style:italic;font-size:12px`;
     const badgeStyle = `background:#e03131;color:#ffffff;padding:2px 8px;border-radius:6px;font-weight:900;font-family:monospace;font-size:13px`;
 
-    const ydRow = `<div style="${rowStyle};border-bottom:none">
-      <span style="${labelStyle}">Uang Kemarin</span>
-      <span style="${yesterdayNominal !== null ? badgeStyle : naStyle}">${yesterdayLoading ? '...' : (yesterdayNominal !== null ? 'Rp ' + rp(yesterdayNominal) : '—')}</span>
-    </div>`;
-
     return `
-    <div class="card" style="margin-bottom:8px;background:#f8f9fa;border:1px solid #e9ecef;box-shadow:none;padding:12px">
-      ${ydRow}
-    </div>`;
+    <style>
+      details.uang-kemarin-card > summary { list-style: none; }
+      details.uang-kemarin-card > summary::-webkit-details-marker { display: none; }
+    </style>
+    <details class="card uang-kemarin-card" style="margin-bottom:8px;background:#f8f9fa;border:1px solid #e9ecef;box-shadow:none;padding:8px 12px;cursor:pointer;" ontoggle="this.querySelector('.chevron').style.transform = this.open ? 'rotate(180deg)' : 'rotate(0)'">
+      <summary style="display:flex;justify-content:space-between;align-items:center;outline:none;">
+        <span style="${labelStyle}">Uang Kemarin</span>
+        <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#adb5bd;transition:transform 0.2s;"><path d="M6 9l6 6 6-6"/></svg>
+      </summary>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #e9ecef;display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:12px;color:#adb5bd">Nominal:</span>
+        <span style="${yesterdayNominal !== null ? badgeStyle : naStyle}">${yesterdayLoading ? '...' : (yesterdayNominal !== null ? 'Rp ' + rp(yesterdayNominal) : '—')}</span>
+      </div>
+    </details>`;
   }
 
 
