@@ -6755,10 +6755,11 @@ function home() {
     const labelStyle = `color:#6c757d;font-weight:600`;
     const valStyle = `font-weight:900;color:#0ca678;font-family:monospace;font-size:14px`;
     const naStyle = `font-weight:600;color:#ced4da;font-style:italic;font-size:12px`;
+    const badgeStyle = `background:#e03131;color:#ffffff;padding:2px 8px;border-radius:6px;font-weight:900;font-family:monospace;font-size:13px`;
 
     const ydRow = `<div style="${rowStyle};border-bottom:none">
       <span style="${labelStyle}">Uang Kemarin</span>
-      <span style="${yesterdayNominal !== null ? valStyle : naStyle}">${yesterdayLoading ? '...' : (yesterdayNominal !== null ? 'Rp ' + rp(yesterdayNominal) : '—')}</span>
+      <span style="${yesterdayNominal !== null ? badgeStyle : naStyle}">${yesterdayLoading ? '...' : (yesterdayNominal !== null ? 'Rp ' + rp(yesterdayNominal) : '—')}</span>
     </div>`;
 
     return `
@@ -7026,7 +7027,7 @@ function home() {
       const noteHtml = reserve.note ? `<div style="font-size:11px;color:#6c757d;margin-top:2px">${esc(reserve.note)}</div>` : "";
       const deleteBtn = byMe
         ? `<button onclick="window.deleteStaffChangeReserve('${esc(reserve.id)}')" style="padding:4px 8px;border-radius:6px;border:1.5px solid #e03131;background:#fff5f5;color:#e03131;font-size:10px;font-weight:800;cursor:pointer;flex-shrink:0">Hapus</button>`
-        : `<span style="font-size:10px;color:#adb5bd;font-style:italic">Hanya ${esc(reserve.user_name || reserve.username)} yg bisa hapus</span>`;
+        : "";
 
       // Hitung total uang disetor khusus untuk pembuat
       let disetorHtml = "";
@@ -7081,7 +7082,7 @@ function home() {
           </div>
         </div>
         ${disetorHtml}
-        ${!byMe ? `<div style="margin-top:8px;padding:6px 10px;background:#fff9db;border:1px solid #ffd43b;border-radius:8px;font-size:11px;color:#7c5700"><b>Info:</b> acsees di kunci</div>` : ""}`;
+        ${!byMe ? `<div style="margin-top:8px;padding:6px 10px;background:#fff9db;border:1px solid #ffd43b;border-radius:8px;font-size:11px;color:#7c5700"><b>closing :</b> estimasi uang laci</div>` : ""}`;
     }
 
     return `
