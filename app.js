@@ -6908,8 +6908,13 @@ function home() {
     }
   };
 
-  window.openChangeReserveModal = function() {
+  window.openChangeReserveModal = async function() {
     if (!state.data.opsAccess) return toast("Kamu tidak memiliki Akses Oprasional untuk membuat kembalian besok", true);
+    
+    const pin = await pinAsk("");
+    if (String(pin) !== "1122") {
+      return toast("PIN salah atau dibatalkan", true);
+    }
     const adminWithdrawnToday = (state.data.drawerWithdrawals || []).some(w => {
       if (w.deleted || w.status === "deleted") return false;
       return String(w.dateKey || "").slice(0, 10) === todayKey();
