@@ -3243,6 +3243,24 @@ function startStaffRealtime() {
     ),
   );
 
+  const dwQ = query(
+    collection(db, "drawer_withdrawals"),
+    where("dateKey", "==", d)
+  );
+  staffRealtimeUnsubs.push(
+    onSnapshot(
+      dwQ,
+      (snap) => {
+        state.data.drawerWithdrawals = snap.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })).sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0));
+        if (typeof debouncedRender === 'function') debouncedRender(); else render();
+      },
+      (err) => handleRealtimeError("Tarik Uang Laci", err),
+    ),
+  );
+
   const attQ = query(
     collection(db, "attendance"),
     where("user", "==", u),
