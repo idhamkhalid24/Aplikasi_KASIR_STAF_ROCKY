@@ -3653,6 +3653,28 @@ function startStaffRealtime() {
       (err) => handleRealtimeError("User", err),
     ),
   );
+
+  if (!window._staffReserveChannel) {
+    window._staffReserveChannel = supabase
+      .channel('staff_change_reserve_rt')
+      .on("postgres_changes", { event: "*", schema: "public", table: "staff_change_reserve", filter: "date_key=eq." + d }, () => {
+        if (typeof loadStaffChangeReserve === 'function') {
+          loadStaffChangeReserve().then(() => {
+            if (typeof render === 'function') render();
+          }).catch(err => {
+            console.warn("Gagal realtime loadStaffChangeReserve", err);
+          });
+        }
+      })
+      .subscribe();
+      
+    staffRealtimeUnsubs.push(() => {
+      if (window._staffReserveChannel) {
+        supabase.removeChannel(window._staffReserveChannel).catch(() => {});
+        window._staffReserveChannel = null;
+      }
+    });
+  }
 }
 async function loadStaffData(opts = {}) {
   if (!state.user) return;
@@ -6717,10 +6739,22 @@ function home() {
       const txSnap = await getDocs(txQ);
       const txList = txSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => !t.deleted);
 
-      state.staffDrawerYesterday = { dws, txList, loaded: true, dk };
+      let reserve = null;
+      try {
+        const { data } = await supabase
+          .from("staff_change_reserve")
+          .select("*")
+          .eq("date_key", dk)
+          .eq("deleted", false)
+          .order("created_at_ms", { ascending: false })
+          .limit(1);
+        if (data && data[0]) reserve = data[0];
+      } catch(e) {}
+
+      state.staffDrawerYesterday = { dws, txList, reserve, loaded: true, dk };
     } catch (e) {
       console.warn("Gagal load data laci kemarin", e);
-      state.staffDrawerYesterday = { dws: [], txList: [], loaded: true, dk };
+      state.staffDrawerYesterday = { dws: [], txList: [], reserve: null, loaded: true, dk };
     }
   }
 
@@ -6735,6 +6769,11 @@ function home() {
     } else {
       const dws = (state.staffDrawerYesterday.dws || []).filter(w => !w.deleted);
       const txListYd = state.staffDrawerYesterday.txList || [];
+      const res = state.staffDrawerYesterday.reserve;
+      if (res) {
+        dws.push({ createdAtMs: res.created_at_ms, remainingAmount: res.amount });
+      }
+      
       if (dws.length) {
         let latestDw = dws[0];
         for (const w of dws) { if ((w.createdAtMs || 0) > (latestDw.createdAtMs || 0)) latestDw = w; }
@@ -6748,6 +6787,13 @@ function home() {
           }
         }
         yesterdayNominal = leftAmount + cashTxAfter;
+      } else {
+        let cashSum = 0;
+        for (const t of txListYd) {
+          const p = String(t.paymentMethod || t.paymentLabel || t.payment || "").toLowerCase();
+          if (!p.includes("qris") && !p.includes("transfer")) cashSum += Number(t.amount || 0);
+        }
+        yesterdayNominal = cashSum;
       }
     }
 
@@ -6890,6 +6936,11 @@ function home() {
     if (state.staffDrawerYesterday && state.staffDrawerYesterday.loaded) {
       const dws = (state.staffDrawerYesterday.dws || []).filter(w => !w.deleted);
       const txListYd = state.staffDrawerYesterday.txList || [];
+      const res = state.staffDrawerYesterday.reserve;
+      if (res) {
+        dws.push({ createdAtMs: res.created_at_ms, remainingAmount: res.amount });
+      }
+
       if (dws.length) {
         let latestDw = dws[0];
         for (const w of dws) { if ((w.createdAtMs || 0) > (latestDw.createdAtMs || 0)) latestDw = w; }
@@ -6903,6 +6954,13 @@ function home() {
           }
         }
         ydNominal = leftAmount + cashTxAfter;
+      } else {
+        let cashSum = 0;
+        for (const t of txListYd) {
+          const p = String(t.paymentMethod || t.paymentLabel || t.payment || "").toLowerCase();
+          if (!p.includes("qris") && !p.includes("transfer")) cashSum += Number(t.amount || 0);
+        }
+        ydNominal = cashSum;
       }
     }
 
@@ -7043,6 +7101,11 @@ function home() {
         if (state.staffDrawerYesterday && state.staffDrawerYesterday.loaded) {
           const dws = (state.staffDrawerYesterday.dws || []).filter(w => !w.deleted);
           const txListYd = state.staffDrawerYesterday.txList || [];
+          const res = state.staffDrawerYesterday.reserve;
+          if (res) {
+            dws.push({ createdAtMs: res.created_at_ms, remainingAmount: res.amount });
+          }
+          
           if (dws.length) {
             let latestDw = dws[0];
             for (const w of dws) { if ((w.createdAtMs || 0) > (latestDw.createdAtMs || 0)) latestDw = w; }
