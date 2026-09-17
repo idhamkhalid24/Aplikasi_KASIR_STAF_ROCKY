@@ -4208,6 +4208,14 @@ function todayTx() {
   const d = todayKey();
   return liveTx().filter((t) => txDate(t) === d);
 }
+// Khusus untuk halaman riwayat Risma
+function historyTx() {
+  const d = todayKey();
+  if (isRismaSpecialUser()) {
+    return (state.data.targetTx || []).filter((t) => !deleted(t) && txDate(t) === d);
+  }
+  return todayTx();
+}
 function monthTx() {
   const m = monthKey();
   return liveTx().filter((t) => txMonth(t) === m);
@@ -5346,6 +5354,15 @@ function isTxAfterLatestWithdrawal(t) {
   if (latestMs === 0) return false;
   return ms(t) > latestMs;
 }
+function staffColorHash(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) {
+    h = name.charCodeAt(i) + ((h << 5) - h);
+  }
+  const hue = Math.abs(h) % 360;
+  // Use a very soft background without thick borders
+  return `background-color: hsl(${hue}, 80%, 96%) !important;`;
+}
 function txItem(t) {
   const pending = t.pending === true;
   const canDelete = txDate(t) === todayKey() && !pending;
@@ -5381,13 +5398,19 @@ function txItem(t) {
   const payBadge = label
     ? `<span class="tx-pay-badge ${method === "cash" ? "cash" : "qris"}">${esc(label)}</span>`
     : "";
+  const rawStaffName = String(t.name || t.user || "-").trim();
+  const staffNameLabel = isRismaSpecialUser() ? `<span style="font-weight:700;color:var(--text);margin-right:4px;">${esc(rawStaffName)}</span><span style="color:var(--muted);margin-right:4px;">•</span>` : "";
   const timeLabel = timeID(ms(t));
-  const infoPay = payBadge ? ` · ${payBadge}` : "";
-  const shadowStyle = typeof isTxAfterLatestWithdrawal==='function'&&isTxAfterLatestWithdrawal(t) ? 'border: 1px solid #ff4d4d !important; box-shadow: 0 0 5px rgba(255, 77, 77, 0.2) !important;' : '';
+  const infoPay = payBadge ? `<span style="color:var(--muted);margin:0 4px;">•</span>${payBadge}` : "";
+  let shadowStyle = typeof isTxAfterLatestWithdrawal==='function'&&isTxAfterLatestWithdrawal(t) ? 'border: 1px solid #ff4d4d !important; box-shadow: 0 0 5px rgba(255, 77, 77, 0.2) !important;' : '';
+  
+  if (isRismaSpecialUser()) {
+    shadowStyle += " " + staffColorHash(rawStaffName);
+  }
 
   return `<div class="tx-row tx-row-card-mini" style="${shadowStyle}">
     <div class="tx-card-main">
-      <div class="tx-card-info">${timeLabel}${infoPay}</div>
+      <div class="tx-card-info">${staffNameLabel}${timeLabel}${infoPay}</div>
     </div>
     <div class="tx-card-side">
       <div class="tx-card-amount">Rp ${rp(t.amount)}</div>
@@ -5396,6 +5419,9 @@ function txItem(t) {
   </div>`;
 }
 function findTxById(id) {
+  if (isRismaSpecialUser()) {
+    return (state.data.targetTx || []).find((t) => String(t.id) === String(id));
+  }
   return liveTx().find((t) => String(t.id) === String(id));
 }
 function openTxDetail(id) {
@@ -5711,8 +5737,7 @@ function receiptProductBlock(
 function receiptTextForTx(t) {
   const s = receiptSettings();
   const tanggal = `${dateID(txDate(t))} ${timeID(ms(t))}`;
-  const kasir =
-    state.user?.name || state.user?.username || t.name || t.user || "-";
+  const kasir = isRismaSpecialUser() ? (t.name || t.user || "-") : (state.user?.name || state.user?.username || t.name || t.user || "-");
   const nominal = Number(t.amount || 0);
   const pay = txPaymentLabel(t.paymentMethod || t.paymentLabel);
   const paymentLine = pay ? `\n${receiptSummaryLine("Bayar", pay)}` : "";
@@ -5746,7 +5771,7 @@ function printReceiptFromTx(id) {
 
 function receiptTextForTodayTransactions() {
   const s = receiptSettings();
-  const items = [...todayTx()].sort((a, b) => ms(a) - ms(b));
+  const items = [...historyTx()].sort((a, b) => ms(a) - ms(b));
   const tanggal = dateID(todayKey());
   const kasir = state.user?.name || state.user?.username || "-";
   const total = items.reduce((sum, t) => sum + Number(t.amount || 0), 0);
@@ -5759,7 +5784,8 @@ function receiptTextForTodayTransactions() {
       const payLine = pay
         ? `\n${receiptSummaryLine("Bayar", pay, "    ")}`
         : "";
-      return `${no}. ${timeID(ms(t))}${status}\n    Produk:\n${produk}\n${receiptSummaryLine("Total Bayar", `Rp ${rp(t.amount)}`, "    ")}${payLine}`;
+      const kasirLine = isRismaSpecialUser() ? `\n    (Oleh: ${t.name || t.user || "-"})` : "";
+      return `${no}. ${timeID(ms(t))}${kasirLine}${status}\n    Produk:\n${produk}\n${receiptSummaryLine("Total Bayar", `Rp ${rp(t.amount)}`, "    ")}${payLine}`;
     })
     .join("\n\n");
   return `${receiptHeaderLines(s)}
@@ -5771,17 +5797,17 @@ ${receiptLabel(s.countLabel)} ${items.length} trx
 --------------------------------
 ${rows}
 --------------------------------
-${receiptSummaryLine("TOTAL BAYAR", `Rp ${rp(total)}`)}
+${receiptSummaryLine(s.totalLabel || "TOTAL BAYAR", `Rp ${rp(total)}`)}
 --------------------------------
 ${receiptFooterLines(s)}${receiptBottomFeed(s)}
 `;
 }
 
 function printTodayTransactions() {
-  const items = todayTx();
+  const items = historyTx();
   if (!items.length) return toast("Belum ada transaksi hari ini");
   const text = receiptTextForTodayTransactions();
-  openReceiptPreview(text, `Semua Transaksi · ${dateID(todayKey())}`);
+  openReceiptPreview(text, `Semua Transaksi • ${dateID(todayKey())}`);
 }
 
 function openReceiptPreview(text, title = "Struk Transaksi") {
@@ -7195,16 +7221,39 @@ function home() {
   }
 
   function history() {
-    const items = sortDesc(todayTx());
+    const items = sortDesc(historyTx());
+    const totalHistoryAmount = items.reduce((s, t) => s + Number(t.amount || 0), 0);
     const drawerCard = drawerWithdrawalCard();
     const reserveCard = staffChangeReserveCard();
     const printAllCard = items.length
       ? `<div class="card" style="margin-bottom:8px"><button class="btn primary block tx-print-all-btn" onclick="printTodayTransactions()">${txHistoryIcon("print")} Cetak Semua Transaksi Hari Ini</button><div class="hint" style="margin-top:6px">Cetak ${items.length} transaksi hari ini dalam 1 struk.</div></div>`
       : "";
-    const body = items.length
-      ? `<div class="tx-table"><div class="tx-head"><span>Nama / Jam</span><span>Nominal</span><span style="text-align:right">Aksi</span></div><div class="tx-list">${items.map(txItem).join("")}</div></div>`
-      : '<div class="empty">Belum ada transaksi hari ini.</div>';
-    page.innerHTML = `${top("Riwayat Hari Ini", `${items.length} transaksi · Rp ${rp(todayTotal())}`)}${syncBar()}${drawerCard}${reserveCard}${printAllCard}${body}`;
+    
+    let body = "";
+    if (!items.length) {
+      body = '<div class="empty">Belum ada transaksi hari ini.</div>';
+    } else if (isRismaSpecialUser()) {
+      const myU = key(state.user?.username);
+      const myItems = items.filter(t => key(t.user) === myU);
+      const otherItems = items.filter(t => key(t.user) !== myU);
+      
+      let html = `<div class="tx-table"><div class="tx-head"><span>Nama / Jam</span><span>Nominal</span><span style="text-align:right">Aksi</span></div><div class="tx-list">`;
+      if (myItems.length) {
+        html += myItems.map(txItem).join("");
+      }
+      if (myItems.length && otherItems.length) {
+        html += `<div class="card" style="padding:10px; text-align:center; font-weight:800; font-size:13px; margin: 12px 0; background:var(--card2); color:var(--text-soft); border-radius:12px;">Transaksi Staf Lain</div>`;
+      }
+      if (otherItems.length) {
+        html += otherItems.map(txItem).join("");
+      }
+      html += `</div></div>`;
+      body = html;
+    } else {
+      body = `<div class="tx-table"><div class="tx-head"><span>Nama / Jam</span><span>Nominal</span><span style="text-align:right">Aksi</span></div><div class="tx-list">${items.map(txItem).join("")}</div></div>`;
+    }
+
+    page.innerHTML = `${top("Riwayat Hari Ini", `${items.length} transaksi • Rp ${rp(totalHistoryAmount)}`)}${syncBar()}${drawerCard}${reserveCard}${printAllCard}${body}`;
 
     // Jika belum load data async, load dan re-render
     if (!state.staffDrawerYesterday.loaded || state.staffChangeReserve === undefined) {
@@ -7217,16 +7266,9 @@ function home() {
   home = function () {
     __baseHomeWithUnlockCard();
     if (isRismaSpecialUser() && page) {
-      const stat = page.querySelector(".att-status");
-      if (stat) {
-        stat.classList.remove("wait", "closed");
-        stat.classList.add("ok");
-        const label = stat.querySelector(".stat-label"),
-          val = stat.querySelector(".stat-val"),
-          foot = stat.querySelector(".stat-foot");
-        if (label) label.textContent = "Akses Hari Ini";
-        if (val) val.textContent = "OK";
-        if (foot) foot.textContent = "bebas absen";
+      const grid = page.querySelector(".staff-stat-grid");
+      if (grid) {
+        grid.style.display = "none";
       }
     }
     const card = unlockHomeCard();
