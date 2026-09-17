@@ -2829,14 +2829,38 @@ function syncBar() {
     : "";
   return `<div class="${cls}"><div>${msg}${err}</div><button class="btn sm" onclick="retrySync()">Sync</button></div>`;
 }
+function isLowestStaffToday() {
+  const currentUserKey = key(state.user?.username);
+  if (["risma", "aji", "admin"].includes(currentUserKey)) return false;
+  
+  const salesByUser = {};
+  for (const t of (state.data.targetTx || [])) {
+    if (t.pending) continue;
+    const u = key(t.user);
+    if (["risma", "aji", "admin"].includes(u)) continue;
+    salesByUser[u] = (salesByUser[u] || 0) + Number(t.amount || 0);
+  }
+  
+  const staffKeys = Object.keys(salesByUser);
+  if (staffKeys.length <= 1) return false;
+  
+  let minVal = Infinity;
+  for (const u of staffKeys) {
+    if (salesByUser[u] < minVal) minVal = salesByUser[u];
+  }
+  
+  return (salesByUser[currentUserKey] !== undefined && salesByUser[currentUserKey] === minVal);
+}
+
 function syncHeroLine() {
   const pc = pendingForUser().length;
   const msg = pc
-    ? `<b>${pc} data belum terkirim</b><span> · dicoba otomatis</span>`
+    ? `<b>${pc} data belum terkirim</b><span> • dicoba otomatis</span>`
     : `<span>Sync terakhir: <b>${syncTimeText()}</b></span>`;
   const err = state.syncError
     ? `<div class="hero-sync-error">${esc(state.syncError)}</div>`
     : "";
+    
   return `<div class="hero-sync"><div>${msg}${err}</div><button class="hero-sync-btn" onclick="showForceUpdateConfirm()" aria-label="Update App">Click For Update</button></div>`;
 }
 function top(title, sub) {
@@ -6761,13 +6785,18 @@ function home() {
     a = todayAtt(),
     c = todayClosing(),
     emptyStockCard = ""; // HIDDEN sementara (belum butuh) - fitur & fungsi stockEmptyQuickCard() tetap ada, tinggal balikin ke: stockEmptyQuickCard();
+  
+  const warningIcon = isLowestStaffToday() 
+    ? `<svg viewBox="0 0 24 24" width="45" height="45" fill="none" stroke="#ff4d4d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="position:absolute; bottom:12px; right:15px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: pulse 2s infinite;"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline><polyline points="17 18 23 18 23 12"></polyline></svg>` 
+    : "";
+
   if (isDaily()) {
     const todayTxBonus = txBonusSum(tx),
       manualToday = manualBonusToday(),
       todayBonus = todayTxBonus + manualToday;
     const syncBtnDaily = `<button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi" style="top:26px; right:16px; background:rgba(255,255,255,0.2); border-color:rgba(255,255,255,0.4); color:#fff;"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring" style="border-color:#fff"></span></button>`;
     const manualCard = "";
-    page.innerHTML = `${top("Mode Harian", state.user?.name || "Karyawan Harian")}${trialModeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}<div class="hero daily-income-hero" style="position:relative">${syncBtnDaily}<div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard("daily")}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
+    page.innerHTML = `${top("Mode Harian", state.user?.name || "Karyawan Harian")}${trialModeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}<div class="hero daily-income-hero" style="position:relative">${syncBtnDaily}<div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} • ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat" style="position:relative"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard("daily")}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
     return;
   }
   const mainLabel = c ? "Closing Hari Ini" : "Absen Hari Ini";
@@ -6777,7 +6806,7 @@ function home() {
   const earnedBonus = totalBonus(),
     takenBonus = bonusWithdrawn(),
     sisaBonus = remainingBonus();
-  page.innerHTML = `${top("Mode Staff", state.user?.name || "Karyawan Staff")}${trialModeCard()}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero" style="position:relative"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()}<div class="stat"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div></div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Bonus Bulan Ini</div><button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring"></span></button></div><div class="big" style="color:var(--blue)">Rp ${rp(sisaBonus)}</div><div class="bonus-note">Bonus terhitung ${rp(earnedBonus)} · sudah diambil ${rp(takenBonus)}</div>${bonusWithdrawalDetailList()}${todayClosingBonusInline()}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
+  page.innerHTML = `${top("Mode Staff", state.user?.name || "Karyawan Staff")}${trialModeCard()}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero" style="position:relative"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()}<div class="stat" style="position:relative"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Bonus Bulan Ini</div><button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring"></span></button></div><div class="big" style="color:var(--blue)">Rp ${rp(sisaBonus)}</div><div class="bonus-note">Bonus terhitung ${rp(earnedBonus)} · sudah diambil ${rp(takenBonus)}</div>${bonusWithdrawalDetailList()}${todayClosingBonusInline()}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
 }
   // ===== ESTIMASI UANG LACI KEMARIN =====
   // State untuk data tarikan laci kemarin
