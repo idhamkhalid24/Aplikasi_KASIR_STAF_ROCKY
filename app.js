@@ -6872,7 +6872,7 @@ function home() {
         return;
       }
     }
-    if (amount <= 0) { toast("Nominal harus lebih dari 0 (amount: " + amount + ")", true); return; }
+    if (amount < 0) { toast("Nominal tidak valid (amount: " + amount + ")", true); return; }
     try {
       const id = `scr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
       const dk = todayKey();
