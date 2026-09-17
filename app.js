@@ -5244,11 +5244,13 @@ function addTxProductItem() {
     return;
   }
   
+  /* 
   if (masterProdukList.length > 0 && !masterProdukList.includes(value)) {
     toast("Nama barang tidak terdaftar di sistem!");
     input?.focus?.();
     return;
   }
+  */
 
   // Validasi campur produk dihapus
 
@@ -8865,6 +8867,7 @@ function home() {
       indicator.textContent = "Tarik untuk reload";
       indicator.style.opacity = "0";
       indicator.style.transform = "translate(-50%,-70px)";
+      document.body.style.overscrollBehaviorY = "";
       if (page) {
         page.style.transition = "transform .18s ease";
         page.style.transform = "translateY(0)";
@@ -8899,14 +8902,22 @@ function home() {
         if (!ptr.active || ptr.reloading || e.touches.length !== 1) return;
         const dy = e.touches[0].clientY - ptr.startY;
         if (dy <= 0) {
+          document.body.style.overscrollBehaviorY = "";
           resetPull();
           return;
         }
         if (scrollTop() > 0) {
+          document.body.style.overscrollBehaviorY = "";
           resetPull();
           return;
         }
-        if (dy > 8) e.preventDefault();
+        
+        // Disable native overscroll bounce dynamically when pulling down
+        if (dy > 0 && document.body.style.overscrollBehaviorY !== "none") {
+          document.body.style.overscrollBehaviorY = "none";
+        }
+
+        // Removed e.preventDefault() so we don't trap native scroll gestures!
         ptr.dist = Math.min(78, dy * 0.55);
         ptr.ready = dy > 96;
         indicator.textContent = ptr.ready
@@ -8919,7 +8930,7 @@ function home() {
           page.style.transform = `translateY(${ptr.dist}px)`;
         }
       },
-      { passive: false },
+      { passive: true }, // Changed to passive:true since we no longer call preventDefault
     );
     const endPull = () => {
       if (!ptr.active) return;
@@ -9077,7 +9088,7 @@ function home() {
   setupAutoSync();
   // Pull-to-refresh dimatikan supaya tidak ada read tambahan tanpa sengaja.
   // Refresh manual dan realtime tetap aktif.
-  // installPullToReload();
+  installPullToReload();
 
   // === LONG-PRESS DELEGATION: sync header button ===
   // Tap = fullSync(), Long-press (550ms) = showSyncCenter()
