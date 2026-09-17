@@ -5357,15 +5357,22 @@ function isTxAfterLatestWithdrawal(t) {
 function staffColorHash(name) {
   let h = 0;
   for (let i = 0; i < name.length; i++) {
-    h = name.charCodeAt(i) + ((h << 5) - h);
+    h = (h * 31) + name.charCodeAt(i);
   }
-  const hue = Math.abs(h) % 360;
-  // Use a very soft background without thick borders
-  return `background-color: hsl(${hue}, 80%, 96%) !important;`;
+  const colors = [
+    '#FF85A2', '#FFD93D', '#6BCB77', '#6EE7B7',
+    '#B2A4FF', '#FFB200', '#00D7FF', '#FF9F43',
+    '#F472B6', '#FBBF24', '#34D399', '#818CF8',
+    '#A78BFA', '#F87171', '#38BDF8', '#FB923C',
+    '#FDA4AF', '#FCD34D', '#86EFAC', '#93C5FD'
+  ];
+  const color = colors[Math.abs(h) % colors.length];
+  return `background-color: ${color} !important;`;
 }
 function txItem(t) {
   const pending = t.pending === true;
-  const canDelete = txDate(t) === todayKey() && !pending;
+  const isMine = key(t.user) === key(state.user?.username);
+  const canDelete = txDate(t) === todayKey() && !pending && isMine;
   const id = esc(t.id);
 
   const noteLines = String(t.note || "").split("\n").map(x => x.trim()).filter(Boolean);
@@ -5383,7 +5390,7 @@ function txItem(t) {
   }
   const detailIconHtml = totalQty > 0 ? `<span style="font-weight:900;font-size:16px;color:var(--text-main);display:flex;align-items:center;justify-content:center">${totalQty}</span>` : txHistoryIcon("list");
   const detailBtn = `<button class="btn sm tx-card-btn tx-card-detail" onclick="openTxDetail('${id}')" aria-label="Detail transaksi" title="Detail">${detailIconHtml}</button>`;
-  const printBtn = !pending
+  const printBtn = (!pending && isMine)
     ? `<button class="btn sm tx-card-btn tx-card-print" onclick="printReceiptFromTx('${id}')" aria-label="Cetak struk" title="Cetak">${txHistoryIcon("print")}</button>`
     : "";
   const deleteBtn = canDelete
@@ -5402,9 +5409,11 @@ function txItem(t) {
   const staffNameLabel = isRismaSpecialUser() ? `<span style="font-weight:700;color:var(--text);margin-right:4px;">${esc(rawStaffName)}</span><span style="color:var(--muted);margin-right:4px;">•</span>` : "";
   const timeLabel = timeID(ms(t));
   const infoPay = payBadge ? `<span style="color:var(--muted);margin:0 4px;">•</span>${payBadge}` : "";
-  let shadowStyle = typeof isTxAfterLatestWithdrawal==='function'&&isTxAfterLatestWithdrawal(t) ? 'border: 1px solid #ff4d4d !important; box-shadow: 0 0 5px rgba(255, 77, 77, 0.2) !important;' : '';
   
-  if (isRismaSpecialUser()) {
+  const afterWithdrawal = typeof isTxAfterLatestWithdrawal==='function' && isTxAfterLatestWithdrawal(t);
+  let shadowStyle = afterWithdrawal ? 'border: 1px solid #ff4d4d !important; box-shadow: 0 0 5px rgba(255, 77, 77, 0.2) !important; background-color: var(--card) !important;' : '';
+  
+  if (isRismaSpecialUser() && !afterWithdrawal) {
     shadowStyle += " " + staffColorHash(rawStaffName);
   }
 
@@ -7249,6 +7258,12 @@ function home() {
       }
       const sortedStaff = Object.keys(salesByUser).map(u => ({ name: u, total: salesByUser[u] })).sort((a, b) => b.total - a.total);
       
+      const shortRp = (num) => {
+        if (num >= 1000000) return (num / 1000000).toFixed(1).replace('.0', '') + 'jt';
+        if (num >= 1000) return (num / 1000).toFixed(0) + 'k';
+        return rp(num);
+      };
+
       let topHtml = "";
       let bottomHtml = "";
       if (sortedStaff.length > 0) {
@@ -7256,17 +7271,54 @@ function home() {
         const trendDown = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; margin-bottom:-2px;"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline><polyline points="17 18 23 18 23 12"></polyline></svg>`;
         
         const top = sortedStaff[0];
-        topHtml = `<span style="color:var(--green); display:inline-flex; align-items:center;">${top.name} (Rp ${rp(top.total)}) ${trendUp}</span>`;
-        if (sortedStaff.length > 1) {
-          const bottom = sortedStaff[sortedStaff.length - 1];
-          bottomHtml = `<span style="color:var(--red); display:inline-flex; align-items:center;">${trendDown} ${bottom.name} (Rp ${rp(bottom.total)})</span>`;
+        topHtml = `<span style="color:var(--green); display:inline-flex; align-items:center;">${top.name} (${shortRp(top.total)}) ${trendUp}</span>`;
+        
+        const bottomCandidates = sortedStaff.filter(s => !["risma", "aji", "admin"].includes(s.name.toLowerCase()));
+        if (bottomCandidates.length > 0) {
+          const bottom = bottomCandidates[bottomCandidates.length - 1];
+          if (bottom.name !== top.name) {
+            bottomHtml = `<span style="color:var(--red); display:inline-flex; align-items:center;">${trendDown} ${bottom.name} (${shortRp(bottom.total)})</span>`;
+          }
         }
       }
+
+      // Cari produk terlaris hari ini (hanya yang terdaftar di masterProdukData)
+      const productCounts = {};
+      for (const t of items) {
+        if (t.pending) continue;
+        const noteLines = String(t.note || "").split("\n").map(x => x.trim()).filter(Boolean);
+        if (noteLines.length > 0 && noteLines[0] !== "Transaksi" && noteLines[0] !== "-") {
+          for (const item of noteLines) {
+            let name = item;
+            let qty = 1;
+            const lower = item.toLowerCase();
+            if (lower.includes(" qty ")) {
+              const parts = item.split(/ qty /i);
+              name = parts[0].trim();
+              const q = parseInt(parts[1], 10);
+              qty = isNaN(q) ? 1 : q;
+            }
+            const nameUpper = name.toUpperCase();
+            if (masterProdukData && masterProdukData[nameUpper]) {
+              productCounts[nameUpper] = (productCounts[nameUpper] || 0) + qty;
+            }
+          }
+        }
+      }
+      let bestProduct = "";
+      let bestQty = 0;
+      for (const p in productCounts) {
+        if (productCounts[p] > bestQty) {
+          bestQty = productCounts[p];
+          bestProduct = p;
+        }
+      }
+      const centerText = bestProduct ? `${bestProduct} = ${bestQty}` : "Transaksi Staf Lain";
 
       if (otherItems.length) {
         html += `<div class="card" style="padding:10px 12px; display:flex; align-items:center; justify-content:space-between; font-weight:800; font-size:12px; margin: 12px 0; background:var(--card2); color:var(--text-soft); border-radius:12px;">
           <div style="flex:1; text-align:left;">${topHtml}</div>
-          <div style="flex:0 0 auto;">Transaksi Staf Lain</div>
+          <div style="flex:0 0 auto; color:var(--text);">${centerText}</div>
           <div style="flex:1; text-align:right;">${bottomHtml}</div>
         </div>`;
         html += otherItems.map(txItem).join("");
