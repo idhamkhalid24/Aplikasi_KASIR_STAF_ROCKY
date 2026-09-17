@@ -8993,6 +8993,7 @@ function home() {
       const changed = await checkDateChange();
       if (!changed && state.user) {
         startStaffRealtime();
+        if (typeof loadStaffData === 'function') await loadStaffData({ skipFlush: true });
         render();
       }
     });
@@ -9001,6 +9002,8 @@ function home() {
         const changed = await checkDateChange();
         if (!changed && state.user) {
           startStaffRealtime();
+          if (typeof loadStaffData === 'function') await loadStaffData({ skipFlush: true });
+          if (typeof window.loadAdminTransactions === 'function') await window.loadAdminTransactions();
           render();
         }
       }
