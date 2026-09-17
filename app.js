@@ -7241,10 +7241,34 @@ function home() {
       if (myItems.length) {
         html += myItems.map(txItem).join("");
       }
-      if (myItems.length && otherItems.length) {
-        html += `<div class="card" style="padding:10px; text-align:center; font-weight:800; font-size:13px; margin: 12px 0; background:var(--card2); color:var(--text-soft); border-radius:12px;">Transaksi Staf Lain</div>`;
+      
+      const salesByUser = {};
+      for (const t of items) {
+        const u = esc(String(t.name || t.user || "-").trim().split(" ")[0]);
+        salesByUser[u] = (salesByUser[u] || 0) + Number(t.amount || 0);
       }
+      const sortedStaff = Object.keys(salesByUser).map(u => ({ name: u, total: salesByUser[u] })).sort((a, b) => b.total - a.total);
+      
+      let topHtml = "";
+      let bottomHtml = "";
+      if (sortedStaff.length > 0) {
+        const trendUp = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:4px; margin-bottom:-2px;"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>`;
+        const trendDown = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; margin-bottom:-2px;"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline><polyline points="17 18 23 18 23 12"></polyline></svg>`;
+        
+        const top = sortedStaff[0];
+        topHtml = `<span style="color:var(--green); display:inline-flex; align-items:center;">${top.name} (Rp ${rp(top.total)}) ${trendUp}</span>`;
+        if (sortedStaff.length > 1) {
+          const bottom = sortedStaff[sortedStaff.length - 1];
+          bottomHtml = `<span style="color:var(--red); display:inline-flex; align-items:center;">${trendDown} ${bottom.name} (Rp ${rp(bottom.total)})</span>`;
+        }
+      }
+
       if (otherItems.length) {
+        html += `<div class="card" style="padding:10px 12px; display:flex; align-items:center; justify-content:space-between; font-weight:800; font-size:12px; margin: 12px 0; background:var(--card2); color:var(--text-soft); border-radius:12px;">
+          <div style="flex:1; text-align:left;">${topHtml}</div>
+          <div style="flex:0 0 auto;">Transaksi Staf Lain</div>
+          <div style="flex:1; text-align:right;">${bottomHtml}</div>
+        </div>`;
         html += otherItems.map(txItem).join("");
       }
       html += `</div></div>`;
