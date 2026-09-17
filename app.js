@@ -6694,7 +6694,7 @@ function opsAccessCard() {
           <div class="num" style="font-size:22px; color:${cashFisik < 0 ? 'var(--red)' : '#2563eb'}; font-weight:950; line-height:1.08; letter-spacing:-0.5px;">Rp ${rp(cashFisik)}</div>
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
-          <span id="cashFisikSyncIcon" onclick="event.stopPropagation(); (async()=>{const el=document.getElementById('cashFisikSyncIcon');if(el)el.classList.add('cf-syncing');await (window.loadAdminTransactions&&window.loadAdminTransactions(true));const el2=document.getElementById('cashFisikSyncIcon');if(el2)el2.classList.remove('cf-syncing');})();" title="Refresh Cash Fisik" style="min-height:26px; min-width:26px; display:inline-flex; align-items:center; justify-content:center; background:#fff; color:#2563eb; border:2px solid #111; border-radius:999px; box-shadow:2px 2px 0 #111; cursor:pointer;"><svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;stroke-width:2.6;fill:none;stroke-linecap:round;stroke-linejoin:round"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg></span>
+
           <span style="min-height:24px; display:inline-flex; align-items:center; justify-content:center; font-size:8.8px; background:#dbeafe; color:#1d4ed8; border:2px solid #111; border-radius:999px; padding:3px 7px; font-weight:950; box-shadow:2px 2px 0 #111; line-height:1; white-space:nowrap;">HARI INI</span>
           <span style="font-size:16px; color:#2563eb; font-weight:900; transition:transform 0.2s; display:inline-block; transform:rotate(${isOpen ? '180deg' : '0deg'});">▾</span>
         </div>
