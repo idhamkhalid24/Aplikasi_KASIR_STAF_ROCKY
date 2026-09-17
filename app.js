@@ -9086,12 +9086,12 @@ function home() {
       : `<span class="pill red">Belum absen</span>`;
   };
   setupAutoSync();
-  // Pull-to-refresh dimatikan supaya tidak ada read tambahan tanpa sengaja.
-  // Refresh manual dan realtime tetap aktif.
-  installPullToReload();
+  // Pull-to-refresh dimatikan supaya tidak ada read tambahan tanpa sengaja
+  // dan supaya tidak mengganggu scroll.
+  // installPullToReload();
 
   // === LONG-PRESS DELEGATION: sync header button ===
-  // Tap = fullSync(), Long-press (550ms) = showSyncCenter()
+  // Tap = hardRefreshApp(), Long-press (550ms) = showSyncCenter()
   {
     let _syncLP = null;
     let _syncFired = false;
@@ -9117,7 +9117,7 @@ function home() {
       cancelLP();
       if (!_syncFired && isSyncBtn(e.target)) {
         e.preventDefault();
-        fullSync();
+        hardRefreshApp();
       }
     });
     document.addEventListener("pointerleave", cancelLP, true);
