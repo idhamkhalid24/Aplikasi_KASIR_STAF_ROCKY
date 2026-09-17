@@ -3594,7 +3594,7 @@ function startStaffRealtime() {
           if (!window._adminTxChannel) {
             window._adminTxChannel = cashDrawerClient
               .channel('admin_tx_realtime')
-              .on("postgres_changes", { event: "*", schema: "public", table: "transactions", filter: "owner_id=eq." + KAS_PRIBADI_OWNER_ID }, () => {
+              .on("postgres_changes", { event: "*", schema: "public", table: "transactions" }, () => {
                 if (window.loadAdminTransactions) window.loadAdminTransactions();
               })
               .subscribe();
