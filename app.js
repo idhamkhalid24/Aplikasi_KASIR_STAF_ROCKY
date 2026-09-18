@@ -2835,7 +2835,7 @@ function isLowestStaffToday() {
   
   const salesByUser = {};
   for (const t of (state.data.targetTx || [])) {
-    if (t.pending) continue;
+    if (t.pending || deleted(t)) continue;
     const u = key(t.user);
     if (["risma", "aji", "admin"].includes(u)) continue;
     salesByUser[u] = (salesByUser[u] || 0) + Number(t.amount || 0);
@@ -6786,9 +6786,17 @@ function home() {
     c = todayClosing(),
     emptyStockCard = ""; // HIDDEN sementara (belum butuh) - fitur & fungsi stockEmptyQuickCard() tetap ada, tinggal balikin ke: stockEmptyQuickCard();
   
-  const warningIcon = isLowestStaffToday() 
-    ? `<svg viewBox="0 0 24 24" width="45" height="45" fill="none" stroke="#ff4d4d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="position:absolute; bottom:12px; right:15px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: pulse 2s infinite;"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline><polyline points="17 18 23 18 23 12"></polyline></svg>` 
-    : "";
+  const currentUserKey = key(state.user?.username);
+  const isExcluded = ["risma", "aji", "admin"].includes(currentUserKey);
+  
+  let warningIcon = "";
+  if (!isExcluded) {
+    if (tx.length === 0) {
+      warningIcon = `<style>@keyframes zzzFloat { 0%, 100% { transform: translateY(0) scale(1) rotate(-5deg); } 50% { transform: translateY(-4px) scale(1.05) rotate(5deg); } }</style><div style="position:absolute; bottom:12px; right:15px; font-size:32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: zzzFloat 3s ease-in-out infinite;" title="Masih Molor (Belum Penglaris)">😴</div>`;
+    } else if (isLowestStaffToday()) {
+      warningIcon = `<svg viewBox="0 0 24 24" width="45" height="45" fill="none" stroke="#ff4d4d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="position:absolute; bottom:12px; right:15px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: pulse 2s infinite;"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline><polyline points="17 18 23 18 23 12"></polyline></svg>`;
+    }
+  }
 
   if (isDaily()) {
     const todayTxBonus = txBonusSum(tx),
@@ -7344,12 +7352,35 @@ function home() {
       }
       const centerText = bestProduct ? `${bestProduct} = ${bestQty}` : "Transaksi Staf Lain";
 
+      const presentSet = targetAttendanceUsers();
+      const txUsersSet = new Set();
+      for (const t of (state.data.targetTx || [])) {
+        if (!t.pending && !deleted(t)) txUsersSet.add(key(t.user));
+      }
+      const belumPenglaris = [];
+      for (const u of presentSet) {
+        if (!txUsersSet.has(u) && !["risma", "aji", "admin"].includes(u)) {
+          belumPenglaris.push(u.charAt(0).toUpperCase() + u.slice(1));
+        }
+      }
+      
       if (otherItems.length) {
         html += `<div class="card" style="padding:10px 12px; display:flex; align-items:center; justify-content:space-between; font-weight:800; font-size:12px; margin: 12px 0; background:var(--card2); color:var(--text-soft); border-radius:12px;">
           <div style="flex:1; text-align:left;">${topHtml}</div>
           <div style="flex:0 0 auto; color:var(--text);">${centerText}</div>
           <div style="flex:1; text-align:right;">${bottomHtml}</div>
         </div>`;
+      }
+      
+      if (belumPenglaris.length) {
+        html += `<style>@keyframes zzzFloatSmall { 0%, 100% { transform: translateY(0) rotate(-5deg); } 50% { transform: translateY(-2px) rotate(5deg); } }</style>
+        <div class="card" style="padding:10px 12px; margin-bottom: 12px; ${!otherItems.length ? 'margin-top: 12px;' : ''} background:#ff4444; border-radius:12px; display:flex; align-items:center; justify-content:center; gap:8px; font-size:12px; font-weight:800; color:#fff; box-shadow: 0 4px 12px rgba(255,68,68,0.3); border:none;">
+           <span style="font-size:16px; animation: zzzFloatSmall 3s ease-in-out infinite;">😴</span>
+           <span>Belum pecah telur: ${belumPenglaris.join(", ")}</span>
+        </div>`;
+      }
+
+      if (otherItems.length) {
         html += otherItems.map(txItem).join("");
       }
       html += `</div></div>`;
