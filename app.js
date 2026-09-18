@@ -6793,6 +6793,8 @@ function home() {
   if (!isExcluded) {
     if (tx.length === 0) {
       warningIcon = `<style>@keyframes zzzFloat { 0%, 100% { transform: translateY(0) scale(1) rotate(-5deg); } 50% { transform: translateY(-4px) scale(1.05) rotate(5deg); } }</style><div style="position:absolute; bottom:12px; right:15px; font-size:32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: zzzFloat 3s ease-in-out infinite;" title="Masih Molor (Belum Penglaris)">😴</div>`;
+    } else if (tx.length === 1) {
+      warningIcon = `<style>@keyframes bangunGirang { 0%, 100% { transform: translateY(0) scale(1); } 20% { transform: translateY(-6px) scale(1.15) rotate(-10deg); } 40% { transform: translateY(0) scale(1.1) rotate(10deg); } 60% { transform: translateY(-3px) scale(1.1) rotate(-5deg); } 80% { transform: translateY(0) scale(1.05) rotate(5deg); } }</style><div style="position:absolute; bottom:12px; right:15px; font-size:32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: bangunGirang 1.5s ease-in-out infinite;" title="Alhamdulillah Penglaris!">🤑</div>`;
     } else if (isLowestStaffToday()) {
       warningIcon = `<svg viewBox="0 0 24 24" width="45" height="45" fill="none" stroke="#ff4d4d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="position:absolute; bottom:12px; right:15px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: pulse 2s infinite;"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline><polyline points="17 18 23 18 23 12"></polyline></svg>`;
     }
