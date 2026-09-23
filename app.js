@@ -6654,8 +6654,8 @@ function getTodayCashFisik() {
   const finalQrisTotal = qrisTotal + globalFbQrisTotal;
 
   const rawBase = globalFbTotal - opsTotal - finalQrisTotal - tabunganTotal - lainnyaTotal;
-  const baseAmount = Math.max(0, rawBase);
-  const cashFisik = Math.max(0, baseAmount + adjustmentAmount);
+  const baseAmount = rawBase;
+  const cashFisik = baseAmount + adjustmentAmount;
   return { cashFisik, opsTotal, qrisTotal: finalQrisTotal, tabunganTotal };
 }
 
@@ -6852,6 +6852,41 @@ function home() {
     }
   }
 
+  function getYesterdayDrawerNominal() {
+    let ydNominal = 0;
+    if (state.staffDrawerYesterday && state.staffDrawerYesterday.loaded) {
+      const dws = (state.staffDrawerYesterday.dws || []).filter(w => !w.deleted);
+      const txListYd = state.staffDrawerYesterday.txList || [];
+      const res = state.staffDrawerYesterday.reserve;
+      if (res) {
+        dws.push({ createdAtMs: res.created_at_ms, remainingAmount: res.amount });
+      }
+      
+      if (dws.length) {
+        let latestDw = dws[0];
+        for (const w of dws) { if ((w.createdAtMs || 0) > (latestDw.createdAtMs || 0)) latestDw = w; }
+        const latestTime = Number(latestDw.createdAtMs || 0);
+        const leftAmount = Number(latestDw.remainingAmount || 0);
+        let cashTxAfter = 0;
+        for (const t of txListYd) {
+          if (Number(t.createdAtMs || 0) > latestTime) {
+            const p = String(t.paymentMethod || t.paymentLabel || t.payment || "").toLowerCase();
+            if (!p.includes("qris") && !p.includes("transfer")) cashTxAfter += Number(t.amount || 0);
+          }
+        }
+        ydNominal = leftAmount + cashTxAfter;
+      } else {
+        let cashSum = 0;
+        for (const t of txListYd) {
+          const p = String(t.paymentMethod || t.paymentLabel || t.payment || "").toLowerCase();
+          if (!p.includes("qris") && !p.includes("transfer")) cashSum += Number(t.amount || 0);
+        }
+        ydNominal = cashSum;
+      }
+    }
+    return ydNominal;
+  }
+
   function drawerWithdrawalCard() {
     // ---- Estimasi Kemarin ----
     const yd = yesterdayKey();
@@ -6949,6 +6984,15 @@ function home() {
       }
     }
     if (amount < 0) { toast("Nominal tidak valid (amount: " + amount + ")", true); return; }
+    
+    // Validasi tidak boleh lebih besar dari total laci
+    const { cashFisik } = typeof getTodayCashFisik === "function" ? getTodayCashFisik() : { cashFisik: 0 };
+    const maxAllowed = cashFisik + getYesterdayDrawerNominal();
+    if (amount > maxAllowed) {
+      toast(`Gagal: Nominal kembalian (Rp ${rp(amount)}) melebihi sisa uang laci (Rp ${rp(maxAllowed)}).`, true);
+      return;
+    }
+
     try {
       const id = `scr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
       const dk = todayKey();
