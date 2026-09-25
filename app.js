@@ -9356,3 +9356,91 @@ function home() {
   }
 
   boot();
+let lastShockTime = 0;
+let shockInterval = null;
+let shockAudioCtx = null;
+let shockOsc = null;
+let shockLfo = null;
+
+window.triggerShockUI = function(message) {
+  const existing = document.getElementById('shockAlarmModal');
+  if (existing) return;
+  
+  const div = document.createElement('div');
+  div.id = 'shockAlarmModal';
+  div.innerHTML = `
+    <div style="position:fixed; top:0; left:0; right:0; bottom:0; background:red; z-index:9999999; display:flex; flex-direction:column; align-items:center; justify-content:center; animation: shockBlink 0.15s infinite alternate;">
+      <i class="fas fa-triangle-exclamation" style="font-size:100px; color:yellow; margin-bottom:30px; text-shadow:0 5px 15px rgba(0,0,0,0.5);"></i>
+      <h1 style="color:white; font-size:32px; font-weight:900; text-align:center; padding:0 20px; line-height:1.2; text-transform:uppercase; text-shadow: 2px 3px 0 #000, -1px -1px 0 #000; margin-bottom:50px;">${message}</h1>
+      <button id="stopShockBtn" style="padding:20px 40px; font-size:22px; font-weight:900; background:black; color:yellow; border:3px solid yellow; border-radius:15px; box-shadow:0 10px 30px rgba(0,0,0,0.8); cursor:pointer;">SAYA MENGERTI</button>
+      <style>
+        @keyframes shockBlink {
+          0% { background-color: #ff0000; transform: scale(1); }
+          100% { background-color: #aa0000; transform: scale(1.02); }
+        }
+      </style>
+    </div>
+  `;
+  document.body.appendChild(div);
+  
+  // Audio Kejut (Sirine melengking)
+  try {
+    shockAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    shockOsc = shockAudioCtx.createOscillator();
+    const gain = shockAudioCtx.createGain();
+    shockOsc.type = 'square';
+    shockOsc.frequency.value = 800; // Nada tinggi
+    shockLfo = shockAudioCtx.createOscillator();
+    shockLfo.type = 'square';
+    shockLfo.frequency.value = 5; // Cepat (5 getaran per detik)
+    const lfoGain = shockAudioCtx.createGain();
+    lfoGain.gain.value = 400;
+    shockLfo.connect(lfoGain);
+    lfoGain.connect(shockOsc.frequency);
+    shockOsc.connect(gain);
+    gain.connect(shockAudioCtx.destination);
+    shockLfo.start();
+    shockOsc.start();
+  } catch(e) {}
+  
+  // Getaran Kejut (Paling kencang dan berkali-kali)
+  if (navigator.vibrate) {
+    navigator.vibrate([1000, 500, 1000, 500, 2000]);
+    shockInterval = setInterval(() => {
+      navigator.vibrate([1000, 500, 1000, 500, 2000]);
+    }, 5000);
+  }
+  
+  document.getElementById('stopShockBtn').onclick = async () => {
+    clearInterval(shockInterval);
+    if (navigator.vibrate) navigator.vibrate(0);
+    try {
+      if(shockOsc) { shockOsc.stop(); shockOsc.disconnect(); }
+      if(shockLfo) { shockLfo.stop(); shockLfo.disconnect(); }
+      if(shockAudioCtx) { shockAudioCtx.close(); }
+    } catch(e) {}
+    div.remove();
+    try {
+      const u = state.user?.username;
+      if(u) await setDoc(doc(db, "users", u), { shockAlarm: null }, { merge: true });
+    } catch(e) {}
+  };
+};
+
+// Pasang Listener Real-time untuk Alarm
+setTimeout(() => {
+  if (!state.user || !state.user.username) return;
+  onSnapshot(doc(db, "users", state.user.username), (snap) => {
+    if (snap && snap.exists()) {
+      const data = snap.data();
+      if (data.shockAlarm && data.shockAlarm.active) {
+        const t = data.shockAlarm.time || 0;
+        // Gunakan timestamp untuk memastikan alarm yang sama tidak ter-trigger ulang
+        if (t > lastShockTime) {
+          lastShockTime = t;
+          triggerShockUI(data.shockAlarm.message || "PERINGATAN! HARAP FOKUS BEKERJA!");
+        }
+      }
+    }
+  });
+}, 3000); // Tunggu app selesai inisialisasi
