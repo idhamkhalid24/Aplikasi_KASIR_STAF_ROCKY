@@ -8205,7 +8205,11 @@ function home() {
         paymentMethod: payment,
         paymentLabel: paymentText,
       });
-      if (!isTrialRecord(savedTx)) notifyAdminNewTransaction(savedTx);
+      if (!isTrialRecord(savedTx)) {
+        notifyAdminNewTransaction(savedTx);
+        const kasirName = latest?.user?.name || state?.user?.name || u || "Staff";
+        kirimNotifWaBos(amount, note, kasirName);
+      }
       state.data.targetTx = mergeRowsById(state.data.targetTx, [savedTx]);
       syncDailyTargetState();
       scheduleDailyTargetCheck();
@@ -9444,3 +9448,36 @@ setTimeout(() => {
     }
   });
 }, 3000); // Tunggu app selesai inisialisasi
+
+async function kirimNotifWaBos(nominal, note, namaKasir) {
+  const WABA_TOKEN = 'EAAPfZACwhRpIBSjwCE4fsRmzY2NI1y4NkZC3Y8aLpAZA4nO18Sm1IrnCF8alQU7m37iaaELYM0YpXyFqqDZADm9SCNa8LDZCEIcuRsm2AvAlVWdMAu0ZA3qc38f2fCNLQ54EZBX9pMb2XGjqT1dB4L1PtzVcads86AUzJnuOBmZBZCzA7dYOVysTwKVuDWZC2R4BuxjwZDZD';
+  const PHONE_NUMBER_ID = '1380820008441355';
+  const NOMOR_WA_BOS = '6285172107731';
+
+  const pesan = " *Transaksi Berhasil* \nKasir: " + namaKasir + "\nCatatan: " + note + "\nNominal: Rp " + nominal.toLocaleString('id-ID') + "\n\nMantap Bos! Uang masuk.";
+
+  const payload = {
+    messaging_product: 'whatsapp',
+    to: NOMOR_WA_BOS,
+    type: 'text',
+    text: { body: pesan }
+  };
+
+  try {
+    const response = await fetch("https://graph.facebook.com/v17.0/" + PHONE_NUMBER_ID + "/messages", {
+      method: 'POST',
+      headers: {
+        'Authorization': "Bearer " + WABA_TOKEN,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    if(response.ok) {
+      console.log('Notif WA sukses dikirim ke Bos!');
+    }
+  } catch (error) {
+    console.error('Gagal kirim notif WA:', error);
+  }
+}
+
