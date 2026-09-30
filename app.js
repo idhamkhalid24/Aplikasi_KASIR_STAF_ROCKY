@@ -9459,7 +9459,8 @@ async function kirimNotifWaBos(nominal, note, namaKasir) {
   const PHONE_NUMBER_ID = '1380820008441355';
   const NOMOR_WA_BOS = '6285172107731';
 
-  const pesan = 🗑️ *TRANSAKSI DIHAPUS*\n\nKasir: \n\nMenghapus Data Penjualan:\nNominal: **\nCatatan: ;
+  const formatRp = (num) => 'Rp ' + Number(num).toLocaleString('id-ID');
+  const pesan = `💸 *PENJUALAN BARU*\n\nKasir: ${namaKasir}\n\nNominal: *${formatRp(nominal)}*\nCatatan: ${note || '-'}`;
 
   const payload = {
     messaging_product: 'whatsapp',
