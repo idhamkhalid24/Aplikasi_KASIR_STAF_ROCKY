@@ -7011,7 +7011,7 @@ function home() {
       console.log("[saveStaffChangeReserve] result:", upsertData, "error:", error);
       if (error) throw error;
       state.staffChangeReserve = payload;
-      toast("Kembalian besok berhasil disimpan ✓");
+      toast("Kembalian besok berhasil disimpan"); try { if (typeof kirimNotifKembalianBesok === "function") { kirimNotifKembalianBesok(amount, note, state.user?.name || state.user?.username || "Staff", maxAllowed, maxAllowed - amount); } } catch(e) {}
       // Re-render history page
       if (state.page === "history") history();
     } catch (e) {
@@ -8301,6 +8301,11 @@ function home() {
         deletedByName: state.user.name,
       });
       toast("Transaksi dihapus aman");
+      try {
+        if (typeof kirimNotifHapusTxWaBos === "function") {
+          kirimNotifHapusTxWaBos(t, state.user.name);
+        }
+      } catch(e) {}
     } catch (e) {
       console.error(e);
       toast(
@@ -9454,7 +9459,7 @@ async function kirimNotifWaBos(nominal, note, namaKasir) {
   const PHONE_NUMBER_ID = '1380820008441355';
   const NOMOR_WA_BOS = '6285172107731';
 
-  const pesan = " *Transaksi Berhasil* \nKasir: " + namaKasir + "\nCatatan: " + note + "\nNominal: Rp " + nominal.toLocaleString('id-ID') + "\n\nMantap Bos! Uang masuk.";
+  const pesan = 🗑️ *TRANSAKSI DIHAPUS*\n\nKasir: \n\nMenghapus Data Penjualan:\nNominal: **\nCatatan: ;
 
   const payload = {
     messaging_product: 'whatsapp',
@@ -9481,3 +9486,62 @@ async function kirimNotifWaBos(nominal, note, namaKasir) {
   }
 }
 
+async function kirimNotifKembalianBesok(nominal, note, namaKasir, maxAllowed, sisaSetor) {
+  const WABA_TOKEN = 'EAAPfZACwhRpIBSjwCE4fsRmzY2NI1y4NkZC3Y8aLpAZA4nO18Sm1IrnCF8alQU7m37iaaELYM0YpXyFqqDZADm9SCNa8LDZCEIcuRsm2AvAlVWdMAu0ZA3qc38f2fCNLQ54EZBX9pMb2XGjqT1dB4L1PtzVcads86AUzJnuOBmZBZCzA7dYOVysTwKVuDWZC2R4BuxjwZDZD';
+  const PHONE_NUMBER_ID = '1380820008441355';
+  const NOMOR_WA_BOS = '6285172107731';
+
+  const formatRp = (num) => 'Rp ' + Number(num).toLocaleString('id-ID');
+  const pesan = `✅ *KEMBALIAN BESOK*\n\nKasir: ${namaKasir}\nDisisihkan: *${formatRp(nominal)}*\nCatatan: ${note || '-'}\n\n_Detail:_\nTotal Uang Laci: ${formatRp(maxAllowed)}\nSisa Wajib Disetor: *${formatRp(sisaSetor)}*`;
+
+  const payload = {
+    messaging_product: 'whatsapp',
+    to: NOMOR_WA_BOS,
+    type: 'text',
+    text: { body: pesan }
+  };
+
+  try {
+    const response = await fetch("https://graph.facebook.com/v17.0/" + PHONE_NUMBER_ID + "/messages", {
+      method: 'POST',
+      headers: {
+        'Authorization': "Bearer " + WABA_TOKEN,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    if(response.ok) console.log('Notif Kembalian sukses!');
+  } catch (error) {
+    console.error('Gagal kirim notif Kembalian WA:', error);
+  }
+}
+
+async function kirimNotifHapusTxWaBos(t, deletedByName) {
+  const WABA_TOKEN = 'EAAPfZACwhRpIBSjwCE4fsRmzY2NI1y4NkZC3Y8aLpAZA4nO18Sm1IrnCF8alQU7m37iaaELYM0YpXyFqqDZADm9SCNa8LDZCEIcuRsm2AvAlVWdMAu0ZA3qc38f2fCNLQ54EZBX9pMb2XGjqT1dB4L1PtzVcads86AUzJnuOBmZBZCzA7dYOVysTwKVuDWZC2R4BuxjwZDZD';
+  const PHONE_NUMBER_ID = '1380820008441355';
+  const NOMOR_WA_BOS = '6285172107731';
+
+  const formatRp = (num) => 'Rp ' + Number(num).toLocaleString('id-ID');
+  const pesan = `🗑️ *TRANSAKSI DIHAPUS*\n\nKasir: ${deletedByName || t.name || t.user}\n\nMenghapus Data Penjualan:\nNominal: *${formatRp(t.amount)}*\nCatatan: ${t.note || '-'}`;
+
+  const payload = {
+    messaging_product: 'whatsapp',
+    to: NOMOR_WA_BOS,
+    type: 'text',
+    text: { body: pesan }
+  };
+
+  try {
+    const response = await fetch("https://graph.facebook.com/v17.0/" + PHONE_NUMBER_ID + "/messages", {
+      method: 'POST',
+      headers: {
+        'Authorization': "Bearer " + WABA_TOKEN,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    if(response.ok) console.log('Notif Hapus Tx sukses!');
+  } catch (error) {
+    console.error('Gagal kirim notif Hapus Tx WA:', error);
+  }
+}
