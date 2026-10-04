@@ -3085,7 +3085,7 @@ function nav() {
     return;
   }
   n.style.display = "flex";
-  f.style.display = state.page === "home" ? "block" : "none";
+  f.style.display = (state.page === "home" && !missedAttendanceLockForDate()) ? "block" : "none";
   if (af) af.style.display = showStaffAbsenFab() ? "flex" : "none";
   document
     .querySelectorAll(".nav button")
