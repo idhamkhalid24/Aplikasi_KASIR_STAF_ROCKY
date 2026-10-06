@@ -4,6 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#3b6ef0" />
+  <!-- Mencegah WebView melakukan cache pada file index.html ini -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>Rocky Hijab Staff Supabase - Sesuai Server Pusat</title>
 
   <!--
@@ -20,7 +24,8 @@
   <script>
     // Gunakan angka versi statis. Ubah angka ini HANYA JIKA Anda update code di GitHub!
     // Contoh: ubah jadi "20261006_02" kalau ada update baru.
-    var v = "20261006_06";
+    var v = "20261006_01";
+    window.__APP_VERSION__ = v;
     document.write('<link rel="stylesheet" href="./style.css?v=' + v + '">');
     document.write('<link rel="stylesheet" href="./majoo-theme.css?v=' + v + '">');
     document.write('<link rel="stylesheet" href="./neo-theme.css?v=' + v + '">');

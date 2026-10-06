@@ -8603,6 +8603,22 @@ function home() {
   }
   async function boot() {
     setTheme(getTheme());
+    
+    // Auto-update checker (Bypass WebView cache automatically)
+    if (window.__APP_VERSION__) {
+      fetch("index.html?_t=" + Date.now())
+        .then(r => r.text())
+        .then(html => {
+          const m = html.match(/var v = "([^"]+)"/);
+          if (m && m[1] && m[1] !== window.__APP_VERSION__) {
+            toast("Mendownload pembaruan aplikasi...");
+            setTimeout(() => {
+              location.replace(location.pathname + "?_upd=" + Date.now());
+            }, 1000);
+          }
+        }).catch(() => {});
+    }
+
     const raw = [];
     try {
       raw.push(JSON.parse(localStorage.getItem(SESSION) || "null"));
