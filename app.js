@@ -5454,7 +5454,7 @@ function txItem(t) {
 
   return `<div class="tx-row tx-row-card-mini" style="${shadowStyle}">
     <div class="tx-card-main">
-      <div class="tx-card-info">${staffNameLabel}${timeLabel}${infoPay}</div>
+      <div class="tx-card-info" style="white-space:normal!important; overflow:visible!important; display:flex; flex-wrap:wrap; align-items:center;">${staffNameLabel}${timeLabel}${infoPay}</div>
     </div>
     <div class="tx-card-side">
       <div class="tx-card-amount">Rp ${rp(t.amount)}</div>
