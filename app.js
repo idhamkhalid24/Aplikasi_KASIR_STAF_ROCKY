@@ -9183,7 +9183,12 @@ function home() {
         indicator.textContent = "Memuat ulang...";
         indicator.style.opacity = "1";
         indicator.style.transform = "translate(-50%,12px)";
-        setTimeout(() => fullSync(), 180);
+        setTimeout(async () => {
+          try { await fullSync(); } catch (e) {}
+          ptr.reloading = false;
+          indicator.style.opacity = "0";
+          indicator.style.transform = "translate(-50%,-70px)";
+        }, 180);
       }
     };
     document.addEventListener("touchend", endPull, { passive: true });
