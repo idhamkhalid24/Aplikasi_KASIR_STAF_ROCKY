@@ -18,9 +18,9 @@
     bukan file lama dari cache HP.
   -->
   <script>
-    // Mematikan cache WebView sepenuhnya agar tidak perlu hapus cache manual lagi.
-    // Menambahkan timestamp pada setiap file CSS dan JS.
-    var v = Date.now();
+    // Gunakan angka versi statis. Ubah angka ini HANYA JIKA Anda update code di GitHub!
+    // Contoh: ubah jadi "20261006_02" kalau ada update baru.
+    var v = "20261006_02";
     document.write('<link rel="stylesheet" href="./style.css?v=' + v + '">');
     document.write('<link rel="stylesheet" href="./majoo-theme.css?v=' + v + '">');
     document.write('<link rel="stylesheet" href="./neo-theme.css?v=' + v + '">');
@@ -46,7 +46,7 @@
   Samakan versinya dengan CSS supaya gampang dicek.
 -->
 <script>
-  var v = Date.now();
+  var v = "20261006_01";
   document.write('<script type="module" src="./app.js?v=' + v + '"><\/script>');
 </script>
 </body>
