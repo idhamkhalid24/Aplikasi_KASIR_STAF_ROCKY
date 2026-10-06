@@ -9333,7 +9333,7 @@ function home() {
   setupAutoSync();
   // Pull-to-refresh dimatikan supaya tidak ada read tambahan tanpa sengaja
   // dan supaya tidak mengganggu scroll.
-  // installPullToReload();
+  installPullToReload();
 
   // === LONG-PRESS DELEGATION: sync header button ===
   // Tap = hardRefreshApp(), Long-press (550ms) = showSyncCenter()
