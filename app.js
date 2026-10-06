@@ -8320,15 +8320,24 @@ function home() {
   function getPosition() {
     return new Promise((res, rej) => {
       if (!navigator.geolocation) return rej(new Error("GPS tidak tersedia"));
+      
+      const onSuccess = (p) => res({
+        lat: p.coords.latitude,
+        lng: p.coords.longitude,
+        accuracy: p.coords.accuracy || 0,
+      });
+
       navigator.geolocation.getCurrentPosition(
-        (p) =>
-          res({
-            lat: p.coords.latitude,
-            lng: p.coords.longitude,
-            accuracy: p.coords.accuracy || 0,
-          }),
-        (e) => rej(e),
-        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
+        onSuccess,
+        (e) => {
+          console.warn("High accuracy GPS failed, trying low accuracy...", e);
+          navigator.geolocation.getCurrentPosition(
+            onSuccess,
+            (err) => rej(err),
+            { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 }
+          );
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
       );
     });
   }
