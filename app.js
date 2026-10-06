@@ -2854,14 +2854,25 @@ function isLowestStaffToday() {
 
 function syncHeroLine() {
   const pc = pendingForUser().length;
+  
+  let attHtml = "";
+  try {
+    const a = typeof todayAtt === "function" ? todayAtt() : null;
+    const c = typeof todayClosing === "function" ? todayClosing() : null;
+    const attLabel = c ? "Closing" : "Absen";
+    const attTime = c ? closingTimeText(c) : a ? timeID(ms(a)) : "--:--";
+    const attStatus = c ? "🔒" : a ? "✅" : "⏳";
+    attHtml = `<span style="margin-left:8px; padding-left:8px; border-left:1px solid rgba(255,255,255,0.4); display:inline-flex; align-items:center; gap:4px;">${attStatus} <b>${attLabel}: ${attTime}</b></span>`;
+  } catch(e) {}
+
   const msg = pc
-    ? `<b>${pc} data belum terkirim</b><span> • dicoba otomatis</span>`
-    : `<span>Sync terakhir: <b>${syncTimeText()}</b></span>`;
+    ? `<b>${pc} data belum terkirim</b><span> • dicoba otomatis</span>${attHtml}`
+    : `<span>Sync terakhir: <b>${syncTimeText()}</b></span>${attHtml}`;
   const err = state.syncError
     ? `<div class="hero-sync-error">${esc(state.syncError)}</div>`
     : "";
     
-  return `<div class="hero-sync"><div>${msg}${err}</div><button class="hero-sync-btn" onclick="showForceUpdateConfirm()" aria-label="Update App">Click For Update</button></div>`;
+  return `<div class="hero-sync" style="display:flex; align-items:center; justify-content:space-between;"><div>${msg}${err}</div><button class="hero-sync-btn" onclick="showForceUpdateConfirm()" aria-label="Update App">Click For Update</button></div>`;
 }
 function top(title, sub) {
   const icon = isNeoTheme() ? "M" : "NB",
