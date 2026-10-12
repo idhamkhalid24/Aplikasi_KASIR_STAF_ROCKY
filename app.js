@@ -6667,7 +6667,7 @@ function getTodayCashFisik() {
   const rawBase = globalFbTotal - opsTotal - finalQrisTotal - tabunganTotal - lainnyaTotal;
   const baseAmount = rawBase;
   const cashFisik = baseAmount + adjustmentAmount;
-  return { cashFisik, opsTotal, qrisTotal: finalQrisTotal, tabunganTotal };
+  return { cashFisik, opsTotal, qrisTotal: finalQrisTotal, tabunganTotal, globalFbTotal };
 }
 
 window.openCashOutModal = () => {
@@ -6997,8 +6997,10 @@ function home() {
     if (amount < 0) { toast("Nominal tidak valid (amount: " + amount + ")", true); return; }
     
     // Validasi tidak boleh lebih besar dari total laci
-    const { cashFisik } = typeof getTodayCashFisik === "function" ? getTodayCashFisik() : { cashFisik: 0 };
-    const maxAllowed = cashFisik + getYesterdayDrawerNominal();
+    const cashData = typeof getTodayCashFisik === "function" ? getTodayCashFisik() : { cashFisik: 0, opsTotal: 0, qrisTotal: 0, globalFbTotal: 0 };
+    const cashFisik = Number(cashData.cashFisik || 0);
+    const ydNominal = typeof getYesterdayDrawerNominal === "function" ? Number(getYesterdayDrawerNominal() || 0) : 0;
+    const maxAllowed = cashFisik + ydNominal;
     if (amount > maxAllowed) {
       toast(`Gagal: Nominal kembalian (Rp ${rp(amount)}) melebihi sisa uang laci (Rp ${rp(maxAllowed)}).`, true);
       return;
@@ -7022,7 +7024,23 @@ function home() {
       console.log("[saveStaffChangeReserve] result:", upsertData, "error:", error);
       if (error) throw error;
       state.staffChangeReserve = payload;
-      toast("Kembalian besok berhasil disimpan"); try { if (typeof kirimNotifKembalianBesok === "function") { kirimNotifKembalianBesok(amount, note, state.user?.name || state.user?.username || "Staff", maxAllowed, maxAllowed - amount); } } catch(e) {}
+      toast("Kembalian besok berhasil disimpan");
+      try {
+        if (typeof kirimNotifKembalianBesok === "function") {
+          kirimNotifKembalianBesok({
+            nominal: amount,
+            note,
+            namaKasir: state.user?.name || state.user?.username || "Staff",
+            maxAllowed,
+            sisaSetor: maxAllowed - amount,
+            cashFisik,
+            ydNominal,
+            globalFbTotal: Number(cashData.globalFbTotal || 0),
+            qrisTotal: Number(cashData.qrisTotal || 0),
+            opsTotal: Number(cashData.opsTotal || 0)
+          });
+        }
+      } catch(e) {}
       // Re-render history page
       if (state.page === "history") history();
     } catch (e) {
@@ -9538,13 +9556,57 @@ async function kirimNotifWaBos(nominal, note, namaKasir) {
   }
 }
 
-async function kirimNotifKembalianBesok(nominal, note, namaKasir, maxAllowed, sisaSetor) {
+async function kirimNotifKembalianBesok(paramsOrNominal, note, namaKasir, maxAllowed, sisaSetor) {
   const WABA_TOKEN = 'EAAPfZACwhRpIBSjwCE4fsRmzY2NI1y4NkZC3Y8aLpAZA4nO18Sm1IrnCF8alQU7m37iaaELYM0YpXyFqqDZADm9SCNa8LDZCEIcuRsm2AvAlVWdMAu0ZA3qc38f2fCNLQ54EZBX9pMb2XGjqT1dB4L1PtzVcads86AUzJnuOBmZBZCzA7dYOVysTwKVuDWZC2R4BuxjwZDZD';
   const PHONE_NUMBER_ID = '1380820008441355';
   const NOMOR_WA_BOS = '6285172107731';
 
-  const formatRp = (num) => 'Rp ' + Number(num).toLocaleString('id-ID');
-  const pesan = `✅ *KEMBALIAN BESOK*\n\nKasir: ${namaKasir}\nDisisihkan: *${formatRp(nominal)}*\nCatatan: ${note || '-'}\n\n_Detail:_\nTotal Uang Laci: ${formatRp(maxAllowed)}\nSisa Wajib Disetor: *${formatRp(sisaSetor)}*`;
+  let nominal = 0, kasir = 'Staff', catatan = '-', totalLaci = 0, sisa = 0;
+  let cashFisik = 0, ydNominal = 0, omset = 0, qris = 0, ops = 0;
+
+  if (typeof paramsOrNominal === 'object' && paramsOrNominal !== null) {
+    nominal = Number(paramsOrNominal.nominal || 0);
+    catatan = paramsOrNominal.note || '-';
+    kasir = paramsOrNominal.namaKasir || 'Staff';
+    totalLaci = Number(paramsOrNominal.maxAllowed || 0);
+    sisa = Number(paramsOrNominal.sisaSetor || 0);
+    cashFisik = Number(paramsOrNominal.cashFisik || 0);
+    ydNominal = Number(paramsOrNominal.ydNominal || 0);
+    omset = Number(paramsOrNominal.globalFbTotal || 0);
+    qris = Number(paramsOrNominal.qrisTotal || 0);
+    ops = Number(paramsOrNominal.opsTotal || 0);
+  } else {
+    nominal = Number(paramsOrNominal || 0);
+    catatan = note || '-';
+    kasir = namaKasir || 'Staff';
+    totalLaci = Number(maxAllowed || 0);
+    sisa = Number(sisaSetor || 0);
+    cashFisik = totalLaci;
+  }
+
+  const formatRp = (num) => 'Rp ' + Number(Math.round(num || 0)).toLocaleString('id-ID');
+  
+  const d = new Date();
+  const tglIndo = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+
+  const pesan = `💵 *LAPORAN UANG LACI & SETORAN*
+
+Tanggal: ${tglIndo}
+Kasir: *${kasir}*
+
+👉 *SISA WAJIB DISETOR: ${formatRp(sisa)}*
+_(Total uang laci setelah closing: ${formatRp(nominal)})_
+
+_Rincian Kasir:_
+• Cash fisik hari ini: ${formatRp(cashFisik)}
+• Ditambah uang kemarin: ${formatRp(ydNominal)}
+• Kembalian (${kasir}): -${formatRp(nominal)}
+• *Total uang laci disetor: ${formatRp(sisa)}*
+
+_Detail Penjualan Hari Ini:_
+• Omset Toko: ${formatRp(omset)}
+• Non-Tunai (QRIS/Trf): -${formatRp(qris)}
+• Pengeluaran [OPS]: -${formatRp(ops)}${catatan && catatan !== '-' ? `\n• Catatan: ${catatan}` : ''}`;
 
   const payload = {
     messaging_product: 'whatsapp',
