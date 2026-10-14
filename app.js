@@ -2704,6 +2704,12 @@ function closeModal(force = false) {
     if (typeof stopPrayerAyat === "function") stopPrayerAyat(false);
   } catch (e) {}
   try {
+    if (typeof stopQrisPolling === "function") stopQrisPolling();
+  } catch (e) {}
+  try {
+    if (typeof stopQrisCountdown === "function") stopQrisCountdown();
+  } catch (e) {}
+  try {
     if (
       document.activeElement &&
       typeof document.activeElement.blur === "function"
@@ -2979,16 +2985,18 @@ function cashDrawerStaffMessage(row = state.data.cashDrawer) {
   return "Cash fisik PAS. Tidak ada selisih.";
 }
 function cashDrawerStatusCard() {
-  const row = state.data.cashDrawer,
-    status = row ? row.status : "empty";
-  const cardStatus = row ? status : "blank";
-  const statusLabel = row
-    ? status === "minus"
+  const row = state.data.cashDrawer;
+  if (!row || !row.status || row.status === "empty" || row.status === "blank") {
+    return "";
+  }
+  const status = row.status;
+  const cardStatus = status;
+  const statusLabel =
+    status === "minus"
       ? "MINUS"
       : status === "lebih"
         ? "LEBIH"
-        : "PAS"
-    : "BELUM CEK";
+        : "PAS";
   const message = cashDrawerStaffMessage(row);
   return `<div class="cash-drawer-staff-card ${cardStatus}"><div class="cash-drawer-staff-copy"><span class="cash-drawer-staff-label">Cash Fisik Hari Ini</span><b class="cash-drawer-staff-title">${esc(message)}</b></div><span class="cash-drawer-staff-badge">${esc(statusLabel)}</span></div>`;
 }
@@ -3098,6 +3106,10 @@ function nav() {
   n.style.display = "flex";
   f.style.display = (state.page === "home" && !missedAttendanceLockForDate()) ? "block" : "none";
   if (af) af.style.display = showStaffAbsenFab() ? "flex" : "none";
+  const nQris = $("nav-qris");
+  if (nQris) {
+    nQris.style.display = state.user?.qrisAccess === true ? "flex" : "none";
+  }
   document
     .querySelectorAll(".nav button")
     .forEach((b) => b.classList.remove("active"));
@@ -3674,6 +3686,7 @@ function startStaffRealtime() {
         }
         state.user = {
           ...state.user,
+          qrisAccess: fresh.qrisAccess === true,
           transactionBonusRate: hasBonusValue(fresh.transactionBonusRate)
             ? Number(fresh.transactionBonusRate)
             : null,
@@ -3966,6 +3979,7 @@ async function loadStaffData(opts = {}) {
         name: fresh.name || u,
         pin: String(fresh.pin || state.user.pin || ""),
         role: fresh.role || "staff",
+        qrisAccess: fresh.qrisAccess === true,
         transactionBonusRate: hasBonusValue(fresh.transactionBonusRate)
           ? Number(fresh.transactionBonusRate)
           : null,
@@ -3997,6 +4011,7 @@ async function loadStaffData(opts = {}) {
         name: state.user.name,
         pin: state.user.pin,
         role: state.user.role,
+        qrisAccess: state.user.qrisAccess === true,
         transactionBonusRate: state.user.transactionBonusRate,
         transactionBonusPercent: state.user.transactionBonusPercent,
         closingBonusPerMinute: isDailyUser(state.user)
@@ -8576,6 +8591,7 @@ function home() {
         name: data.name || u,
         pin: String(data.pin || ""),
         role: data.role || "staff",
+        qrisAccess: data.qrisAccess === true,
         transactionBonusRate: hasBonusValue(data.transactionBonusRate)
           ? Number(data.transactionBonusRate)
           : null,
@@ -8603,6 +8619,7 @@ function home() {
         name: state.user.name,
         pin: state.user.pin,
         role: state.user.role,
+        qrisAccess: state.user.qrisAccess === true,
         transactionBonusRate: state.user.transactionBonusRate,
         transactionBonusPercent: state.user.transactionBonusPercent,
         closingBonusPerMinute: isDailyUser(state.user)
@@ -8716,6 +8733,7 @@ function home() {
             name: data.name || username,
             pin: String(data.pin || ""),
             role: data.role || "staff",
+            qrisAccess: data.qrisAccess === true,
             transactionBonusRate: hasBonusValue(data.transactionBonusRate)
               ? Number(data.transactionBonusRate)
               : null,
@@ -8743,6 +8761,7 @@ function home() {
             name: state.user.name,
             pin: state.user.pin,
             role: state.user.role,
+            qrisAccess: state.user.qrisAccess === true,
             transactionBonusRate: state.user.transactionBonusRate,
             transactionBonusPercent: state.user.transactionBonusPercent,
             closingBonusPerMinute: isDailyUser(state.user)
@@ -9369,6 +9388,13 @@ function home() {
   window.handleTxProductKey = handleTxProductKey;
   window.updateTxProductAddButton = updateTxProductAddButton;
   window.openTxDetail = openTxDetail;
+  window.openStaffQrisModal = openStaffQrisModal;
+  window.formatQrisNominalInput = formatQrisNominalInput;
+  window.generateStaffQris = generateStaffQris;
+  window.cancelStaffQris = cancelStaffQris;
+  window.checkStaffQrisManual = checkStaffQrisManual;
+  window.finishStaffQris = finishStaffQris;
+  window.openTodayQrisHistoryModal = openTodayQrisHistoryModal;
   statusPill = function () {
     if (isTrialUser()) return `<span class="pill amber">Mode Trial</span>`;
     if (isClosedToday()) return `<span class="pill amber">Sudah closing</span>`;
@@ -9667,5 +9693,592 @@ async function kirimNotifHapusTxWaBos(t, deletedByName) {
     if(response.ok) console.log('Notif Hapus Tx sukses!');
   } catch (error) {
     console.error('Gagal kirim notif Hapus Tx WA:', error);
+  }
+}
+
+// ============================================================================
+// FITUR PEMBAYARAN QRIS MIDTRANS REALTIME (KASIR STAF)
+// ============================================================================
+const ACTIVE_QRIS_KEY = "rocky_active_qris_session_v1";
+let qrisPollingTimer = null;
+let qrisCountdownTimer = null;
+let currentQrisOrderId = null;
+let currentQrisAmount = 0;
+let currentQrisNote = "";
+
+function saveActiveQrisSession(session) {
+  try {
+    localStorage.setItem(ACTIVE_QRIS_KEY, JSON.stringify(session));
+  } catch (e) {}
+}
+
+function getActiveQrisSession() {
+  try {
+    const raw = localStorage.getItem(ACTIVE_QRIS_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (!s || !s.orderId || !s.expiresAtMs) return null;
+    if (Date.now() >= Number(s.expiresAtMs)) {
+      clearActiveQrisSession();
+      return null;
+    }
+    return s;
+  } catch (e) {
+    return null;
+  }
+}
+
+function clearActiveQrisSession() {
+  try {
+    localStorage.removeItem(ACTIVE_QRIS_KEY);
+  } catch (e) {}
+  stopQrisCountdown();
+}
+
+function openStaffQrisModal() {
+  if (!state.user) return toast("Silakan login terlebih dahulu");
+  if (state.user?.qrisAccess !== true) return toast("Anda tidak memiliki akses ke fitur QRIS.");
+  if (!canTx()) return toast(txBlockedMessage());
+
+  // Cek apakah ada pembayaran QRIS aktif yang belum selesai (< 5 menit)
+  const activeSession = getActiveQrisSession();
+  if (activeSession && Date.now() < activeSession.expiresAtMs) {
+    currentQrisOrderId = activeSession.orderId;
+    currentQrisAmount = activeSession.amount;
+    currentQrisNote = activeSession.note;
+    renderStaffQrisBarcodeScreen(
+      activeSession.qrImgOrString,
+      activeSession.orderId,
+      activeSession.amount,
+      activeSession.note,
+      activeSession.expiresAtMs
+    );
+    startQrisPolling(
+      activeSession.orderId,
+      activeSession.amount,
+      activeSession.note,
+      activeSession.kasirName
+    );
+    return;
+  }
+
+  // Jika tidak ada transaksi aktif, buka formulir baru
+  stopQrisPolling();
+  stopQrisCountdown();
+  currentQrisOrderId = null;
+  currentQrisAmount = 0;
+  currentQrisNote = "";
+
+  const title = "Pembayaran QRIS Rocky Hijab";
+  const body = `
+    <div class="qris-modal-container">
+      <div style="text-align:center;">
+        <div class="qris-badge-top">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+          ROCKY HIJAB QRIS REALTIME
+        </div>
+      </div>
+
+      <div class="field" style="margin-bottom:16px;">
+        <label style="font-size:12.5px;font-weight:700;margin-bottom:6px;display:block;color:var(--muted);text-align:center;">Nominal Pembayaran</label>
+        <input id="qrisNominalInput" class="tx-amount-input" type="tel" inputmode="numeric" placeholder="Rp 0" oninput="formatQrisNominalInput(this)" style="text-align:center;font-size:32px;font-weight:900;height:60px;border-radius:18px;border:2.5px solid #0284c7;color:#0284c7;background:rgba(2,132,199,0.03);" autofocus />
+      </div>
+
+      <div class="field" style="margin-bottom:20px;">
+        <label style="font-size:12px;font-weight:700;margin-bottom:5px;display:block;">Keterangan / Catatan (Opsional)</label>
+        <input id="qrisNoteInput" type="text" placeholder="Contoh: Kerudung Bella Square" style="font-size:13px;border-radius:12px;" />
+      </div>
+
+      <button id="btnGenerateQris" type="button" class="btn primary" style="width:100%;height:46px;font-size:14px;font-weight:800;border-radius:14px;background:#0284c7;display:flex;align-items:center;justify-content:center;gap:8px;" onclick="generateStaffQris()">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M7 7h.01M18 7h.01M7 18h.01M14 14h3v3h-3zM17 17h3v3h-3z"/></svg>
+        Tampilkan Barcode QRIS
+      </button>
+
+      <button type="button" class="btn secondary" style="width:100%;height:40px;font-size:12.5px;font-weight:700;border-radius:12px;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:6px;" onclick="openTodayQrisHistoryModal()">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+        📊 Riwayat QRIS Hari Ini
+      </button>
+    </div>
+  `;
+  modal(title, body, "", "tx-modal");
+  setTimeout(() => {
+    const el = $("qrisNominalInput");
+    if (el) {
+      el.focus();
+      el.select?.();
+    }
+  }, 50);
+}
+
+function formatQrisNominalInput(el) {
+  const digits = onlyDigits(el.value);
+  currentQrisAmount = Number(digits || 0);
+  el.value = digits ? "Rp " + rp(Number(digits)) : "";
+}
+
+async function generateStaffQris() {
+  const input = $("qrisNominalInput");
+  if (input) {
+    const digits = onlyDigits(input.value);
+    currentQrisAmount = Number(digits || 0);
+  }
+  if (currentQrisAmount <= 0) {
+    return toast("Silakan masukkan nominal pembayaran terlebih dahulu!");
+  }
+  const noteInput = $("qrisNoteInput");
+  currentQrisNote = noteInput ? noteInput.value.trim() : "";
+  const kasirUsername = String(state.user?.username || "staff").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const kasirName = state.user?.name || kasirUsername;
+  const orderId = `QR-${kasirUsername}-${Date.now()}`;
+  currentQrisOrderId = orderId;
+
+  const loadingBody = `
+    <div style="text-align:center;padding:30px 10px;">
+      <div class="spin" style="margin:0 auto 16px;width:40px;height:40px;border-width:4px;"></div>
+      <div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:6px;">Menyiapkan Barcode...</div>
+      <div style="font-size:12px;color:var(--muted);">Sedang membuat barcode QRIS Rp ${rp(currentQrisAmount)}</div>
+    </div>
+  `;
+  modal("Membuat Barcode QRIS", loadingBody, "", "tx-modal");
+
+  try {
+    const backendUrl = "https://myxrvipyodadnldtomzs.supabase.co/functions/v1/clever-responder";
+    const res = await fetch(backendUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "create_qris",
+        amount: currentQrisAmount,
+        cashier: kasirUsername,
+        order_id: orderId
+      })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || "Gagal membuat barcode QRIS");
+    }
+
+    const now = Date.now();
+    const expiresAtMs = now + 5 * 60 * 1000; // Simpan sesi aktif selama 5 menit
+    const sessionData = {
+      orderId,
+      amount: currentQrisAmount,
+      note: currentQrisNote,
+      qrImgOrString: data.qr_image_url || data.qr_string,
+      kasirUsername,
+      kasirName,
+      createdAtMs: now,
+      expiresAtMs,
+    };
+    saveActiveQrisSession(sessionData);
+
+    renderStaffQrisBarcodeScreen(
+      sessionData.qrImgOrString,
+      orderId,
+      currentQrisAmount,
+      currentQrisNote,
+      expiresAtMs
+    );
+    startQrisPolling(orderId, currentQrisAmount, currentQrisNote, kasirName);
+  } catch (err) {
+    console.error("QRIS Error:", err);
+    toast("Gagal buat QRIS: " + (err.message || err));
+    openStaffQrisModal();
+  }
+}
+
+function renderStaffQrisBarcodeScreen(qrImgOrString, orderId, amount, note, expiresAtMs) {
+  const qrUrl = String(qrImgOrString).startsWith("http")
+    ? qrImgOrString
+    : `https://api.qrserver.com/v1/create-qr-code/?size=500x500&margin=15&format=png&data=${encodeURIComponent(qrImgOrString)}`;
+
+  const title = "Scan Barcode QRIS";
+  const body = `
+    <div class="qris-modal-container">
+      <div style="text-align:center;">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;">Total Tagihan</div>
+        <div style="font-size:32px;font-weight:900;color:#0284c7;margin:2px 0 6px;">Rp ${rp(amount)}</div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
+          <span style="font-size:11px;font-weight:700;color:var(--muted);">Order ID: <span style="color:var(--text);font-family:monospace;">${esc(orderId)}</span></span>
+          <span id="qrisCountdownPill" style="font-size:10.5px;font-weight:800;color:#0284c7;background:rgba(2,132,199,0.1);padding:2px 8px;border-radius:999px;border:1px solid rgba(2,132,199,0.25);">⏱️ 05:00</span>
+        </div>
+      </div>
+
+      <div class="qris-qr-card">
+        <div class="qris-qr-header">
+          <div class="qris-qr-brand">QRIS</div>
+          <div class="qris-qr-subbrand">PEMBAYARAN DIGITAL</div>
+        </div>
+        <img src="${qrUrl}" alt="Barcode QRIS" class="qris-qr-img" />
+        <div class="qris-qr-footer">
+          Rocky Hijab • QRIS Realtime
+        </div>
+      </div>
+
+      <div class="qris-status-box">
+        <span class="qris-pulse-dot"></span>
+        <span>Menunggu pembayaran customer...</span>
+      </div>
+
+      <div style="font-size:11.5px;color:var(--muted);text-align:center;line-height:1.4;margin-bottom:14px;">
+        Customer dapat scan barcode di atas menggunakan BCA, GoPay, ShopeePay, Dana, OVO, Livin, atau Bank lainnya.
+      </div>
+
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn secondary" style="flex:1;height:42px;font-size:12.5px;font-weight:700;border-radius:12px;" onclick="cancelStaffQris()">
+          Batalkan
+        </button>
+        <button type="button" class="btn primary" style="flex:1.2;height:42px;font-size:12.5px;font-weight:800;border-radius:12px;background:#0284c7;" onclick="checkStaffQrisManual()">
+          🔄 Cek Status
+        </button>
+      </div>
+    </div>
+  `;
+  modal(title, body, "", "tx-modal");
+
+  if (expiresAtMs) {
+    startQrisCountdown(expiresAtMs);
+  }
+}
+
+function startQrisCountdown(expiresAtMs) {
+  stopQrisCountdown();
+  const update = () => {
+    const pill = $("qrisCountdownPill");
+    const remaining = Math.max(0, Math.floor((expiresAtMs - Date.now()) / 1000));
+    const m = String(Math.floor(remaining / 60)).padStart(2, "0");
+    const s = String(remaining % 60).padStart(2, "0");
+    if (pill) {
+      pill.textContent = `⏱️ ${m}:${s}`;
+    }
+    if (remaining <= 0) {
+      stopQrisCountdown();
+      stopQrisPolling();
+      clearActiveQrisSession();
+      if (pill) {
+        pill.textContent = "⏱️ Kedaluwarsa";
+        pill.style.color = "#ef4444";
+        pill.style.borderColor = "rgba(239,68,68,0.3)";
+        pill.style.background = "rgba(239,68,68,0.1)";
+      }
+      toast("Waktu pembayaran QRIS (5 menit) telah habis.");
+    }
+  };
+  update();
+  qrisCountdownTimer = setInterval(update, 1000);
+}
+
+function stopQrisCountdown() {
+  if (qrisCountdownTimer) {
+    clearInterval(qrisCountdownTimer);
+    qrisCountdownTimer = null;
+  }
+}
+
+function startQrisPolling(orderId, amount, note, kasirName) {
+  stopQrisPolling();
+  let pollCount = 0;
+  const maxPolls = 150; // ~5 menit
+
+  qrisPollingTimer = setInterval(async () => {
+    pollCount++;
+    if (pollCount > maxPolls) {
+      stopQrisPolling();
+      stopQrisCountdown();
+      clearActiveQrisSession();
+      toast("Waktu tunggu pembayaran QRIS habis. Silakan buat ulang jika diperlukan.");
+      return;
+    }
+
+    try {
+      const backendUrl = "https://myxrvipyodadnldtomzs.supabase.co/functions/v1/clever-responder";
+      const res = await fetch(backendUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "check_qris",
+          order_id: orderId
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        const st = String(data.status || "").toLowerCase();
+        if (st === "settlement" || st === "capture") {
+          stopQrisPolling();
+          stopQrisCountdown();
+          clearActiveQrisSession();
+          await onQrisPaymentSuccess(orderId, amount, note, kasirName);
+        } else if (["cancel", "deny", "expire"].includes(st)) {
+          stopQrisPolling();
+          stopQrisCountdown();
+          clearActiveQrisSession();
+          toast("Status QRIS: " + (st === "expire" ? "Kedaluwarsa" : "Dibatalkan"));
+          closeModal();
+        }
+      }
+    } catch (e) {
+      console.warn("Poll QRIS error:", e);
+    }
+  }, 2500);
+}
+
+function stopQrisPolling() {
+  if (qrisPollingTimer) {
+    clearInterval(qrisPollingTimer);
+    qrisPollingTimer = null;
+  }
+}
+
+function cancelStaffQris() {
+  clearActiveQrisSession();
+  stopQrisPolling();
+  stopQrisCountdown();
+  currentQrisOrderId = null;
+  currentQrisAmount = 0;
+  currentQrisNote = "";
+  closeModal(true);
+  toast("Pembayaran QRIS dibatalkan.");
+}
+
+async function checkStaffQrisManual() {
+  const activeSession = getActiveQrisSession();
+  const orderId = currentQrisOrderId || activeSession?.orderId;
+  const amount = currentQrisAmount || activeSession?.amount;
+  const note = currentQrisNote || activeSession?.note;
+  if (!orderId) return;
+  toast("Memeriksa status pembayaran...");
+  try {
+    const backendUrl = "https://myxrvipyodadnldtomzs.supabase.co/functions/v1/clever-responder";
+    const res = await fetch(backendUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "check_qris",
+        order_id: orderId
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      const st = String(data.status || "").toLowerCase();
+      if (st === "settlement" || st === "capture") {
+        stopQrisPolling();
+        stopQrisCountdown();
+        clearActiveQrisSession();
+        const kasirUsername = String(state.user?.username || "staff");
+        const kasirName = state.user?.name || kasirUsername;
+        await onQrisPaymentSuccess(orderId, amount, note, kasirName);
+      } else {
+        toast("Status: Menunggu Pembayaran (" + (data.status || "pending") + ")");
+      }
+    } else {
+      toast("Gagal cek status: " + (data.error || "Coba lagi"));
+    }
+  } catch (e) {
+    toast("Koneksi gagal: " + (e.message || e));
+  }
+}
+
+async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
+  clearActiveQrisSession();
+  stopQrisPolling();
+  stopQrisCountdown();
+  currentQrisOrderId = null;
+  currentQrisAmount = 0;
+  currentQrisNote = "";
+  playSuccessSound();
+
+  // Simpan record ke tabel database Supabase qris_payments
+  try {
+    const kasirUsername = String(state.user?.username || "staff").toLowerCase();
+    await supabase.from("qris_payments").upsert({
+      order_id: orderId,
+      amount: Number(amount || 0),
+      cashier_username: kasirUsername,
+      cashier_name: kasirName || state.user?.name || kasirUsername,
+      note: note || "",
+      status: "settlement",
+      payment_type: "qris",
+      date_key: todayKey(),
+      created_at: new Date().toISOString()
+    }, { onConflict: "order_id" });
+  } catch (errSave) {
+    console.warn("Gagal simpan ke qris_payments dari app:", errSave);
+  }
+
+  // Notifikasi WA ke Bos
+  try {
+    kirimNotifWaBos(amount, (note ? note + " • " : "") + "QRIS Midtrans: " + orderId, kasirName);
+  } catch (err) {
+    console.warn("Gagal notif WA Bos dari client:", err);
+  }
+
+  // Render Layar Sukses
+  const title = "Pembayaran Berhasil!";
+  const now = new Date();
+  const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} WIB`;
+  const body = `
+    <div class="qris-success-box">
+      <div class="qris-success-icon">
+        <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      </div>
+
+      <div class="qris-success-title">PEMBAYARAN QRIS BERHASIL</div>
+      <div class="qris-success-sub">Uang sudah berhasil diterima</div>
+
+      <div style="font-size:32px;font-weight:900;color:#10b981;margin-bottom:14px;">
+        Rp ${rp(amount)}
+      </div>
+
+      <div class="qris-receipt-box">
+        <div class="qris-receipt-row">
+          <span class="label">Status</span>
+          <span class="val" style="color:#10b981;">LUNAS (Settlement)</span>
+        </div>
+        <div class="qris-receipt-row">
+          <span class="label">Waktu</span>
+          <span class="val">${timeStr}</span>
+        </div>
+        <div class="qris-receipt-row">
+          <span class="label">Kasir</span>
+          <span class="val">${esc(kasirName)}</span>
+        </div>
+        <div class="qris-receipt-row">
+          <span class="label">Catatan</span>
+          <span class="val">${esc(note || "-")}</span>
+        </div>
+        <div class="qris-receipt-row">
+          <span class="label">Order ID</span>
+          <span class="val" style="font-size:11px;font-family:monospace;">${esc(orderId)}</span>
+        </div>
+      </div>
+
+      <div class="qris-wa-badge">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-5.46-4.45-9.91-9.91-9.91zm5.78 13.99c-.24.68-1.39 1.26-1.92 1.34-.51.08-1.16.11-3.37-.8-2.26-.93-3.7-3.23-3.81-3.38-.11-.15-.91-1.21-.91-2.31s.57-1.64.78-1.86c.21-.22.46-.27.61-.27.15 0 .31 0 .44.01.14.01.32-.05.5.38.19.46.65 1.58.71 1.7.06.12.1.26.02.42-.08.16-.12.26-.24.4-.12.14-.25.31-.36.42-.12.12-.25.25-.11.49.14.24.62 1.02 1.33 1.65.91.81 1.68 1.06 1.92 1.18.24.12.38.1.52-.06.14-.16.6-.7.76-.94.16-.24.32-.2.54-.12.22.08 1.39.66 1.63.78.24.12.4.18.46.28.06.1.06.58-.18 1.26z"/>
+        </svg>
+        <span>Notifikasi pembayaran telah terkirim ke WhatsApp Bos!</span>
+      </div>
+
+      <div style="font-size:11.5px;color:var(--muted);text-align:center;margin-bottom:14px;font-weight:600;">
+        💡 Silakan input transaksi barang ini secara manual via tombol (+) seperti biasa.
+      </div>
+
+      <button type="button" class="btn primary" style="width:100%;height:46px;font-size:14px;font-weight:800;border-radius:14px;background:#10b981;" onclick="finishStaffQris()">
+        Selesai
+      </button>
+    </div>
+  `;
+  modal(title, body, "", "tx-modal");
+}
+
+function finishStaffQris() {
+  closeModal(true);
+}
+
+async function openTodayQrisHistoryModal() {
+  const title = "Riwayat QRIS Hari Ini";
+  const loadingBody = `
+    <div style="text-align:center;padding:30px 10px;">
+      <div class="spin" style="margin:0 auto 14px;width:36px;height:36px;border-width:3px;"></div>
+      <div style="font-size:13px;font-weight:700;color:var(--muted);">Memuat riwayat QRIS hari ini...</div>
+    </div>
+  `;
+  modal(title, loadingBody, "", "tx-modal");
+
+  try {
+    const today = todayKey();
+    const { data, error } = await supabase
+      .from("qris_payments")
+      .select("*")
+      .eq("date_key", today)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    const list = data || [];
+    let totalAmount = 0;
+    list.forEach((item) => {
+      totalAmount += Number(item.amount || 0);
+    });
+
+    const todayDateObj = new Date();
+    const dateFormatted = todayDateObj.toLocaleDateString("id-ID", {
+      weekday: "long",
+      day: "numeric",
+      month: "short",
+      year: "numeric"
+    });
+
+    let itemsHtml = "";
+    if (list.length === 0) {
+      itemsHtml = `
+        <div style="text-align:center;padding:26px 10px;color:var(--muted);background:var(--bg);border-radius:14px;border:1.5px dashed var(--line);margin-bottom:14px;">
+          <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2" style="margin:0 auto 8px;opacity:0.45;display:block;"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <div style="font-size:13px;font-weight:700;color:var(--text);">Belum Ada Pembayaran QRIS Hari Ini</div>
+          <div style="font-size:11.5px;margin-top:4px;">Setiap pembayaran QRIS yang berhasil lunas akan otomatis tercatat di sini.</div>
+        </div>
+      `;
+    } else {
+      itemsHtml = `<div class="qris-history-list">`;
+      list.forEach((item) => {
+        let timeStr = "-";
+        if (item.created_at) {
+          try {
+            const dt = new Date(item.created_at);
+            timeStr = `${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")} WIB`;
+          } catch (e) {}
+        }
+        const kasir = item.cashier_name || item.cashier_username || "Staff";
+        const note = item.note ? ` • ${esc(item.note)}` : "";
+        itemsHtml += `
+          <div class="qris-history-item">
+            <div class="qris-history-item-head">
+              <span class="qris-history-item-time">🕒 ${timeStr}</span>
+              <span class="qris-history-item-badge">✓ LUNAS</span>
+            </div>
+            <div class="qris-history-item-amount">Rp ${rp(item.amount)}</div>
+            <div class="qris-history-item-meta">
+              <span>Kasir: <strong>${esc(kasir)}</strong>${note}</span>
+              <span style="font-family:monospace;font-size:10px;opacity:0.8;">${esc(item.order_id || "")}</span>
+            </div>
+          </div>
+        `;
+      });
+      itemsHtml += `</div>`;
+    }
+
+    const body = `
+      <div class="qris-modal-container">
+        <div style="text-align:center;margin-bottom:12px;">
+          <div style="font-size:12px;font-weight:700;color:var(--muted);">${dateFormatted}</div>
+        </div>
+
+        <div class="qris-history-summary">
+          <div>
+            <div class="sum-label">Total Masuk QRIS</div>
+            <div class="sum-total">Rp ${rp(totalAmount)}</div>
+          </div>
+          <div class="sum-count">${list.length} Transaksi</div>
+        </div>
+
+        ${itemsHtml}
+
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <button type="button" class="btn secondary" style="flex:1;height:42px;font-size:12.5px;font-weight:700;border-radius:12px;" onclick="openStaffQrisModal()">
+            ← Buat QRIS Baru
+          </button>
+          <button type="button" class="btn primary" style="flex:1;height:42px;font-size:12.5px;font-weight:800;border-radius:12px;background:#0284c7;" onclick="openTodayQrisHistoryModal()">
+            🔄 Segarkan
+          </button>
+        </div>
+      </div>
+    `;
+    modal(title, body, "", "tx-modal");
+  } catch (err) {
+    console.error("Gagal load qris_payments:", err);
+    toast("Gagal memuat data QRIS: " + (err.message || err));
+    openStaffQrisModal();
   }
 }
