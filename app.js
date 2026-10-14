@@ -10107,7 +10107,7 @@ ${sep}
 ${receiptLabel(s.dateLabel)} ${tanggal}
 ${receiptLabel(s.cashierLabel)} ${kasir}
 ${receiptSummaryLine("Metode", "QRIS")}
-${receiptSummaryLine("Status", "LUNAS (Settlement)")}
+${receiptSummaryLine("Status", "LUNAS")}
 ${orderLine}${sep}
 ${noteLines}${receiptSummaryLine("TOTAL", `Rp ${rp(nominal)}`)}
 ${sep}
@@ -10268,7 +10268,6 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
       </div>
 
       <div class="qris-success-title">PEMBAYARAN QRIS BERHASIL</div>
-      <div class="qris-success-sub">Uang sudah berhasil diterima</div>
 
       <div class="qris-success-amount">
         Rp ${rp(amount)}
@@ -10277,7 +10276,7 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
       <div class="qris-receipt-box">
         <div class="qris-receipt-row">
           <span class="label">Status</span>
-          <span class="val" style="color:#10b981;">LUNAS (Settlement)</span>
+          <span class="val" style="color:#10b981;">LUNAS</span>
         </div>
         <div class="qris-receipt-row">
           <span class="label">Waktu</span>
