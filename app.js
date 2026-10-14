@@ -9938,7 +9938,7 @@ function renderStaffQrisBarcodeScreen(qrImgOrString, orderId, amount, note, expi
           Batalkan
         </button>
         <button type="button" class="btn primary qris-btn-action qris-btn-check" onclick="checkStaffQrisManual()">
-          🔄 Cek Status
+          Cek Status
         </button>
       </div>
     </div>
@@ -10425,7 +10425,7 @@ async function openTodayQrisHistoryModal() {
             ← Buat QRIS Baru
           </button>
           <button type="button" class="btn primary" style="flex:1;height:42px;font-size:12.5px;font-weight:800;border-radius:12px;background:#0284c7;" onclick="openTodayQrisHistoryModal()">
-            🔄 Segarkan
+            Segarkan
           </button>
         </div>
       </div>
