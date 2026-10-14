@@ -25,8 +25,4 @@ alter table staff_change_reserve enable row level security;
 
 create policy "scr_select_all" on staff_change_reserve for select using (true);
 create policy "scr_insert_own" on staff_change_reserve for insert with check (true);
-<<<<<<< HEAD
 create policy "scr_update_all" on staff_change_reserve for update using (true);
-=======
-create policy "scr_update_all" on staff_change_reserve for update using (true);
->>>>>>> bf2cc70192585f66a7f2c95e32cc7a155a475dd4
