@@ -10304,11 +10304,6 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
         <span>Notifikasi pembayaran telah terkirim ke WhatsApp</span>
       </div>
 
-      <div class="qris-success-note">
-        💡 Silakan input transaksi barang via tombol (+) seperti biasa.<br>
-        <span style="font-size:10px;opacity:0.85;">(Struk otomatis tercetak jika printer aktif. Atau tap <b>Cetak Struk</b> untuk manual).</span>
-      </div>
-
       <div class="qris-action-row">
         <button type="button" class="btn secondary qris-btn-action" style="border:1.5px solid #0284c7;color:#0284c7;height:40px;" onclick="printQrisReceiptManual()">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
