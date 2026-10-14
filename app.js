@@ -9795,7 +9795,7 @@ function openStaffQrisModal() {
 
       <label style="display:flex;align-items:center;gap:9px;margin-bottom:16px;cursor:pointer;font-size:12px;color:var(--text);font-weight:600;background:var(--bg);padding:9px 12px;border-radius:12px;border:1px solid var(--line);">
         <input type="checkbox" id="qrisAutoPrintCheck" ${isQrisAutoPrintEnabled() ? "checked" : ""} onchange="setQrisAutoPrintEnabled(this.checked)" style="width:16px;height:16px;accent-color:#0284c7;cursor:pointer;">
-        <span>🖨️ Auto-cetak struk (jika Bluetooth aktif)</span>
+        <span>Auto-cetak struk (jika Bluetooth aktif)</span>
       </label>
 
       <button id="btnGenerateQris" type="button" class="btn primary" style="width:100%;height:46px;font-size:14px;font-weight:800;border-radius:14px;background:#0284c7;display:flex;align-items:center;justify-content:center;gap:8px;" onclick="generateStaffQris()">
