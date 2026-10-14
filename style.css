@@ -363,7 +363,7 @@
       border-radius: 999px;
       margin-bottom: 12px;
       border: none;
-      box-shadow: 0 2px 8px rgba(255, 119, 0, 0.35);
+      box-shadow: none;
     }
     .qris-badge-top svg {
       stroke: #ffffff !important;
@@ -724,7 +724,7 @@
       color:#fff;
       margin:-2px -2px 12px;padding:12px 14px;
       border-radius:calc(var(--radius-xl) - 4px) calc(var(--radius-xl) - 4px) var(--radius) var(--radius);
-      box-shadow:0 8px 24px rgba(24,168,90,.28);
+      box-shadow:none;
     }
     .modal-title{font-size:17px;font-weight:800;letter-spacing:-.01em}
     .modal.tx-modal .modal-title{font-size:15.5px;letter-spacing:-.02em}
@@ -1732,7 +1732,7 @@
       padding:10px 11px!important;
       border-radius:18px!important;
       gap:8px!important;
-      box-shadow:0 10px 25px rgba(0,177,160,.24)!important;
+      box-shadow:none!important;
     }
     .modal.tx-modal .modal-title{
       font-size:15px!important;
