@@ -10108,7 +10108,7 @@ ${receiptLabel(s.cashierLabel)} ${kasir}
 ${receiptSummaryLine("Metode", "QRIS")}
 ${receiptSummaryLine("Status", "LUNAS (Settlement)")}
 ${orderLine}${sep}
-${noteLines}${receiptSummaryLine("TOTAL DITERIMA", `Rp ${rp(nominal)}`)}
+${noteLines}${receiptSummaryLine("TOTAL", `Rp ${rp(nominal)}`)}
 ${sep}
 ${receiptFooterLines(s)}${receiptBottomFeed(s)}
 `;
