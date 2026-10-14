@@ -1780,11 +1780,21 @@
       line-height:1.38!important;
       background:var(--card)!important;
     }
-    .modal.tx-modal input:focus,
+    .modal.tx-modal input:not([type="checkbox"]):focus,
     .modal.tx-modal textarea:focus,
     .modal.tx-modal .tx-product-input:focus{
       border-color:var(--majoo-teal,var(--green))!important;
       box-shadow:0 0 0 3px var(--majoo-teal-light,var(--green-light))!important;
+    }
+    .modal.tx-modal input[type="checkbox"],
+    .modal.tx-modal input[type="checkbox"]:focus,
+    .modal.tx-modal input[type="checkbox"]:active,
+    #qrisAutoPrintCheck,
+    #qrisAutoPrintCheck:focus,
+    #qrisAutoPrintCheck:active{
+      box-shadow:none!important;
+      outline:none!important;
+      -webkit-tap-highlight-color:transparent!important;
     }
     .modal.tx-modal .tx-product-builder{
       margin-bottom:9px!important;

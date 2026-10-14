@@ -9793,8 +9793,8 @@ function openStaffQrisModal() {
         <input id="qrisNoteInput" type="text" placeholder="Contoh: Kerudung Bella Square" style="font-size:13px;border-radius:12px;" />
       </div>
 
-      <label style="display:flex;align-items:center;gap:9px;margin-bottom:16px;cursor:pointer;font-size:12px;color:var(--text);font-weight:600;background:var(--bg);padding:9px 12px;border-radius:12px;border:1px solid var(--line);">
-        <input type="checkbox" id="qrisAutoPrintCheck" ${isQrisAutoPrintEnabled() ? "checked" : ""} onchange="setQrisAutoPrintEnabled(this.checked)" style="width:16px;height:16px;accent-color:#0284c7;cursor:pointer;">
+      <label style="display:flex;align-items:center;gap:9px;margin-bottom:16px;cursor:pointer;font-size:12px;color:var(--text);font-weight:600;background:var(--bg);padding:9px 12px;border-radius:12px;border:1px solid var(--line);outline:none!important;box-shadow:none!important;-webkit-tap-highlight-color:transparent;">
+        <input type="checkbox" id="qrisAutoPrintCheck" ${isQrisAutoPrintEnabled() ? "checked" : ""} onchange="setQrisAutoPrintEnabled(this.checked)" style="width:16px;height:16px;accent-color:#0284c7;cursor:pointer;outline:none!important;box-shadow:none!important;-webkit-tap-highlight-color:transparent;">
         <span>Auto-cetak struk</span>
       </label>
 

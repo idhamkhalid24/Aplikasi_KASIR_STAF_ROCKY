@@ -178,11 +178,16 @@ input, textarea, select {
   transition: all 0.2s ease;
 }
 
-input:focus, textarea:focus {
+input:not([type="checkbox"]):focus, textarea:focus {
   background: var(--card);
   border-color: var(--majoo-teal);
   box-shadow: 0 0 0 3px var(--majoo-teal-light) !important;
   transform: none;
+}
+
+input[type="checkbox"]:focus {
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 /* Top bar - Clean white */
