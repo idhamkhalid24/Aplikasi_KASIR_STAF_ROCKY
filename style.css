@@ -307,7 +307,7 @@
       height: 44px;
       border-radius: 14px;
       background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
-      box-shadow: 0 4px 14px rgba(2, 132, 199, 0.45);
+      box-shadow: none;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -318,7 +318,7 @@
     }
     [data-theme="dark"] .nav-qris-icon-wrap {
       border-color: #1e293b;
-      box-shadow: 0 4px 14px rgba(2, 132, 199, 0.3);
+      box-shadow: none;
     }
     [data-theme="neo"] .nav-qris-icon-wrap {
       border: 2.5px solid var(--neo-ink) !important;
@@ -328,7 +328,7 @@
     }
     .nav-qris-btn:hover .nav-qris-icon-wrap {
       transform: translateY(-2px);
-      box-shadow: 0 6px 18px rgba(2, 132, 199, 0.55);
+      box-shadow: none;
     }
     .nav-qris-icon {
       width: 22px;
@@ -355,14 +355,18 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      background: rgba(2, 132, 199, 0.1);
-      color: #0284c7;
+      background: #ff7700;
+      color: #ffffff !important;
       font-size: 11px;
       font-weight: 800;
-      padding: 5px 12px;
+      padding: 6px 14px;
       border-radius: 999px;
       margin-bottom: 12px;
-      border: 1px solid rgba(2, 132, 199, 0.25);
+      border: none;
+      box-shadow: 0 2px 8px rgba(255, 119, 0, 0.35);
+    }
+    .qris-badge-top svg {
+      stroke: #ffffff !important;
     }
     .qris-amount-display {
       font-size: 30px;
