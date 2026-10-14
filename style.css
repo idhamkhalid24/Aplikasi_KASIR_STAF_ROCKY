@@ -2913,6 +2913,40 @@
       }
     }
 
+    /* ===== QRIS MODAL WRAP: TENANG & STABIL (TIDAK GOYANG / GERAK-GERAK) ===== */
+    .modal-wrap.tx-backdrop.qris-modal-wrap,
+    .modal-wrap.tx-backdrop.qris-modal-wrap:focus-within{
+      top:0!important;
+      bottom:0!important;
+      left:0!important;
+      right:0!important;
+      height:100%!important;
+      min-height:100%!important;
+      padding:16px 12px!important;
+      align-items:center!important;
+      justify-content:center!important;
+      overflow-y:auto!important;
+      -webkit-overflow-scrolling:touch!important;
+    }
+    .modal-wrap.tx-backdrop.qris-modal-wrap .modal.tx-modal,
+    .modal-wrap.tx-backdrop.qris-modal-wrap:focus-within .modal.tx-modal{
+      max-height:min(92vh, 640px)!important;
+      margin:auto!important;
+      transform:none!important;
+      transition:none!important;
+    }
+    .modal-wrap.tx-backdrop.qris-modal-wrap .modal.tx-modal .modal-head,
+    .modal-wrap.tx-backdrop.qris-modal-wrap:focus-within .modal.tx-modal .modal-head{
+      margin-bottom:10px!important;
+      padding:10px 11px!important;
+    }
+    @media(max-width:360px){
+      .modal-wrap.tx-backdrop.qris-modal-wrap,
+      .modal-wrap.tx-backdrop.qris-modal-wrap:focus-within{
+        padding:12px 8px!important;
+      }
+    }
+
     /* ===== STAFF FEATURE UNLOCK ===== */
     .leave-home-card{margin:8px 0 0!important;border-color:var(--amber-mid)!important;background:linear-gradient(135deg,var(--amber-light),var(--card))!important;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer}
     .leave-home-main{display:flex;align-items:flex-start;gap:9px;min-width:0;flex:1}

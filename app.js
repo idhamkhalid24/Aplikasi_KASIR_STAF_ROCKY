@@ -2684,7 +2684,8 @@ function modal(title, body, actions = "", variant = "") {
   const cls = variantText ? ` ${variantText}` : "";
   const isTxModal = variantText.includes("tx-modal");
   const isPaymentPicker = variantText.includes("payment-picker-modal");
-  const wrap = `modal-wrap show${isTxModal ? " tx-backdrop" : ""}${isPaymentPicker ? " payment-picker-wrap" : ""}`;
+  const isQrisModal = variantText.includes("qris-modal");
+  const wrap = `modal-wrap show${isTxModal ? " tx-backdrop" : ""}${isPaymentPicker ? " payment-picker-wrap" : ""}${isQrisModal ? " qris-modal-wrap" : ""}`;
   if (!r) return;
   r.removeAttribute("style");
   r.innerHTML = `<div class="modal${cls}" role="dialog" aria-modal="true"><div class="modal-head"><div><div class="modal-title">${esc(title)}</div></div><button type="button" class="icon" onpointerdown="closeModal(true);event.preventDefault()" ontouchstart="closeModal(true);event.preventDefault()" onclick="closeModal(true)">×</button></div>${body}${actions ? `<div class="modal-actions">${actions}</div>` : ""}</div>`;
@@ -9808,7 +9809,7 @@ function openStaffQrisModal() {
       </button>
     </div>
   `;
-  modal(title, body, "", "tx-modal");
+  modal(title, body, "", "tx-modal qris-modal");
   setTimeout(() => {
     const el = $("qrisNominalInput");
     if (el) {
@@ -9847,7 +9848,7 @@ async function generateStaffQris() {
       <div style="font-size:12px;color:var(--muted);">Sedang membuat barcode QRIS Rp ${rp(currentQrisAmount)}</div>
     </div>
   `;
-  modal("Membuat Barcode QRIS", loadingBody, "", "tx-modal");
+  modal("Membuat Barcode QRIS", loadingBody, "", "tx-modal qris-modal");
 
   try {
     const backendUrl = "https://myxrvipyodadnldtomzs.supabase.co/functions/v1/clever-responder";
@@ -9942,7 +9943,7 @@ function renderStaffQrisBarcodeScreen(qrImgOrString, orderId, amount, note, expi
       </div>
     </div>
   `;
-  modal(title, body, "", "tx-modal");
+  modal(title, body, "", "tx-modal qris-modal");
 
   if (expiresAtMs) {
     startQrisCountdown(expiresAtMs);
@@ -10319,7 +10320,7 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
       </div>
     </div>
   `;
-  modal(title, body, "", "tx-modal");
+  modal(title, body, "", "tx-modal qris-modal");
 }
 
 function finishStaffQris() {
@@ -10334,7 +10335,7 @@ async function openTodayQrisHistoryModal() {
       <div style="font-size:13px;font-weight:700;color:var(--muted);">Memuat riwayat QRIS hari ini...</div>
     </div>
   `;
-  modal(title, loadingBody, "", "tx-modal");
+  modal(title, loadingBody, "", "tx-modal qris-modal");
 
   try {
     const today = todayKey();
@@ -10429,7 +10430,7 @@ async function openTodayQrisHistoryModal() {
         </div>
       </div>
     `;
-    modal(title, body, "", "tx-modal");
+    modal(title, body, "", "tx-modal qris-modal");
   } catch (err) {
     console.error("Gagal load qris_payments:", err);
     toast("Gagal memuat data QRIS: " + (err.message || err));
