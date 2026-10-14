@@ -9903,13 +9903,13 @@ function renderStaffQrisBarcodeScreen(qrImgOrString, orderId, amount, note, expi
 
   const title = "Scan Barcode QRIS";
   const body = `
-    <div class="qris-modal-container">
-      <div style="text-align:center;">
-        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;">Total Tagihan</div>
-        <div style="font-size:32px;font-weight:900;color:#0284c7;margin:2px 0 6px;">Rp ${rp(amount)}</div>
-        <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
-          <span style="font-size:11px;font-weight:700;color:var(--muted);">Order ID: <span style="color:var(--text);font-family:monospace;">${esc(orderId)}</span></span>
-          <span id="qrisCountdownPill" style="font-size:10.5px;font-weight:800;color:#0284c7;background:rgba(2,132,199,0.1);padding:2px 8px;border-radius:999px;border:1px solid rgba(2,132,199,0.25);">⏱️ 05:00</span>
+    <div class="qris-modal-container qris-barcode-view">
+      <div class="qris-barcode-header">
+        <div class="qris-total-label">Total Tagihan</div>
+        <div class="qris-total-amount">Rp ${rp(amount)}</div>
+        <div class="qris-order-meta">
+          <span class="qris-order-label">Order ID: <span class="qris-order-code">${esc(orderId)}</span></span>
+          <span id="qrisCountdownPill" class="qris-countdown-pill">⏱️ 05:00</span>
         </div>
       </div>
 
@@ -9929,15 +9929,15 @@ function renderStaffQrisBarcodeScreen(qrImgOrString, orderId, amount, note, expi
         <span>Menunggu pembayaran customer...</span>
       </div>
 
-      <div style="font-size:11.5px;color:var(--muted);text-align:center;line-height:1.4;margin-bottom:14px;">
+      <div class="qris-disclaimer">
         Customer dapat scan barcode di atas menggunakan BCA, GoPay, ShopeePay, Dana, OVO, Livin, atau Bank lainnya.
       </div>
 
-      <div style="display:flex;gap:8px;">
-        <button type="button" class="btn secondary" style="flex:1;height:42px;font-size:12.5px;font-weight:700;border-radius:12px;" onclick="cancelStaffQris()">
+      <div class="qris-action-row">
+        <button type="button" class="btn secondary qris-btn-action" onclick="cancelStaffQris()">
           Batalkan
         </button>
-        <button type="button" class="btn primary" style="flex:1.2;height:42px;font-size:12.5px;font-weight:800;border-radius:12px;background:#0284c7;" onclick="checkStaffQrisManual()">
+        <button type="button" class="btn primary qris-btn-action qris-btn-check" onclick="checkStaffQrisManual()">
           🔄 Cek Status
         </button>
       </div>
@@ -10260,9 +10260,9 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
   // Render Layar Sukses
   const title = "Pembayaran Berhasil!";
   const body = `
-    <div class="qris-success-box">
+    <div class="qris-modal-container qris-success-box">
       <div class="qris-success-icon">
-        <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="20 6 9 17 4 12"></polyline>
         </svg>
       </div>
@@ -10270,7 +10270,7 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
       <div class="qris-success-title">PEMBAYARAN QRIS BERHASIL</div>
       <div class="qris-success-sub">Uang sudah berhasil diterima</div>
 
-      <div style="font-size:32px;font-weight:900;color:#10b981;margin-bottom:14px;">
+      <div class="qris-success-amount">
         Rp ${rp(amount)}
       </div>
 
@@ -10293,28 +10293,28 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
         </div>
         <div class="qris-receipt-row">
           <span class="label">Order ID</span>
-          <span class="val" style="font-size:11px;font-family:monospace;">${esc(orderId)}</span>
+          <span class="val" style="font-size:10.5px;font-family:monospace;">${esc(orderId)}</span>
         </div>
       </div>
 
       <div class="qris-wa-badge">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
           <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-5.46-4.45-9.91-9.91-9.91zm5.78 13.99c-.24.68-1.39 1.26-1.92 1.34-.51.08-1.16.11-3.37-.8-2.26-.93-3.7-3.23-3.81-3.38-.11-.15-.91-1.21-.91-2.31s.57-1.64.78-1.86c.21-.22.46-.27.61-.27.15 0 .31 0 .44.01.14.01.32-.05.5.38.19.46.65 1.58.71 1.7.06.12.1.26.02.42-.08.16-.12.26-.24.4-.12.14-.25.31-.36.42-.12.12-.25.25-.11.49.14.24.62 1.02 1.33 1.65.91.81 1.68 1.06 1.92 1.18.24.12.38.1.52-.06.14-.16.6-.7.76-.94.16-.24.32-.2.54-.12.22.08 1.39.66 1.63.78.24.12.4.18.46.28.06.1.06.58-.18 1.26z"/>
         </svg>
         <span>Notifikasi pembayaran telah terkirim ke WhatsApp Bos!</span>
       </div>
 
-      <div style="font-size:11.5px;color:var(--muted);text-align:center;margin-bottom:14px;font-weight:600;line-height:1.4;">
+      <div class="qris-success-note">
         💡 Silakan input transaksi barang via tombol (+) seperti biasa.<br>
-        <span style="font-size:10.5px;opacity:0.85;">(Struk otomatis tercetak jika Bluetooth & printer aktif. Atau tap <b>Cetak Struk</b> untuk cetak manual).</span>
+        <span style="font-size:10px;opacity:0.85;">(Struk otomatis tercetak jika printer aktif. Atau tap <b>Cetak Struk</b> untuk manual).</span>
       </div>
 
-      <div style="display:flex;gap:8px;">
-        <button type="button" class="btn secondary" style="flex:1;height:46px;font-size:13.5px;font-weight:800;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:6px;border:1.5px solid #0284c7;color:#0284c7;" onclick="printQrisReceiptManual()">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+      <div class="qris-action-row">
+        <button type="button" class="btn secondary qris-btn-action" style="border:1.5px solid #0284c7;color:#0284c7;height:40px;" onclick="printQrisReceiptManual()">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
           Cetak Struk
         </button>
-        <button type="button" class="btn primary" style="flex:1;height:46px;font-size:13.5px;font-weight:800;border-radius:14px;background:#10b981;" onclick="finishStaffQris()">
+        <button type="button" class="btn primary qris-btn-action" style="background:#10b981;height:40px;" onclick="finishStaffQris()">
           Selesai
         </button>
       </div>
