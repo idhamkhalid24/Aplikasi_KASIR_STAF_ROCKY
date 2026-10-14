@@ -9395,6 +9395,8 @@ function home() {
   window.checkStaffQrisManual = checkStaffQrisManual;
   window.finishStaffQris = finishStaffQris;
   window.openTodayQrisHistoryModal = openTodayQrisHistoryModal;
+  window.printQrisReceiptManual = printQrisReceiptManual;
+  window.printSpecificQrisReceipt = printSpecificQrisReceipt;
   statusPill = function () {
     if (isTrialUser()) return `<span class="pill amber">Mode Trial</span>`;
     if (isClosedToday()) return `<span class="pill amber">Sudah closing</span>`;
@@ -10078,6 +10080,83 @@ async function checkStaffQrisManual() {
   }
 }
 
+let lastQrisPaymentData = null;
+
+function receiptTextForQrisPayment({ orderId, amount, note, kasirName, timeStr }) {
+  const s = receiptSettings();
+  const tanggal = `${dateID(todayKey())} ${timeStr || timeID(Date.now())}`;
+  const kasir = kasirName || state.user?.name || state.user?.username || "-";
+  const nominal = Number(amount || 0);
+  const sep = "-".repeat(32);
+  const orderLine = orderId ? `${receiptSummaryLine("Order ID", String(orderId).slice(-20))}\n` : "";
+  const noteLines = note
+    ? `Keterangan:\n${receiptProductNumbered(note)}\n\n`
+    : "";
+
+  return `${receiptHeaderLines(s)}
+${sep}
+      BUKTI PEMBAYARAN QRIS
+${sep}
+${receiptLabel(s.dateLabel)} ${tanggal}
+${receiptLabel(s.cashierLabel)} ${kasir}
+${receiptSummaryLine("Metode", "QRIS")}
+${receiptSummaryLine("Status", "LUNAS (Settlement)")}
+${orderLine}${sep}
+${noteLines}${receiptSummaryLine("TOTAL DITERIMA", `Rp ${rp(nominal)}`)}
+${sep}
+${receiptFooterLines(s)}${receiptBottomFeed(s)}
+`;
+}
+
+function printQrisReceiptManual() {
+  if (!lastQrisPaymentData) return toast("Data pembayaran tidak ditemukan");
+  const receiptText = receiptTextForQrisPayment(lastQrisPaymentData);
+  if (window.Android && typeof window.Android.printReceipt === "function") {
+    directPrintReceiptText(receiptText, "Struk QRIS");
+    toast("Mencetak struk ke printer bluetooth...");
+  } else {
+    openReceiptPreview(receiptText, "Struk Pembayaran QRIS");
+  }
+}
+
+async function printSpecificQrisReceipt(orderId) {
+  if (!orderId) return;
+  try {
+    const { data, error } = await supabase
+      .from("qris_payments")
+      .select("*")
+      .eq("order_id", orderId)
+      .maybeSingle();
+
+    if (error || !data) throw new Error("Data transaksi tidak ditemukan");
+
+    let timeStr = "-";
+    if (data.created_at) {
+      try {
+        const dt = new Date(data.created_at);
+        timeStr = `${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")} WIB`;
+      } catch (e) {}
+    }
+
+    const receiptText = receiptTextForQrisPayment({
+      orderId: data.order_id,
+      amount: data.amount,
+      note: data.note,
+      kasirName: data.cashier_name || data.cashier_username,
+      timeStr
+    });
+
+    if (window.Android && typeof window.Android.printReceipt === "function") {
+      directPrintReceiptText(receiptText, "Struk QRIS • " + data.order_id);
+      toast("Mencetak struk ke printer bluetooth...");
+    } else {
+      openReceiptPreview(receiptText, "Struk QRIS • " + data.order_id);
+    }
+  } catch (err) {
+    toast("Gagal cetak: " + (err.message || err));
+  }
+}
+
 async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
   clearActiveQrisSession();
   stopQrisPolling();
@@ -10112,10 +10191,25 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
     console.warn("Gagal notif WA Bos dari client:", err);
   }
 
-  // Render Layar Sukses
-  const title = "Pembayaran Berhasil!";
+  // Waktu sukses
   const now = new Date();
   const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} WIB`;
+  lastQrisPaymentData = { orderId, amount, note, kasirName, timeStr };
+
+  // Otomatis cetak ke printer bluetooth (jika aplikasi kasir di APK Android Studio)
+  try {
+    const qrisReceiptText = receiptTextForQrisPayment(lastQrisPaymentData);
+    if (window.Android && typeof window.Android.printReceipt === "function") {
+      setTimeout(() => {
+        directPrintReceiptText(qrisReceiptText, "Struk QRIS");
+      }, 350);
+    }
+  } catch (errPrint) {
+    console.warn("Gagal auto-print struk QRIS:", errPrint);
+  }
+
+  // Render Layar Sukses
+  const title = "Pembayaran Berhasil!";
   const body = `
     <div class="qris-success-box">
       <div class="qris-success-icon">
@@ -10165,9 +10259,15 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
         💡 Silakan input transaksi barang ini secara manual via tombol (+) seperti biasa.
       </div>
 
-      <button type="button" class="btn primary" style="width:100%;height:46px;font-size:14px;font-weight:800;border-radius:14px;background:#10b981;" onclick="finishStaffQris()">
-        Selesai
-      </button>
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn secondary" style="flex:1;height:46px;font-size:13.5px;font-weight:800;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:6px;border:1.5px solid #0284c7;color:#0284c7;" onclick="printQrisReceiptManual()">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+          Cetak Struk
+        </button>
+        <button type="button" class="btn primary" style="flex:1;height:46px;font-size:13.5px;font-weight:800;border-radius:14px;background:#10b981;" onclick="finishStaffQris()">
+          Selesai
+        </button>
+      </div>
     </div>
   `;
   modal(title, body, "", "tx-modal");
@@ -10236,7 +10336,12 @@ async function openTodayQrisHistoryModal() {
           <div class="qris-history-item">
             <div class="qris-history-item-head">
               <span class="qris-history-item-time">🕒 ${timeStr}</span>
-              <span class="qris-history-item-badge">✓ LUNAS</span>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <button type="button" style="padding:2px 8px;font-size:10.5px;font-weight:800;border-radius:6px;background:rgba(2,132,199,0.1);color:#0284c7;border:1px solid rgba(2,132,199,0.25);cursor:pointer;display:inline-flex;align-items:center;gap:3px;" onclick="printSpecificQrisReceipt('${esc(item.order_id)}')">
+                  🖨️ Cetak
+                </button>
+                <span class="qris-history-item-badge">✓ LUNAS</span>
+              </div>
             </div>
             <div class="qris-history-item-amount">Rp ${rp(item.amount)}</div>
             <div class="qris-history-item-meta">
