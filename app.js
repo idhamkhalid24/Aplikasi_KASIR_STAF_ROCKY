@@ -10116,12 +10116,13 @@ ${receiptFooterLines(s)}${receiptBottomFeed(s)}
 }
 
 function isQrisAutoPrintEnabled() {
-  const saved = localStorage.getItem("rocky_staff_qris_autoprint");
-  return saved === null ? true : saved === "true";
+  const saved = localStorage.getItem("rocky_staff_qris_autoprint_v2");
+  if (saved !== null) return saved === "true";
+  return false;
 }
 
 function setQrisAutoPrintEnabled(val) {
-  localStorage.setItem("rocky_staff_qris_autoprint", val ? "true" : "false");
+  localStorage.setItem("rocky_staff_qris_autoprint_v2", val ? "true" : "false");
 }
 
 function isBluetoothPrinterReadySafe() {
