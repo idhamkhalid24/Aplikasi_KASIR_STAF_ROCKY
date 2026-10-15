@@ -9740,6 +9740,40 @@ function clearActiveQrisSession() {
   stopQrisCountdown();
 }
 
+let qrisDexBroadcastChannel = null;
+function getQrisDexBroadcastChannel() {
+  if (!qrisDexBroadcastChannel && typeof supabase !== "undefined" && typeof supabase.channel === "function") {
+    try {
+      qrisDexBroadcastChannel = supabase.channel("rocky_qris_display");
+      qrisDexBroadcastChannel.subscribe((st) => {
+        console.log("[QRIS Display Broadcast]", st);
+      });
+    } catch (e) {
+      console.warn("Init qrisDexBroadcastChannel error:", e);
+    }
+  }
+  return qrisDexBroadcastChannel;
+}
+
+function broadcastQrisSuccessToDexDisplay(payload) {
+  try {
+    const ch = getQrisDexBroadcastChannel();
+    if (ch) {
+      ch.send({
+        type: "broadcast",
+        event: "qris_payment_success",
+        payload: {
+          ...payload,
+          timestamp: Date.now()
+        }
+      });
+      console.log("[QRIS] Broadcast sukses dikirim ke DeX Display:", payload);
+    }
+  } catch (err) {
+    console.warn("Gagal broadcast QRIS ke DeX Display:", err);
+  }
+}
+
 function openStaffQrisModal() {
   if (!state.user) return toast("Silakan login terlebih dahulu");
   if (state.user?.qrisAccess !== true) return toast("Anda tidak memiliki akses ke fitur QRIS.");
@@ -10237,6 +10271,15 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
   const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} WIB`;
   lastQrisPaymentData = { orderId, amount, note, kasirName, timeStr };
 
+  // Broadcast ke Layar DeX Display (Realtime)
+  broadcastQrisSuccessToDexDisplay({
+    orderId,
+    amount: Number(amount || 0),
+    note: note || "",
+    cashierName: kasirName || state.user?.name || "Kasir",
+    timeStr
+  });
+
   // Otomatis cetak ke printer bluetooth (hanya jika auto-print aktif & bluetooth terdeteksi aktif/siap)
   try {
     const qrisReceiptText = receiptTextForQrisPayment(lastQrisPaymentData);
@@ -10431,3 +10474,10 @@ async function openTodayQrisHistoryModal() {
     openStaffQrisModal();
   }
 }
+
+// Pre-inisialisasi channel broadcast DeX Display saat modul siap
+try {
+  setTimeout(() => {
+    getQrisDexBroadcastChannel();
+  }, 1000);
+} catch (e) {}
