@@ -9467,6 +9467,9 @@ function home() {
   window.cancelStaffQris = cancelStaffQris;
   window.checkStaffQrisManual = checkStaffQrisManual;
   window.finishStaffQris = finishStaffQris;
+window.showFastCashierEdcConfirmModal = showFastCashierEdcConfirmModal;
+window.confirmFastCashierEdc = confirmFastCashierEdc;
+window.cancelFastCashierEdc = cancelFastCashierEdc;
   window.openTodayQrisHistoryModal = openTodayQrisHistoryModal;
   window.printQrisReceiptManual = printQrisReceiptManual;
   window.printSpecificQrisReceipt = printSpecificQrisReceipt;
@@ -10700,6 +10703,78 @@ async function startFastCashierQris(amount) {
   }
 }
 
+// Popup konfirmasi mesin EDC sebelum transaksi transfer disimpan
+function showFastCashierEdcConfirmModal(amount) {
+  const title = "Konfirmasi Mesin EDC";
+  const body = `
+    <div style="text-align:center;padding:12px 6px 8px;">
+      <div style="width:58px;height:58px;border-radius:18px;background:linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);color:#7c3aed;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;box-shadow:0 4px 14px rgba(124,58,237,0.18);">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.3">
+          <path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/>
+        </svg>
+      </div>
+
+      <div style="font-size:16px;font-weight:900;color:var(--text,#0f172a);line-height:1.35;margin-bottom:8px;">
+        Apakah Transaksi Di Mesin EDC Sudah Berhasil?
+      </div>
+
+      <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:10px 14px;margin:10px 0 6px;display:inline-block;min-width:200px;">
+        <div style="font-size:11px;font-weight:800;color:var(--muted,#64748b);text-transform:uppercase;letter-spacing:0.5px;">Nominal Transaksi</div>
+        <div style="font-size:24px;font-weight:950;color:#7c3aed;margin-top:2px;">Rp ${rp(amount)}</div>
+      </div>
+
+      <div style="font-size:12px;color:var(--muted,#64748b);margin-top:8px;line-height:1.4;">
+        Pastikan struk EDC sudah keluar atau status di mesin fisik sudah <b style="color:#059669;">BERHASIL</b> sebelum konfirmasi.
+      </div>
+    </div>
+  `;
+
+  const actions = `
+    <button type="button" class="btn" onclick="cancelFastCashierEdc()" style="height:48px;font-size:14px;font-weight:900;border-radius:14px;background:#fef2f2;border:1.5px solid #fecaca;color:#dc2626;cursor:pointer;-webkit-tap-highlight-color:transparent;">
+      Belum
+    </button>
+    <button type="button" class="btn primary" onclick="confirmFastCashierEdc(${amount})" style="height:48px;font-size:14px;font-weight:900;border-radius:14px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);border:none;color:#fff;cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 4px 14px rgba(16,185,129,0.25);">
+      Sudah
+    </button>
+  `;
+
+  modal(title, body, actions, "tx-modal");
+}
+
+function cancelFastCashierEdc() {
+  closeModal(true);
+  toast("Transaksi EDC belum berhasil / dibatalkan", true);
+}
+
+async function confirmFastCashierEdc(amount) {
+  closeModal(true);
+  if (fastCashierSubmitting) return;
+  fastCashierSubmitting = true;
+  showLoad(true);
+
+  try {
+    const draft = {
+      amount: Number(amount || 0),
+      note: "Transaksi",
+      paymentMethod: "transfer"
+    };
+
+    fastCashierNominal = 0;
+    updateFastCashierDisplay();
+
+    await saveTx(false, "transfer", draft);
+    toast(`✓ Transaksi Transfer Rp ${rp(amount)} Berhasil!`);
+  } catch (err) {
+    console.error("Fast cashier transfer tx failed:", err);
+    toast("Gagal simpan transfer: " + (err?.message || err), true);
+  } finally {
+    fastCashierSubmitting = false;
+    showLoad(false);
+    state.page = "fast_cashier";
+    render();
+  }
+}
+
 async function submitFastCashierTx(method = "cash") {
   if (fastCashierSubmitting) return;
   const amount = Number(fastCashierNominal || 0);
@@ -10718,34 +10793,12 @@ async function submitFastCashierTx(method = "cash") {
     return startFastCashierQris(amount);
   }
 
-  // 2. Jika TRANSFER BANK: Langsung simpan transaksi transfer tanpa barcode!
+  // 2. Jika TRANSFER / MESIN EDC: Munculkan popup konfirmasi untuk memastikan transaksi di mesin EDC fisik sudah berhasil
   if (method === "transfer" || method === "bank_transfer") {
-    fastCashierSubmitting = true;
-    showLoad(true);
-
-    try {
-      const draft = {
-        amount,
-        note: "Transaksi",
-        paymentMethod: "transfer"
-      };
-
-      fastCashierNominal = 0;
-      updateFastCashierDisplay();
-
-      await saveTx(false, "transfer", draft);
-      toast(`✓ Transaksi Transfer Rp ${rp(amount)} Berhasil!`);
-    } catch (err) {
-      console.error("Fast cashier transfer tx failed:", err);
-      toast("Gagal simpan transfer: " + (err?.message || err), true);
-    } finally {
-      fastCashierSubmitting = false;
-      showLoad(false);
-      state.page = "fast_cashier";
-      render();
-    }
-    return;
+    return showFastCashierEdcConfirmModal(amount);
   }
+
+
 
   // 3. Jika TUNAI (CASH): Langsung simpan transaksi tunai!
   fastCashierSubmitting = true;
@@ -10815,6 +10868,9 @@ function renderFastCashier() {
 
   const staffName = state.user?.name || state.user?.username || "Staff";
   const hasQris = state.user?.qrisAccess === true;
+  const isRegularStaff = !isDailyUser(state.user) && !isAdmin(state.user);
+  const attendDays = monthAttendDays();
+  const currentMonthLabel = monthID(monthKey());
   const tx = todayTx();
   const txCount = tx.length;
   const todayOmset = todayTotal();
@@ -10842,20 +10898,34 @@ function renderFastCashier() {
 
   page.innerHTML = `
     <div class="wrap fast-cashier-wrap" style="padding-top:10px;padding-bottom:100px;max-width:540px;margin:0 auto;">
-      <!-- Top Bar: Cash Fisik di kiri (jika diberi akses admin) & Nama Staf + Keluar di kanan -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:2px 2px;gap:8px;">
-        ${state.data.opsAccess ? `
-          <div onclick="toggleOpsCard()" title="Klik untuk buka/tutup menu operasional" style="cursor:pointer;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:4px 9px;display:flex;align-items:center;gap:6px;-webkit-tap-highlight-color:transparent;">
-            <div>
-              <div style="font-size:9.5px;font-weight:950;color:#2563eb;text-transform:uppercase;letter-spacing:0.4px;line-height:1;">Cash Fisik</div>
-              <div class="num" style="font-size:15px;font-weight:950;color:${cashFisik < 0 ? 'var(--red)' : '#1d4ed8'};line-height:1.15;margin-top:2px;">Rp ${rp(cashFisik)}</div>
+      <!-- Top Bar: Cash Fisik & Masuk Kerja (khusus staf biasa) di kiri/tengah & Nama Staf + Keluar di kanan -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:2px 2px;gap:6px;">
+        <div style="display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap;">
+          ${state.data.opsAccess ? `
+            <div onclick="toggleOpsCard()" title="Klik untuk buka/tutup menu operasional" style="cursor:pointer;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:4px 9px;display:flex;align-items:center;gap:6px;-webkit-tap-highlight-color:transparent;">
+              <div>
+                <div style="font-size:9.5px;font-weight:950;color:#2563eb;text-transform:uppercase;letter-spacing:0.4px;line-height:1;">Cash Fisik</div>
+                <div class="num" style="font-size:15px;font-weight:950;color:${cashFisik < 0 ? 'var(--red)' : '#1d4ed8'};line-height:1.15;margin-top:2px;">Rp ${rp(cashFisik)}</div>
+              </div>
+              <span style="font-size:10px;background:#dbeafe;color:#1d4ed8;padding:2px 5px;border-radius:6px;font-weight:900;line-height:1;">HARI INI</span>
+              <span style="font-size:13px;color:#2563eb;font-weight:900;transition:transform 0.2s;display:inline-block;transform:rotate(${isOpsOpen ? '180deg' : '0deg'});">▾</span>
             </div>
-            <span style="font-size:10px;background:#dbeafe;color:#1d4ed8;padding:2px 5px;border-radius:6px;font-weight:900;line-height:1;">HARI INI</span>
-            <span style="font-size:13px;color:#2563eb;font-weight:900;transition:transform 0.2s;display:inline-block;transform:rotate(${isOpsOpen ? '180deg' : '0deg'});">▾</span>
-          </div>
-        ` : `<div></div>`}
+          ` : ''}
 
-        <div style="display:flex;align-items:center;gap:6px;">
+          ${isRegularStaff ? `
+            <div title="Total Masuk Kerja Bulan ${currentMonthLabel}" style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;padding:4px 9px;display:flex;align-items:center;gap:6px;-webkit-tap-highlight-color:transparent;">
+              <div>
+                <div style="font-size:9.5px;font-weight:950;color:#15803d;text-transform:uppercase;letter-spacing:0.4px;line-height:1;">Masuk Kerja</div>
+                <div class="num" style="font-size:15px;font-weight:950;color:#166534;line-height:1.15;margin-top:2px;">
+                  ${attendDays} <span style="font-size:11px;font-weight:850;color:#15803d;">Hari</span>
+                </div>
+              </div>
+              <span style="font-size:10px;background:#dcfce7;color:#15803d;padding:2px 5px;border-radius:6px;font-weight:900;line-height:1;">${currentMonthLabel}</span>
+            </div>
+          ` : ''}
+        </div>
+
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
           <div style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1.5px solid #e2e8f0;padding:4px 10px;border-radius:10px;font-size:12px;font-weight:800;color:#0f172a;">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#0284c7" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             <span style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(staffName)}</span>
