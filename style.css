@@ -4043,3 +4043,13 @@
   background:var(--blue-light,#e8f0ff);
   color:var(--blue,#2563eb);
 }
+
+
+
+
+
+.tx-row-card-mini .tx-pay-badge.transfer {
+  background: #7c3aed !important;
+  color: #fff !important;
+  border: none !important;
+}

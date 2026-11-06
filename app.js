@@ -3097,24 +3097,50 @@ function showStaffAbsenFab() {
 function nav() {
   const n = $("nav"),
     f = $("fab"),
-    af = $("absenFab");
+    af = $("absenFab"),
+    nQris = $("nav-qris"),
+    nHome = $("nav-home");
+
   if (!state.user) {
     n.style.display = "none";
-    f.style.display = "none";
+    if (f) f.style.display = "none";
     if (af) af.style.display = "none";
     return;
   }
   n.style.display = "flex";
-  f.style.display = (state.page === "home" && !missedAttendanceLockForDate()) ? "block" : "none";
-  if (af) af.style.display = showStaffAbsenFab() ? "flex" : "none";
-  const nQris = $("nav-qris");
-  if (nQris) {
-    nQris.style.display = state.user?.qrisAccess === true ? "flex" : "none";
+
+  const isFast = state.user?.fastCashierAccess === true;
+
+  if (isFast) {
+    // Mode Kasir Cepat (Toko Ramai):
+    // Sembunyikan FAB bulat (+) dan absenFab mengambang agar tidak menutupi tombol bayar
+    if (f) f.style.display = "none";
+    if (af) af.style.display = "none";
+    if (nQris) nQris.style.display = "none";
+    if (nHome) {
+      const span = nHome.querySelector("span");
+      if (span) span.textContent = "Kasir";
+    }
+  } else {
+    // Mode Standar Normal (staf tanpa izin kasir cepat):
+    // Tampilkan FAB + dan tombol QRIS normal seperti semula
+    if (f) f.style.display = (state.page === "home" && !missedAttendanceLockForDate()) ? "block" : "none";
+    if (af) af.style.display = showStaffAbsenFab() ? "flex" : "none";
+    if (nQris) nQris.style.display = state.user?.qrisAccess === true ? "flex" : "none";
+    if (nHome) {
+      const span = nHome.querySelector("span");
+      if (span) span.textContent = "Home";
+    }
   }
+
   document
     .querySelectorAll(".nav button")
     .forEach((b) => b.classList.remove("active"));
-  $(`nav-${state.page}`)?.classList.add("active");
+  if (state.page === "history") {
+    $("nav-history")?.classList.add("active");
+  } else {
+    $("nav-home")?.classList.add("active");
+  }
 }
 function renderLogin() {
   nav();
@@ -3196,6 +3222,13 @@ function renderNow() {
     return history();
   }
   if (state.page === "unlock") return renderUnlockPage();
+
+  // HANYA staff yang diberi akses Kasir Cepat oleh admin yang masuk ke Kasir Cepat:
+  if (state.user?.fastCashierAccess === true) {
+    return renderFastCashier();
+  }
+
+  // Staff tanpa akses Kasir Cepat TETAP di tampilan standar (Home Dashboard & Katalog normal):
   return home();
 }
 let renderFrame = 0;
@@ -3688,6 +3721,7 @@ function startStaffRealtime() {
         state.user = {
           ...state.user,
           qrisAccess: fresh.qrisAccess === true,
+        fastCashierAccess: fresh.fastCashierAccess === true,
           transactionBonusRate: hasBonusValue(fresh.transactionBonusRate)
             ? Number(fresh.transactionBonusRate)
             : null,
@@ -3981,6 +4015,7 @@ async function loadStaffData(opts = {}) {
         pin: String(fresh.pin || state.user.pin || ""),
         role: fresh.role || "staff",
         qrisAccess: fresh.qrisAccess === true,
+        fastCashierAccess: fresh.fastCashierAccess === true,
         transactionBonusRate: hasBonusValue(fresh.transactionBonusRate)
           ? Number(fresh.transactionBonusRate)
           : null,
@@ -4013,6 +4048,7 @@ async function loadStaffData(opts = {}) {
         pin: state.user.pin,
         role: state.user.role,
         qrisAccess: state.user.qrisAccess === true,
+        fastCashierAccess: state.user.fastCashierAccess === true,
         transactionBonusRate: state.user.transactionBonusRate,
         transactionBonusPercent: state.user.transactionBonusPercent,
         closingBonusPerMinute: isDailyUser(state.user)
@@ -6808,6 +6844,21 @@ function opsAccessCard() {
 }
 
 function home() {
+  const fastCashierBanner = state.user?.fastCashierAccess === true
+    ? `<div class="card" style="margin-top:8px;background:linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);border:1.5px solid #fdba74;cursor:pointer;padding:12px 14px;border-radius:16px;" onclick="go('fast_cashier')">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:38px;height:38px;border-radius:12px;background:#ea580c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:900;"><i class="fas fa-bolt"></i></div>
+            <div>
+              <div style="font-weight:800;font-size:13.5px;color:#9a3412;">Mode Kasir Cepat (Toko Ramai)</div>
+              <div style="font-size:11px;color:#c2410c;">Input nominal langsung tanpa isi nama barang</div>
+            </div>
+          </div>
+          <button type="button" class="btn" style="background:#ea580c;color:#fff;font-weight:800;font-size:11.5px;padding:6px 12px;border-radius:10px;border:none;">Buka ⚡</button>
+        </div>
+      </div>`
+    : "";
+
   const tx = todayTx(),
     a = todayAtt(),
     c = todayClosing(),
@@ -6833,7 +6884,7 @@ function home() {
       todayBonus = todayTxBonus + manualToday;
     const syncBtnDaily = `<button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi" style="top:26px; right:16px; background:rgba(255,255,255,0.2); border-color:rgba(255,255,255,0.4); color:#fff;"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring" style="border-color:#fff"></span></button>`;
     const manualCard = "";
-    page.innerHTML = `${top("Mode Harian", state.user?.name || "Karyawan Harian")}${trialModeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}<div class="hero daily-income-hero" style="position:relative">${syncBtnDaily}<div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} • ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat" style="position:relative"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard("daily")}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
+    page.innerHTML = `${top("Mode Harian", state.user?.name || "Karyawan Harian")}${trialModeCard()}${fastCashierBanner}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}<div class="hero daily-income-hero" style="position:relative">${syncBtnDaily}<div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} • ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat" style="position:relative"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard("daily")}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
     return;
   }
   const mainLabel = c ? "Closing Hari Ini" : "Absen Hari Ini";
@@ -6843,7 +6894,7 @@ function home() {
   const earnedBonus = totalBonus(),
     takenBonus = bonusWithdrawn(),
     sisaBonus = remainingBonus();
-  page.innerHTML = `${top("Mode Staff", state.user?.name || "Karyawan Staff")}${trialModeCard()}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero" style="position:relative"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><!-- <div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()} --><div class="stat" style="position:relative"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Bonus Bulan Ini</div><button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring"></span></button></div><div class="big" style="color:var(--blue)">Rp ${rp(sisaBonus)}</div><div class="bonus-note">Bonus terhitung ${rp(earnedBonus)} · sudah diambil ${rp(takenBonus)}</div>${bonusWithdrawalDetailList()}${todayClosingBonusInline()}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
+  page.innerHTML = `${top("Mode Staff", state.user?.name || "Karyawan Staff")}${trialModeCard()}${fastCashierBanner}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero" style="position:relative"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><!-- <div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()} --><div class="stat" style="position:relative"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Bonus Bulan Ini</div><button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring"></span></button></div><div class="big" style="color:var(--blue)">Rp ${rp(sisaBonus)}</div><div class="bonus-note">Bonus terhitung ${rp(earnedBonus)} · sudah diambil ${rp(takenBonus)}</div>${bonusWithdrawalDetailList()}${todayClosingBonusInline()}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
 }
   // ===== ESTIMASI UANG LACI KEMARIN =====
   // State untuk data tarikan laci kemarin
@@ -7712,7 +7763,7 @@ function home() {
       setTimeout(() => $("pinx")?.focus(), 60);
     });
   }
-  const TX_PAYMENT_METHODS = { cash: "Cash", qris_transfer: "QRIS / Transfer" };
+  const TX_PAYMENT_METHODS = { cash: "Cash", qris_transfer: "QRIS", transfer: "Transfer Bank" };
   let pendingTxDraft = null;
   let txPaymentSubmitting = false;
   function normalizeTxPaymentMethod(v) {
@@ -7720,9 +7771,9 @@ function home() {
       .replace(/[^a-z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "");
     if (s === "cash") return "cash";
+    if (s === "transfer" || s === "transfer_bank" || s === "bank_transfer") return "transfer";
     if (
       s === "qris" ||
-      s === "transfer" ||
       s === "qris_transfer" ||
       s === "qris_transfer_bank" ||
       s === "qris_dan_transfer"
@@ -8517,6 +8568,9 @@ function home() {
           "masuk",
         );
       toast("Absen berhasil");
+      if (state.user?.fastCashierAccess === true) {
+        state.page = "fast_cashier";
+      }
     } catch (e) {
       console.error(e);
       if (isPermissionError(e)) {
@@ -8550,6 +8604,9 @@ function home() {
         syncDailyTargetState();
         addPending({ type: "att_add", id, user: u, payload, createdAtMs: now });
         toast("Koneksi gagal. Absen disimpan lokal & akan sync otomatis.");
+        if (state.user?.fastCashierAccess === true) {
+          state.page = "fast_cashier";
+        }
       }
     } finally {
       showLoad(false);
@@ -8593,6 +8650,7 @@ function home() {
         pin: String(data.pin || ""),
         role: data.role || "staff",
         qrisAccess: data.qrisAccess === true,
+        fastCashierAccess: data.fastCashierAccess === true,
         transactionBonusRate: hasBonusValue(data.transactionBonusRate)
           ? Number(data.transactionBonusRate)
           : null,
@@ -8621,6 +8679,7 @@ function home() {
         pin: state.user.pin,
         role: state.user.role,
         qrisAccess: state.user.qrisAccess === true,
+        fastCashierAccess: state.user.fastCashierAccess === true,
         transactionBonusRate: state.user.transactionBonusRate,
         transactionBonusPercent: state.user.transactionBonusPercent,
         closingBonusPerMinute: isDailyUser(state.user)
@@ -8640,6 +8699,9 @@ function home() {
       );
       showLoad(false);
       await loadStaffData();
+      if (state.user?.fastCashierAccess === true && todayAtt()) {
+        state.page = "fast_cashier";
+      }
       toast(`Masuk: ${state.user.name}`);
     } catch (e) {
       console.error(e);
@@ -8735,6 +8797,7 @@ function home() {
             pin: String(data.pin || ""),
             role: data.role || "staff",
             qrisAccess: data.qrisAccess === true,
+        fastCashierAccess: data.fastCashierAccess === true,
             transactionBonusRate: hasBonusValue(data.transactionBonusRate)
               ? Number(data.transactionBonusRate)
               : null,
@@ -8763,6 +8826,7 @@ function home() {
             pin: state.user.pin,
             role: state.user.role,
             qrisAccess: state.user.qrisAccess === true,
+        fastCashierAccess: state.user.fastCashierAccess === true,
             transactionBonusRate: state.user.transactionBonusRate,
             transactionBonusPercent: state.user.transactionBonusPercent,
             closingBonusPerMinute: isDailyUser(state.user)
@@ -8784,6 +8848,10 @@ function home() {
             }),
           );
           await loadStaffData();
+          if (state.user?.fastCashierAccess === true && todayAtt()) {
+            state.page = "fast_cashier";
+            render();
+          }
           return;
         }
       } catch (e) {
@@ -8814,7 +8882,7 @@ function home() {
   }
   function go(p, opts = {}) {
     p = p === "leave" ? "unlock" : p;
-    p = p === "history" || p === "unlock" ? p : "home";
+    p = p === "history" || p === "unlock" || p === "fast_cashier" ? p : "home";
     if (state.page === p) {
       render();
       return;
@@ -9708,6 +9776,7 @@ const ACTIVE_QRIS_KEY = "rocky_active_qris_session_v1";
 let qrisPollingTimer = null;
 let qrisCountdownTimer = null;
 let currentQrisOrderId = null;
+const processedQrisOrders = new Set();
 let currentQrisAmount = 0;
 let currentQrisNote = "";
 
@@ -10233,6 +10302,9 @@ async function printSpecificQrisReceipt(orderId) {
 }
 
 async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
+  if (!orderId || processedQrisOrders.has(orderId)) return;
+  processedQrisOrders.add(orderId);
+
   clearActiveQrisSession();
   stopQrisPolling();
   stopQrisCountdown();
@@ -10240,6 +10312,21 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
   currentQrisAmount = 0;
   currentQrisNote = "";
   playSuccessSound();
+
+  // Jika pembayaran dari Kasir Cepat, simpan ke transactions agar masuk ke riwayat kasir, omset & bonus
+  if (note && note.includes("Penjualan Cepat")) {
+    fastCashierNominal = 0;
+    try { updateFastCashierDisplay(); } catch (e) {}
+    try {
+      await saveTx(false, "qris_transfer", {
+        amount: Number(amount || 0),
+        note: note || "Penjualan Cepat (QRIS)",
+        paymentMethod: "qris_transfer"
+      });
+    } catch (errTx) {
+      console.warn("Gagal simpan transaksi utama QRIS:", errTx);
+    }
+  }
 
   // Simpan record ke tabel database Supabase qris_payments
   try {
@@ -10481,3 +10568,389 @@ try {
     getQrisDexBroadcastChannel();
   }, 1000);
 } catch (e) {}
+
+
+
+
+
+
+// ==========================================
+// FITUR AKSES CEPAT SAAT TOKO RAMAI
+// (Khusus Staf yang Diberi Akses oleh Admin)
+// ==========================================
+let fastCashierNominal = 0;
+let fastCashierSubmitting = false;
+
+function fastCashierAddDigit(digit) {
+  let s = String(fastCashierNominal || "");
+  if (digit === "000") {
+    if (s && s !== "0") s += "000";
+  } else if (digit === "00") {
+    if (s && s !== "0") s += "00";
+  } else {
+    if (s === "0") s = "";
+    s += String(digit);
+  }
+  if (s.length > 9) s = s.slice(0, 9);
+  fastCashierNominal = Number(s) || 0;
+  updateFastCashierDisplay();
+}
+
+function fastCashierBackspace() {
+  let s = String(fastCashierNominal || "");
+  if (s.length <= 1) {
+    fastCashierNominal = 0;
+  } else {
+    fastCashierNominal = Number(s.slice(0, -1)) || 0;
+  }
+  updateFastCashierDisplay();
+}
+
+function fastCashierClear() {
+  fastCashierNominal = 0;
+  updateFastCashierDisplay();
+}
+
+function updateFastCashierDisplay() {
+  const el = $("fastNominalDisplay");
+  if (el) {
+    el.innerHTML = fastCashierNominal > 0
+      ? `Rp ${rp(fastCashierNominal)}`
+      : `<span style="color:#94a3b8;font-weight:700;">Rp 0</span>`;
+  }
+  const clearBtn = $("fastClearBtn");
+  if (clearBtn) {
+    clearBtn.style.opacity = fastCashierNominal > 0 ? "1" : "0.3";
+    clearBtn.style.pointerEvents = fastCashierNominal > 0 ? "auto" : "none";
+  }
+}
+
+// Buka dan generate barcode QRIS dengan nominal yang sudah diketik
+async function startFastCashierQris(amount) {
+  if (!amount || amount <= 0) return toast("Masukkan nominal transaksi dulu!");
+  if (!canTx()) return toast(txBlockedMessage());
+
+  currentQrisAmount = Number(amount);
+  currentQrisNote = "Penjualan Cepat (QRIS)";
+  
+  const kasirUsername = String(state.user?.username || "staff").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const kasirName = state.user?.name || kasirUsername;
+  const orderId = `QR-${kasirUsername}-${Date.now()}`;
+  currentQrisOrderId = orderId;
+
+  const loadingBody = `
+    <div style="text-align:center;padding:30px 10px;">
+      <div class="spin" style="margin:0 auto 16px;width:40px;height:40px;border-width:4px;"></div>
+      <div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:6px;">Menyiapkan Barcode...</div>
+      <div style="font-size:12px;color:var(--muted);">Sedang membuat barcode QRIS Rp ${rp(currentQrisAmount)}</div>
+    </div>
+  `;
+  modal("Membuat Barcode QRIS", loadingBody, "", "tx-modal qris-modal");
+
+  try {
+    const backendUrl = "https://myxrvipyodadnldtomzs.supabase.co/functions/v1/clever-responder";
+    const res = await fetch(backendUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "create_qris",
+        amount: currentQrisAmount,
+        cashier: kasirUsername,
+        order_id: orderId
+      })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || "Gagal membuat barcode QRIS");
+    }
+
+    const now = Date.now();
+    const expiresAtMs = now + 5 * 60 * 1000;
+    const sessionData = {
+      orderId,
+      amount: currentQrisAmount,
+      note: currentQrisNote,
+      qrImgOrString: data.qr_image_url || data.qr_string,
+      kasirUsername,
+      kasirName,
+      createdAtMs: now,
+      expiresAtMs,
+    };
+    saveActiveQrisSession(sessionData);
+
+    renderStaffQrisBarcodeScreen(
+      sessionData.qrImgOrString,
+      orderId,
+      currentQrisAmount,
+      currentQrisNote,
+      expiresAtMs
+    );
+    startQrisPolling(orderId, currentQrisAmount, currentQrisNote, kasirName);
+  } catch (err) {
+    console.error("QRIS Error:", err);
+    toast("Gagal buat QRIS: " + (err.message || err));
+    closeModal();
+  }
+}
+
+async function submitFastCashierTx(method = "cash") {
+  if (fastCashierSubmitting) return;
+  const amount = Number(fastCashierNominal || 0);
+  if (!amount || amount <= 0) {
+    return toast("Masukkan nominal transaksi dulu!");
+  }
+  if (!canTx()) {
+    return toast(txBlockedMessage());
+  }
+
+  // 1. Jika QRIS: Tampilkan barcode QRIS untuk discan pelanggan (wajib ada izin qrisAccess dari admin)
+  if (method === "qris" || method === "qris_transfer") {
+    if (state.user?.qrisAccess !== true) {
+      return toast("Anda tidak memiliki izin pembayaran QRIS dari Admin!");
+    }
+    return startFastCashierQris(amount);
+  }
+
+  // 2. Jika TRANSFER BANK: Langsung simpan transaksi transfer tanpa barcode!
+  if (method === "transfer" || method === "bank_transfer") {
+    fastCashierSubmitting = true;
+    showLoad(true);
+
+    try {
+      const draft = {
+        amount,
+        note: "Penjualan Cepat (Transfer)",
+        paymentMethod: "transfer"
+      };
+
+      fastCashierNominal = 0;
+      updateFastCashierDisplay();
+
+      await saveTx(false, "transfer", draft);
+      toast(`✓ Transaksi Transfer Rp ${rp(amount)} Berhasil!`);
+    } catch (err) {
+      console.error("Fast cashier transfer tx failed:", err);
+      toast("Gagal simpan transfer: " + (err?.message || err), true);
+    } finally {
+      fastCashierSubmitting = false;
+      showLoad(false);
+      render();
+    }
+    return;
+  }
+
+  // 3. Jika TUNAI (CASH): Langsung simpan transaksi tunai!
+  fastCashierSubmitting = true;
+  showLoad(true);
+
+  try {
+    const draft = {
+      amount,
+      note: "Penjualan Cepat",
+      paymentMethod: "cash"
+    };
+
+    fastCashierNominal = 0;
+    updateFastCashierDisplay();
+
+    await saveTx(false, "cash", draft);
+    toast(`✓ Transaksi Tunai Rp ${rp(amount)} Berhasil!`);
+  } catch (err) {
+    console.error("Fast cashier tx failed:", err);
+    toast("Gagal simpan transaksi: " + (err?.message || err), true);
+  } finally {
+    fastCashierSubmitting = false;
+    showLoad(false);
+    render();
+  }
+}
+
+// Layar Absen jika staff belum absen hari ini (harian bebas absen)
+function renderStaffAttendancePrompt() {
+  const name = state.user?.name || state.user?.username || "Staff";
+  const lock = missedAttendanceLockForDate();
+  const lockText = lock ? missedAttendanceLockText(lock, "absen") : "";
+
+  page.innerHTML = `
+    <div class="wrap" style="max-width:500px;margin:30px auto;padding:20px;text-align:center;">
+      <div style="background:var(--card,#fff);border:1.5px solid var(--border,#e2e8f0);border-radius:24px;padding:32px 20px;box-shadow:0 8px 30px rgba(0,0,0,0.06);">
+        <div style="width:72px;height:72px;border-radius:24px;background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%);color:#fff;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:32px;box-shadow:0 6px 20px rgba(2,132,199,0.3);">
+          <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+          </svg>
+        </div>
+        <div style="font-size:20px;font-weight:900;color:var(--text,#0f172a);">Halo, ${esc(name)}!</div>
+        <div style="font-size:13px;color:var(--muted,#64748b);margin-top:6px;line-height:1.5;">
+          Silakan lakukan <b>Absen Masuk</b> terlebih dahulu untuk membuka dan memulai transaksi kasir hari ini.
+        </div>
+        ${lock ? `<div class="card bad" style="margin-top:14px;padding:12px;font-size:12px;color:#dc2626;background:#fef2f2;border-radius:12px;border:1px solid #fecaca;">${esc(lockText)}</div>` : ''}
+        <button type="button" class="btn primary" onclick="clockIn()" ${lock ? 'disabled' : ''} style="margin-top:24px;width:100%;height:54px;border-radius:16px;font-size:16px;font-weight:900;background:linear-gradient(135deg, #10b981 0%, #059669 100%);border:none;box-shadow:0 6px 18px rgba(16,185,129,0.3);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+          Absen Masuk Sekarang
+        </button>
+        <div style="margin-top:16px;">
+          <button type="button" onclick="logout()" style="background:none;border:none;color:#dc2626;font-size:12px;font-weight:700;cursor:pointer;">
+            Keluar Akun
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderFastCashier() {
+  // Jika staff biasa dan belum absen hari ini, wajib absen masuk dulu (kecuali karyawan harian yang bebas absen)
+  if (!isAttendanceFreeUser() && !todayAtt()) {
+    return renderStaffAttendancePrompt();
+  }
+
+  const staffName = state.user?.name || state.user?.username || "Staff";
+  const hasQris = state.user?.qrisAccess === true;
+  const gridCols = hasQris ? "1fr 1fr 1fr" : "1fr 1fr";
+  const tx = todayTx();
+  const txCount = tx.length;
+  const todayOmset = todayTotal();
+  const displayVal = fastCashierNominal > 0
+    ? `Rp ${rp(fastCashierNominal)}`
+    : `<span style="color:#94a3b8;font-weight:700;">Rp 0</span>`;
+  const clearOpacity = fastCashierNominal > 0 ? "1" : "0.3";
+  const clearPointer = fastCashierNominal > 0 ? "auto" : "none";
+
+  const currentUserKey = key(state.user?.username);
+  const isExcluded = ["risma", "aji", "admin"].includes(currentUserKey);
+  let warningIcon = "";
+  if (!isExcluded) {
+    if (tx.length === 0) {
+      warningIcon = `<style>@keyframes zzzFloat { 0%, 100% { transform: translateY(0) scale(1) rotate(-5deg); } 50% { transform: translateY(-4px) scale(1.05) rotate(5deg); } }</style><div style="position:absolute; bottom:8px; right:10px; font-size:26px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: zzzFloat 3s ease-in-out infinite;" title="Masih Molor (Belum Penglaris)">😴</div>`;
+    } else if (tx.length === 1) {
+      warningIcon = `<style>@keyframes bangunGirang { 0%, 100% { transform: translateY(0) scale(1); } 20% { transform: translateY(-6px) scale(1.15) rotate(-10deg); } 40% { transform: translateY(0) scale(1.1) rotate(10deg); } 60% { transform: translateY(-3px) scale(1.1) rotate(-5deg); } 80% { transform: translateY(0) scale(1.05) rotate(5deg); } }</style><div style="position:absolute; bottom:8px; right:10px; font-size:26px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: bangunGirang 1.5s ease-in-out infinite;" title="Alhamdulillah Penglaris!">🤑</div>`;
+    } else if (isLowestStaffToday()) {
+      warningIcon = `<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="#ff4d4d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="position:absolute; bottom:8px; right:10px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: pulse 2s infinite;"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline><polyline points="17 18 23 18 23 12"></polyline></svg>`;
+    }
+  }
+
+  page.innerHTML = `
+    <div class="wrap fast-cashier-wrap" style="padding-top:10px;padding-bottom:100px;max-width:540px;margin:0 auto;">
+      <!-- Top Bar: Nama Staf & Keluar di kanan atas -->
+      <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:10px;padding:2px 2px;gap:6px;">
+        <div style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1.5px solid #e2e8f0;padding:4px 10px;border-radius:10px;font-size:12px;font-weight:800;color:#0f172a;box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#0284c7" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <span style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(staffName)}</span>
+        </div>
+        <button type="button" onclick="logout()" title="Keluar Akun" style="padding:4px 9px;font-size:11px;font-weight:800;border-radius:9px;border:none;background:#fee2e2;color:#dc2626;cursor:pointer;display:inline-flex;align-items:center;gap:3px;-webkit-tap-highlight-color:transparent;">
+          Keluar
+        </button>
+      </div>
+
+      <!-- Summary Strip: Omset Hari Ini & Total Trx (dengan icon status) -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <div style="background:var(--card,#fff);border:1.5px solid var(--border,#e2e8f0);border-radius:16px;padding:12px 14px;text-align:center;">
+          <div style="font-size:11px;font-weight:800;color:var(--muted,#64748b);text-transform:uppercase;letter-spacing:0.4px;">OMSET HARI INI</div>
+          <div style="font-size:18px;font-weight:950;color:var(--primary,#0284c7);margin-top:3px;">Rp ${rp(todayOmset)}</div>
+        </div>
+        <div style="position:relative;background:var(--card,#fff);border:1.5px solid var(--border,#e2e8f0);border-radius:16px;padding:12px 14px;text-align:center;overflow:hidden;">
+          <div style="font-size:11px;font-weight:800;color:var(--muted,#64748b);text-transform:uppercase;letter-spacing:0.4px;">TOTAL TRX</div>
+          <div style="font-size:18px;font-weight:950;color:#0f172a;margin-top:3px;">${txCount} <span style="font-size:12px;font-weight:700;color:var(--muted,#64748b);">struk</span></div>
+          ${warningIcon}
+        </div>
+      </div>
+
+      <!-- Bar Target Hari Ini -->
+      <div style="margin-bottom:10px;">
+        ${dailyTargetCard()}
+      </div>
+
+      <!-- Main Nominal Screen Box -->
+      <div style="position:relative;background:#ffffff;border:2.5px solid #0284c7;border-radius:22px;padding:20px 16px;box-shadow:0 8px 24px rgba(2,132,199,0.12);margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <span style="font-size:11.5px;font-weight:850;color:#0284c7;letter-spacing:0.8px;text-transform:uppercase;">NOMINAL TRANSAKSI</span>
+          <button id="fastClearBtn" type="button" onclick="fastCashierClear()" style="background:#fee2e2;border:1px solid #fca5a5;color:#dc2626;font-size:11.5px;font-weight:850;padding:4px 10px;border-radius:8px;opacity:${clearOpacity};pointer-events:${clearPointer};display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            Hapus
+          </button>
+        </div>
+        <div id="fastNominalDisplay" style="font-size:42px;font-weight:950;text-align:center;color:#0369a1;min-height:58px;display:flex;align-items:center;justify-content:center;letter-spacing:-0.5px;font-family:inherit;">
+          ${displayVal}
+        </div>
+      </div>
+
+      <!-- Numeric Keypad -->
+      <div style="background:var(--card,#fff);border:1.5px solid var(--border,#e2e8f0);border-radius:20px;padding:12px;box-shadow:0 2px 8px rgba(0,0,0,0.03);margin-bottom:14px;">
+        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;">
+          <button type="button" onclick="fastCashierAddDigit(1)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">1</button>
+          <button type="button" onclick="fastCashierAddDigit(2)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">2</button>
+          <button type="button" onclick="fastCashierAddDigit(3)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">3</button>
+
+          <button type="button" onclick="fastCashierAddDigit(4)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">4</button>
+          <button type="button" onclick="fastCashierAddDigit(5)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">5</button>
+          <button type="button" onclick="fastCashierAddDigit(6)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">6</button>
+
+          <button type="button" onclick="fastCashierAddDigit(7)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">7</button>
+          <button type="button" onclick="fastCashierAddDigit(8)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">8</button>
+          <button type="button" onclick="fastCashierAddDigit(9)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">9</button>
+
+          <button type="button" onclick="fastCashierBackspace()" style="height:56px;font-size:20px;font-weight:900;border-radius:14px;background:#fef2f2;border:1.5px solid #fecaca;color:#dc2626;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;" title="Hapus satu angka">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM18 9l-6 6M12 9l6 6"/></svg>
+          </button>
+          <button type="button" onclick="fastCashierAddDigit(0)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">0</button>
+          <button type="button" onclick="fastCashierAddDigit('000')" style="height:56px;font-size:18px;font-weight:900;border-radius:14px;background:#f0f9ff;border:1.5px solid #bae6fd;color:#0284c7;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">000</button>
+        </div>
+      </div>
+
+      <!-- Action Buttons: Tunai, QRIS (jika diizinkan admin), & Transfer Bank -->
+      <div style="display:grid;grid-template-columns:${gridCols};gap:8px;">
+        <button type="button" class="btn" onclick="submitFastCashierTx('cash')" style="height:66px;border-radius:18px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:#fff;border:none;box-shadow:0 4px 14px rgba(16,185,129,0.3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:6px 2px;">
+          <div style="font-size:14px;font-weight:950;display:flex;align-items:center;gap:4px;">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>
+            TUNAI
+          </div>
+          <div style="font-size:10px;font-weight:700;opacity:0.9;">Cash Fisik</div>
+        </button>
+
+        ${hasQris ? `
+        <button type="button" class="btn" onclick="submitFastCashierTx('qris_transfer')" style="height:66px;border-radius:18px;background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%);color:#fff;border:none;box-shadow:0 4px 14px rgba(2,132,199,0.3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:6px 2px;">
+          <div style="font-size:14px;font-weight:950;display:flex;align-items:center;gap:4px;">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            QRIS
+          </div>
+          <div style="font-size:10px;font-weight:700;opacity:0.9;">Barcode</div>
+        </button>
+        ` : ""}
+
+        <button type="button" class="btn" onclick="submitFastCashierTx('transfer')" style="height:66px;border-radius:18px;background:linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);color:#fff;border:none;box-shadow:0 4px 14px rgba(124,58,237,0.3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:6px 2px;">
+          <div style="font-size:14px;font-weight:950;display:flex;align-items:center;gap:4px;">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>
+            TRANSFER
+          </div>
+          <div style="font-size:10px;font-weight:700;opacity:0.9;">Bank / QRIS</div>
+        </button>
+      </div>
+
+      <!-- Catatan Markas (Pesan Penting) -->
+      ${staffDailyNoteCard()}
+    </div>
+  `;
+}
+
+// Global exposure for event handlers
+window.fastCashierAddDigit = fastCashierAddDigit;
+window.fastCashierBackspace = fastCashierBackspace;
+window.fastCashierClear = fastCashierClear;
+window.submitFastCashierTx = submitFastCashierTx;
+window.startFastCashierQris = startFastCashierQris;
+window.finishStaffQris = finishStaffQris;
+
+// Support physical keyboard / bluetooth keypad
+window.addEventListener("keydown", (e) => {
+  if (state.page !== "home" && state.page !== "fast_cashier") return;
+  if (document.activeElement && ["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
+  if (e.key >= "0" && e.key <= "9") {
+    fastCashierAddDigit(e.key);
+  } else if (e.key === "Backspace") {
+    fastCashierBackspace();
+  } else if (e.key === "Escape" || e.key.toLowerCase() === "c") {
+    fastCashierClear();
+  } else if (e.key === "Enter") {
+    submitFastCashierTx("cash");
+  }
+});
