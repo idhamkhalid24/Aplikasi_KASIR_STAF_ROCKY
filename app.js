@@ -4958,6 +4958,8 @@ async function latestBonusSnapshotForSave() {
       name: fresh.name || u,
       pin: String(fresh.pin || state.user.pin || ""),
       role: fresh.role || "staff",
+      qrisAccess: (fresh.qrisAccess !== undefined ? fresh.qrisAccess === true : state.user?.qrisAccess === true),
+      fastCashierAccess: (fresh.fastCashierAccess !== undefined ? fresh.fastCashierAccess === true : state.user?.fastCashierAccess === true),
       transactionBonusRate: hasBonusValue(fresh.transactionBonusRate)
         ? Number(fresh.transactionBonusRate)
         : null,
@@ -8898,13 +8900,14 @@ function home() {
       closeModal();
     } catch (e) {}
     if (!state.user) return false;
-    if (state.page !== "home") {
-      state.page = "home";
-      syncAppBrowserHistory("home", "push");
+    const homePage = state.user?.fastCashierAccess === true ? "fast_cashier" : "home";
+    if (state.page !== homePage) {
+      state.page = homePage;
+      syncAppBrowserHistory(homePage, "push");
       render();
       return true;
     }
-    syncAppBrowserHistory("home", "replace");
+    syncAppBrowserHistory(homePage, "replace");
     if (source === "nativeBack") return false;
     if (!silentHome) toast("Sudah di halaman utama");
     return true;
@@ -8921,10 +8924,11 @@ function home() {
         syncAppBrowserHistory(state.page || "home", "push");
         return;
       }
-      if (state.user && state.page !== "home") {
-        state.page = "home";
+      const homePage = state.user?.fastCashierAccess === true ? "fast_cashier" : "home";
+      if (state.user && state.page !== homePage) {
+        state.page = homePage;
         render();
-        syncAppBrowserHistory("home", "push");
+        syncAppBrowserHistory(homePage, "push");
         return;
       }
       if (state.user) {
@@ -9779,6 +9783,7 @@ let currentQrisOrderId = null;
 const processedQrisOrders = new Set();
 let currentQrisAmount = 0;
 let currentQrisNote = "";
+let currentQrisFromFastCashier = false;
 
 function saveActiveQrisSession(session) {
   try {
@@ -10314,13 +10319,14 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
   playSuccessSound();
 
   // Jika pembayaran dari Kasir Cepat, simpan ke transactions agar masuk ke riwayat kasir, omset & bonus
-  if (note && note.includes("Penjualan Cepat")) {
+  if (currentQrisFromFastCashier || (note && (note.includes("Penjualan Cepat") || note === "Transaksi")) ) {
+    currentQrisFromFastCashier = false;
     fastCashierNominal = 0;
     try { updateFastCashierDisplay(); } catch (e) {}
     try {
       await saveTx(false, "qris_transfer", {
         amount: Number(amount || 0),
-        note: note || "Penjualan Cepat (QRIS)",
+        note: "Transaksi",
         paymentMethod: "qris_transfer"
       });
     } catch (errTx) {
@@ -10631,7 +10637,8 @@ async function startFastCashierQris(amount) {
   if (!canTx()) return toast(txBlockedMessage());
 
   currentQrisAmount = Number(amount);
-  currentQrisNote = "Penjualan Cepat (QRIS)";
+  currentQrisNote = "Transaksi";
+  currentQrisFromFastCashier = true;
   
   const kasirUsername = String(state.user?.username || "staff").toLowerCase().replace(/[^a-z0-9]/g, "");
   const kasirName = state.user?.name || kasirUsername;
@@ -10719,7 +10726,7 @@ async function submitFastCashierTx(method = "cash") {
     try {
       const draft = {
         amount,
-        note: "Penjualan Cepat (Transfer)",
+        note: "Transaksi",
         paymentMethod: "transfer"
       };
 
@@ -10734,6 +10741,7 @@ async function submitFastCashierTx(method = "cash") {
     } finally {
       fastCashierSubmitting = false;
       showLoad(false);
+      state.page = "fast_cashier";
       render();
     }
     return;
@@ -10746,7 +10754,7 @@ async function submitFastCashierTx(method = "cash") {
   try {
     const draft = {
       amount,
-      note: "Penjualan Cepat",
+      note: "Transaksi",
       paymentMethod: "cash"
     };
 
@@ -10760,8 +10768,9 @@ async function submitFastCashierTx(method = "cash") {
     toast("Gagal simpan transaksi: " + (err?.message || err), true);
   } finally {
     fastCashierSubmitting = false;
-    showLoad(false);
-    render();
+      showLoad(false);
+      state.page = "fast_cashier";
+      render();
   }
 }
 
@@ -10806,7 +10815,6 @@ function renderFastCashier() {
 
   const staffName = state.user?.name || state.user?.username || "Staff";
   const hasQris = state.user?.qrisAccess === true;
-  const gridCols = hasQris ? "1fr 1fr 1fr" : "1fr 1fr";
   const tx = todayTx();
   const txCount = tx.length;
   const todayOmset = todayTotal();
@@ -10926,16 +10934,26 @@ function renderFastCashier() {
           <button type="button" onclick="fastCashierAddDigit(8)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">8</button>
           <button type="button" onclick="fastCashierAddDigit(9)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">9</button>
 
+        ${hasQris ? `
+          <button type="button" class="btn" onclick="submitFastCashierTx('transfer')" style="height:56px;border-radius:14px;background:linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);color:#fff;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:4px 2px;" title="Transfer (Mesin EDC)">
+            <div style="font-size:12px;font-weight:950;display:flex;align-items:center;gap:3px;line-height:1.1;">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>
+              TRANSFER
+            </div>
+            <div style="font-size:9.5px;font-weight:700;opacity:0.9;line-height:1;">Mesin EDC</div>
+          </button>
+        ` : `
+          <div style="height:56px;"></div>
+        `}
+          <button type="button" onclick="fastCashierAddDigit(0)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">0</button>
           <button type="button" onclick="fastCashierBackspace()" style="height:56px;font-size:20px;font-weight:900;border-radius:14px;background:#fef2f2;border:1.5px solid #fecaca;color:#dc2626;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;" title="Hapus satu angka">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM18 9l-6 6M12 9l6 6"/></svg>
           </button>
-          <button type="button" onclick="fastCashierAddDigit(0)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">0</button>
-          <button type="button" onclick="fastCashierAddDigit('000')" style="height:56px;font-size:18px;font-weight:900;border-radius:14px;background:#f0f9ff;border:1.5px solid #bae6fd;color:#0284c7;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">000</button>
         </div>
       </div>
 
-      <!-- Action Buttons: Tunai, QRIS (jika diizinkan admin), & Transfer Bank -->
-      <div style="display:grid;grid-template-columns:${gridCols};gap:8px;">
+      <!-- Action Buttons: Tunai & QRIS (atau Transfer Mesin EDC jika QRIS tidak diizinkan) -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
         <button type="button" class="btn" onclick="submitFastCashierTx('cash')" style="height:66px;border-radius:18px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:#fff;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:6px 2px;">
           <div style="font-size:14px;font-weight:950;display:flex;align-items:center;gap:4px;">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>
@@ -10952,15 +10970,15 @@ function renderFastCashier() {
           </div>
           <div style="font-size:10px;font-weight:700;opacity:0.9;">Barcode</div>
         </button>
-        ` : ""}
-
-        <button type="button" class="btn" onclick="submitFastCashierTx('transfer')" style="height:66px;border-radius:18px;background:linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);color:#fff;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:6px 2px;">
+        ` : `
+        <button type="button" class="btn" onclick="submitFastCashierTx('transfer')" style="height:66px;border-radius:18px;background:linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);color:#fff;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:6px 2px;" title="Transfer (Mesin EDC)">
           <div style="font-size:14px;font-weight:950;display:flex;align-items:center;gap:4px;">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>
             TRANSFER
           </div>
-          <div style="font-size:10px;font-weight:700;opacity:0.9;">Bank / QRIS</div>
+          <div style="font-size:10px;font-weight:700;opacity:0.9;">Mesin EDC</div>
         </button>
+        `}
       </div>
 
       <!-- Catatan Markas (Pesan Penting) -->
