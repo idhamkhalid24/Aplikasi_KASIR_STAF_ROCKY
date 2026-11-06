@@ -10898,39 +10898,39 @@ function renderFastCashier() {
 
   page.innerHTML = `
     <div class="wrap fast-cashier-wrap" style="padding-top:10px;padding-bottom:100px;max-width:540px;margin:0 auto;">
-      <!-- Top Bar: Cash Fisik & Masuk Kerja (khusus staf biasa) di kiri/tengah & Nama Staf + Keluar di kanan -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:2px 2px;gap:6px;">
-        <div style="display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap;">
+      <!-- Top Bar: Cash Fisik & Masuk Kerja (khusus staf biasa) berdampingan di kiri & Nama Staf + Keluar di kanan -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:2px 1px;gap:4px;flex-wrap:nowrap;width:100%;">
+        <div style="display:inline-flex;align-items:center;gap:4px;flex-shrink:0;flex-wrap:nowrap;">
           ${state.data.opsAccess ? `
-            <div onclick="toggleOpsCard()" title="Klik untuk buka/tutup menu operasional" style="cursor:pointer;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:4px 9px;display:flex;align-items:center;gap:6px;-webkit-tap-highlight-color:transparent;">
+            <div onclick="toggleOpsCard()" title="Klik untuk buka/tutup menu operasional" style="cursor:pointer;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:3px 6px;display:inline-flex;align-items:center;gap:4px;-webkit-tap-highlight-color:transparent;flex-shrink:0;">
               <div>
-                <div style="font-size:9.5px;font-weight:950;color:#2563eb;text-transform:uppercase;letter-spacing:0.4px;line-height:1;">Cash Fisik</div>
-                <div class="num" style="font-size:15px;font-weight:950;color:${cashFisik < 0 ? 'var(--red)' : '#1d4ed8'};line-height:1.15;margin-top:2px;">Rp ${rp(cashFisik)}</div>
+                <div style="font-size:8.5px;font-weight:950;color:#2563eb;text-transform:uppercase;letter-spacing:0.3px;line-height:1;">Cash Fisik</div>
+                <div class="num" style="font-size:13px;font-weight:950;color:${cashFisik < 0 ? 'var(--red)' : '#1d4ed8'};line-height:1.1;margin-top:1px;">Rp ${rp(cashFisik)}</div>
               </div>
-              <span style="font-size:10px;background:#dbeafe;color:#1d4ed8;padding:2px 5px;border-radius:6px;font-weight:900;line-height:1;">HARI INI</span>
-              <span style="font-size:13px;color:#2563eb;font-weight:900;transition:transform 0.2s;display:inline-block;transform:rotate(${isOpsOpen ? '180deg' : '0deg'});">▾</span>
+              <span style="font-size:8px;background:#dbeafe;color:#1d4ed8;padding:1px 3px;border-radius:4px;font-weight:900;line-height:1;">HARI INI</span>
+              <span style="font-size:10px;color:#2563eb;font-weight:900;transition:transform 0.2s;display:inline-block;transform:rotate(${isOpsOpen ? '180deg' : '0deg'});">▾</span>
             </div>
           ` : ''}
 
           ${isRegularStaff ? `
-            <div title="Total Masuk Kerja Bulan ${currentMonthLabel}" style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;padding:4px 9px;display:flex;align-items:center;gap:6px;-webkit-tap-highlight-color:transparent;">
+            <div title="Total Masuk Kerja Bulan ${currentMonthLabel}" style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:3px 6px;display:inline-flex;align-items:center;gap:4px;-webkit-tap-highlight-color:transparent;flex-shrink:0;">
               <div>
-                <div style="font-size:9.5px;font-weight:950;color:#15803d;text-transform:uppercase;letter-spacing:0.4px;line-height:1;">Masuk Kerja</div>
-                <div class="num" style="font-size:15px;font-weight:950;color:#166534;line-height:1.15;margin-top:2px;">
-                  ${attendDays} <span style="font-size:11px;font-weight:850;color:#15803d;">Hari</span>
+                <div style="font-size:8.5px;font-weight:950;color:#15803d;text-transform:uppercase;letter-spacing:0.3px;line-height:1;">Masuk Kerja</div>
+                <div class="num" style="font-size:13px;font-weight:950;color:#166534;line-height:1.1;margin-top:1px;">
+                  ${attendDays} <span style="font-size:9.5px;font-weight:850;color:#15803d;">Hari</span>
                 </div>
               </div>
-              <span style="font-size:10px;background:#dcfce7;color:#15803d;padding:2px 5px;border-radius:6px;font-weight:900;line-height:1;">${currentMonthLabel}</span>
+              <span style="font-size:8px;background:#dcfce7;color:#15803d;padding:1px 3px;border-radius:4px;font-weight:900;line-height:1;">${currentMonthLabel}</span>
             </div>
           ` : ''}
         </div>
 
-        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-          <div style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1.5px solid #e2e8f0;padding:4px 10px;border-radius:10px;font-size:12px;font-weight:800;color:#0f172a;">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#0284c7" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <span style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(staffName)}</span>
+        <div style="display:inline-flex;align-items:center;gap:4px;flex-shrink:0;">
+          <div style="display:inline-flex;align-items:center;gap:3px;background:#f8fafc;border:1.5px solid #e2e8f0;padding:3px 7px;border-radius:9px;font-size:11px;font-weight:800;color:#0f172a;">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#0284c7" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span style="max-width:85px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(staffName)}</span>
           </div>
-          <button type="button" onclick="logout()" title="Keluar Akun" style="padding:4px 9px;font-size:11px;font-weight:800;border-radius:9px;border:none;background:#fee2e2;color:#dc2626;cursor:pointer;display:inline-flex;align-items:center;gap:3px;-webkit-tap-highlight-color:transparent;">
+          <button type="button" onclick="logout()" title="Keluar Akun" style="padding:3px 7px;font-size:10.5px;font-weight:800;border-radius:8px;border:none;background:#fee2e2;color:#dc2626;cursor:pointer;display:inline-flex;align-items:center;gap:2px;-webkit-tap-highlight-color:transparent;">
             Keluar
           </button>
         </div>
