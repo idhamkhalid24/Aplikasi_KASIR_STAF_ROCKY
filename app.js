@@ -6809,7 +6809,7 @@ function opsAccessCard() {
   const isOpen = state.data.opsCardOpen === true;
 
   return `
-    <div style="background:#eff6ff; border:1.5px solid #bfdbfe; border-radius:18px; padding:11px 12px; margin-bottom:10px; box-shadow:0 1px 2px 0 rgba(0,0,0,0.05); overflow:hidden;">
+    <div style="background:#eff6ff; border:1.5px solid #bfdbfe; border-radius:18px; padding:11px 12px; margin-bottom:10px;  overflow:hidden;">
       <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="toggleOpsCard()">
         <div style="min-width:0;">
           <div style="font-size:10px; font-weight:950; color:#2563eb; text-transform:uppercase; letter-spacing:0.45px; margin:0 0 2px; line-height:1.1;">Cash Fisik Hari Ini</div>
@@ -10816,6 +10816,9 @@ function renderFastCashier() {
   const clearOpacity = fastCashierNominal > 0 ? "1" : "0.3";
   const clearPointer = fastCashierNominal > 0 ? "auto" : "none";
 
+  const { cashFisik, opsTotal, qrisTotal } = getTodayCashFisik();
+  const isOpsOpen = state.data.opsCardOpen === true;
+
   const currentUserKey = key(state.user?.username);
   const isExcluded = ["risma", "aji", "admin"].includes(currentUserKey);
   let warningIcon = "";
@@ -10831,16 +10834,50 @@ function renderFastCashier() {
 
   page.innerHTML = `
     <div class="wrap fast-cashier-wrap" style="padding-top:10px;padding-bottom:100px;max-width:540px;margin:0 auto;">
-      <!-- Top Bar: Nama Staf & Keluar di kanan atas -->
-      <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:10px;padding:2px 2px;gap:6px;">
-        <div style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1.5px solid #e2e8f0;padding:4px 10px;border-radius:10px;font-size:12px;font-weight:800;color:#0f172a;box-shadow:0 1px 2px rgba(0,0,0,0.03);">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#0284c7" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <span style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(staffName)}</span>
+      <!-- Top Bar: Cash Fisik di kiri (jika diberi akses admin) & Nama Staf + Keluar di kanan -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:2px 2px;gap:8px;">
+        ${state.data.opsAccess ? `
+          <div onclick="toggleOpsCard()" title="Klik untuk buka/tutup menu operasional" style="cursor:pointer;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:4px 9px;display:flex;align-items:center;gap:6px;-webkit-tap-highlight-color:transparent;">
+            <div>
+              <div style="font-size:9.5px;font-weight:950;color:#2563eb;text-transform:uppercase;letter-spacing:0.4px;line-height:1;">Cash Fisik</div>
+              <div class="num" style="font-size:15px;font-weight:950;color:${cashFisik < 0 ? 'var(--red)' : '#1d4ed8'};line-height:1.15;margin-top:2px;">Rp ${rp(cashFisik)}</div>
+            </div>
+            <span style="font-size:10px;background:#dbeafe;color:#1d4ed8;padding:2px 5px;border-radius:6px;font-weight:900;line-height:1;">HARI INI</span>
+            <span style="font-size:13px;color:#2563eb;font-weight:900;transition:transform 0.2s;display:inline-block;transform:rotate(${isOpsOpen ? '180deg' : '0deg'});">▾</span>
+          </div>
+        ` : `<div></div>`}
+
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1.5px solid #e2e8f0;padding:4px 10px;border-radius:10px;font-size:12px;font-weight:800;color:#0f172a;">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#0284c7" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(staffName)}</span>
+          </div>
+          <button type="button" onclick="logout()" title="Keluar Akun" style="padding:4px 9px;font-size:11px;font-weight:800;border-radius:9px;border:none;background:#fee2e2;color:#dc2626;cursor:pointer;display:inline-flex;align-items:center;gap:3px;-webkit-tap-highlight-color:transparent;">
+            Keluar
+          </button>
         </div>
-        <button type="button" onclick="logout()" title="Keluar Akun" style="padding:4px 9px;font-size:11px;font-weight:800;border-radius:9px;border:none;background:#fee2e2;color:#dc2626;cursor:pointer;display:inline-flex;align-items:center;gap:3px;-webkit-tap-highlight-color:transparent;">
-          Keluar
-        </button>
       </div>
+
+      <!-- Detail Operasional & QRIS saat Cash Fisik di-klik buka -->
+      ${state.data.opsAccess && isOpsOpen ? `
+        <div style="background:#eff6ff; border:1.5px solid #bfdbfe; border-radius:16px; padding:10px 12px; margin-bottom:10px; ">
+          <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin-bottom:8px; width:100%;">
+            <button onclick="openOpsModal()" style="width:100%; min-height:30px; padding:6px 7px; font-size:10px; line-height:1; border-radius:999px; font-weight:950; border:1.5px solid #fdba74; cursor:pointer; white-space:nowrap; background:#fff3e0; color:#e8820c;">+ Ops</button>
+            <button onclick="openCashOutModal()" style="width:100%; min-height:30px; padding:6px 7px; font-size:10px; line-height:1; border-radius:999px; font-weight:950; border:1.5px solid #bfdbfe; cursor:pointer; white-space:nowrap; background:#dbeafe; color:#1d4ed8;">+ QRIS</button>
+          </div>
+          <div class="small" style="font-size:10.2px; color:#4b5563; line-height:1.35; font-weight:850; background:#f8fbff; border:1px solid #dbeafe; border-radius:12px; padding:7px 8px; word-break:break-word; text-align:center;">Operasional Toko - QRIS</div>
+          <div style="margin-top:7px; border:1px solid #dbeafe; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; background:white;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 9px; border-bottom:1px solid #eef2ff;">
+              <span style="font-size:10px; color:var(--muted); font-weight:900;">Operasional Toko</span>
+              <b class="num" style="font-size:12.5px; font-weight:950; cursor:pointer; white-space:nowrap; color:#e8820c;" onclick="openOpsModal()">Rp ${rp(opsTotal)}</b>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 9px;">
+              <span style="font-size:10px; color:var(--muted); font-weight:900;">QRIS</span>
+              <b class="num" style="font-size:12.5px; font-weight:950; cursor:pointer; white-space:nowrap; color:#2563eb;" onclick="openCashOutModal()">Rp ${rp(qrisTotal)}</b>
+            </div>
+          </div>
+        </div>
+      ` : ''}
 
       <!-- Summary Strip: Omset Hari Ini & Total Trx (dengan icon status) -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
@@ -10861,7 +10898,7 @@ function renderFastCashier() {
       </div>
 
       <!-- Main Nominal Screen Box -->
-      <div style="position:relative;background:#ffffff;border:2.5px solid #0284c7;border-radius:22px;padding:20px 16px;box-shadow:0 8px 24px rgba(2,132,199,0.12);margin-bottom:14px;">
+      <div style="position:relative;background:#ffffff;border:2.5px solid #0284c7;border-radius:22px;padding:20px 16px;margin-bottom:14px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
           <span style="font-size:11.5px;font-weight:850;color:#0284c7;letter-spacing:0.8px;text-transform:uppercase;">NOMINAL TRANSAKSI</span>
           <button id="fastClearBtn" type="button" onclick="fastCashierClear()" style="background:#fee2e2;border:1px solid #fca5a5;color:#dc2626;font-size:11.5px;font-weight:850;padding:4px 10px;border-radius:8px;opacity:${clearOpacity};pointer-events:${clearPointer};display:flex;align-items:center;gap:4px;cursor:pointer;">
@@ -10875,7 +10912,7 @@ function renderFastCashier() {
       </div>
 
       <!-- Numeric Keypad -->
-      <div style="background:var(--card,#fff);border:1.5px solid var(--border,#e2e8f0);border-radius:20px;padding:12px;box-shadow:0 2px 8px rgba(0,0,0,0.03);margin-bottom:14px;">
+      <div style="background:var(--card,#fff);border:1.5px solid var(--border,#e2e8f0);border-radius:20px;padding:12px;margin-bottom:14px;">
         <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;">
           <button type="button" onclick="fastCashierAddDigit(1)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">1</button>
           <button type="button" onclick="fastCashierAddDigit(2)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">2</button>
@@ -10899,7 +10936,7 @@ function renderFastCashier() {
 
       <!-- Action Buttons: Tunai, QRIS (jika diizinkan admin), & Transfer Bank -->
       <div style="display:grid;grid-template-columns:${gridCols};gap:8px;">
-        <button type="button" class="btn" onclick="submitFastCashierTx('cash')" style="height:66px;border-radius:18px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:#fff;border:none;box-shadow:0 4px 14px rgba(16,185,129,0.3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:6px 2px;">
+        <button type="button" class="btn" onclick="submitFastCashierTx('cash')" style="height:66px;border-radius:18px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:#fff;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:6px 2px;">
           <div style="font-size:14px;font-weight:950;display:flex;align-items:center;gap:4px;">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>
             TUNAI
@@ -10908,7 +10945,7 @@ function renderFastCashier() {
         </button>
 
         ${hasQris ? `
-        <button type="button" class="btn" onclick="submitFastCashierTx('qris_transfer')" style="height:66px;border-radius:18px;background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%);color:#fff;border:none;box-shadow:0 4px 14px rgba(2,132,199,0.3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:6px 2px;">
+        <button type="button" class="btn" onclick="submitFastCashierTx('qris_transfer')" style="height:66px;border-radius:18px;background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%);color:#fff;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:6px 2px;">
           <div style="font-size:14px;font-weight:950;display:flex;align-items:center;gap:4px;">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
             QRIS
@@ -10917,7 +10954,7 @@ function renderFastCashier() {
         </button>
         ` : ""}
 
-        <button type="button" class="btn" onclick="submitFastCashierTx('transfer')" style="height:66px;border-radius:18px;background:linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);color:#fff;border:none;box-shadow:0 4px 14px rgba(124,58,237,0.3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:6px 2px;">
+        <button type="button" class="btn" onclick="submitFastCashierTx('transfer')" style="height:66px;border-radius:18px;background:linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);color:#fff;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:6px 2px;">
           <div style="font-size:14px;font-weight:950;display:flex;align-items:center;gap:4px;">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>
             TRANSFER

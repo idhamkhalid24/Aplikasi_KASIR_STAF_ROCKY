@@ -48,9 +48,9 @@
   --nav: #ffffff;
   
   /* Crisp, subtle shadows */
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+  --shadow: none;
+  --shadow-md: none;
+  --shadow-lg: none;
   
   /* Professional, tighter border radii */
   --radius-sm: 6px;
@@ -256,3 +256,6 @@ input[type="checkbox"]:focus {
 .amount {
   color: var(--majoo-teal-dark);
 }
+
+/* Override Hilangkan Semua Shadow di Card */
+.card, .stat, .item, .modal, .card:hover, .stat:hover, .item:hover { box-shadow: none !important; }
