@@ -11168,8 +11168,8 @@ function renderFastCashier() {
           <button type="button" class="calc-key" onclick="fastCashierAddDigit(3)">3</button>
 
           <!-- Baris 4: 000, 0, ⌫ (Orange Accent Key - Menghapus Semua Angka) -->
-          <button type="button" class="calc-key" onclick="fastCashierAddDigit('000')" style="font-size:19px;">000</button>
           <button type="button" class="calc-key" onclick="fastCashierAddDigit(0)">0</button>
+          <button type="button" class="calc-key" onclick="fastCashierAddDigit('000')" style="font-size:19px;">000</button>
           <button type="button" class="calc-key-orange" onclick="fastCashierClear()" title="Hapus semua angka">
             <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#000000" stroke-width="2.8"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM18 9l-6 6M12 9l6 6"/></svg>
           </button>
