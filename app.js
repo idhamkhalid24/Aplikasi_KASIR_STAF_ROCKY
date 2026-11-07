@@ -10625,7 +10625,7 @@ function updateFastCashierDisplay() {
   if (el) {
     el.innerHTML = fastCashierNominal > 0
       ? `Rp ${rp(fastCashierNominal)}`
-      : `<span style="color:#94a3b8;font-weight:700;">Rp 0</span>`;
+      : `<span style="color:#64748b;font-weight:800;">Rp 0</span>`;
   }
   const clearBtn = $("fastClearBtn");
   if (clearBtn) {
@@ -10708,7 +10708,7 @@ function showFastCashierEdcConfirmModal(amount) {
   const title = "Konfirmasi Mesin EDC";
   const body = `
     <div style="text-align:center;padding:12px 6px 8px;">
-      <div style="width:58px;height:58px;border-radius:18px;background:linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);color:#7c3aed;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;box-shadow:0 4px 14px rgba(124,58,237,0.18);">
+      <div style="width:58px;height:58px;border-radius:18px;background:linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%);color:#ea580c;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;box-shadow:0 4px 14px rgba(234,88,12,0.22);">
         <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.3">
           <path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/>
         </svg>
@@ -10720,7 +10720,7 @@ function showFastCashierEdcConfirmModal(amount) {
 
       <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:10px 14px;margin:10px 0 6px;display:inline-block;min-width:200px;">
         <div style="font-size:11px;font-weight:800;color:var(--muted,#64748b);text-transform:uppercase;letter-spacing:0.5px;">Nominal Transaksi</div>
-        <div style="font-size:24px;font-weight:950;color:#7c3aed;margin-top:2px;">Rp ${rp(amount)}</div>
+        <div style="font-size:24px;font-weight:950;color:#ea580c;margin-top:2px;">Rp ${rp(amount)}</div>
       </div>
 
       <div style="font-size:12px;color:var(--muted,#64748b);margin-top:8px;line-height:1.4;">
@@ -10773,6 +10773,80 @@ async function confirmFastCashierEdc(amount) {
     state.page = "fast_cashier";
     render();
   }
+}
+
+
+function openFastCashierPaymentModal() {
+  const amount = Number(fastCashierNominal || 0);
+  if (!amount || amount <= 0) {
+    return toast("Masukkan nominal transaksi dulu!");
+  }
+  if (!canTx()) {
+    return toast(txBlockedMessage());
+  }
+
+  const hasQris = state.user?.qrisAccess === true;
+
+  const title = "Pilih Metode Pembayaran";
+  const body = `
+    <div style="text-align:center;padding:4px 0 16px;">
+      <div style="font-size:11px;font-weight:800;color:var(--muted,#64748b);text-transform:uppercase;letter-spacing:0.5px;">TOTAL TRANSAKSI</div>
+      <div style="font-size:32px;font-weight:950;color:var(--primary,#0284c7);margin-top:2px;">Rp ${rp(amount)}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <!-- 1. TUNAI -->
+      <button type="button" class="btn" onclick="selectFastCashierPayment('cash')" style="width:100%;min-height:56px;border-radius:16px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:#fff;border:none;display:flex;align-items:center;padding:10px 16px;gap:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 4px 12px rgba(16,185,129,0.25);">
+        <div style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>
+        </div>
+        <div style="text-align:left;flex-grow:1;">
+          <div style="font-size:16px;font-weight:950;line-height:1.2;">TUNAI</div>
+        </div>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
+
+      <!-- 2. QRIS -->
+      ${hasQris ? `
+      <button type="button" class="btn" onclick="selectFastCashierPayment('qris_transfer')" style="width:100%;min-height:56px;border-radius:16px;background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%);color:#fff;border:none;display:flex;align-items:center;padding:10px 16px;gap:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 4px 12px rgba(2,132,199,0.25);">
+        <div style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        </div>
+        <div style="text-align:left;flex-grow:1;">
+          <div style="font-size:15px;font-weight:950;line-height:1.2;">QRIS</div>
+          <div style="font-size:11px;font-weight:700;opacity:0.9;line-height:1.2;margin-top:1px;">Scan Barcode QRIS</div>
+        </div>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
+      ` : ''}
+
+      <!-- 3. TRANSFER (MESIN EDC) -->
+      <button type="button" class="btn" onclick="selectFastCashierPayment('transfer')" style="width:100%;min-height:56px;border-radius:16px;background:linear-gradient(135deg, #ff6b00 0%, #ea580c 100%);color:#fff;border:none;display:flex;align-items:center;padding:10px 16px;gap:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 4px 12px rgba(234,88,12,0.32);">
+        <div style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>
+        </div>
+        <div style="text-align:left;flex-grow:1;">
+          <div style="font-size:15px;font-weight:950;line-height:1.2;">TRANSFER</div>
+          <div style="font-size:11px;font-weight:700;opacity:0.9;line-height:1.2;margin-top:1px;">Mesin EDC Fisik</div>
+        </div>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
+    </div>
+  `;
+
+  const actions = `
+    <button type="button" class="btn" onclick="closeModal(true)" style="width:100%;height:46px;font-size:13.5px;font-weight:800;border-radius:14px;background:#f1f5f9;border:1px solid #e2e8f0;color:#64748b;cursor:pointer;">
+      Batal
+    </button>
+  `;
+
+  modal(title, body, actions, "tx-modal payment-picker-modal");
+}
+
+function selectFastCashierPayment(method) {
+  closeModal(true);
+  setTimeout(() => {
+    submitFastCashierTx(method);
+  }, 60);
 }
 
 async function submitFastCashierTx(method = "cash") {
@@ -10860,6 +10934,21 @@ function renderStaffAttendancePrompt() {
   `;
 }
 
+function showFastCashierBonusDetail() {
+  if (isDailyUser(state.user)) {
+    const tx = todayTx();
+    const todayTxBonus = txBonusSum(tx);
+    const manualToday = manualBonusToday();
+    const total = todayTxBonus + manualToday;
+    toast(`Gaji Hari Ini: Rp ${rp(total)} (Trx: Rp ${rp(todayTxBonus)} + Manual: Rp ${rp(manualToday)})`);
+  } else {
+    const earned = totalBonus();
+    const taken = bonusWithdrawn();
+    const remaining = remainingBonus();
+    toast(`Sisa Bonus: Rp ${rp(remaining)} (Terhitung: Rp ${rp(earned)} · Diambil: Rp ${rp(taken)})`);
+  }
+}
+
 function renderFastCashier() {
   // Jika staff biasa dan belum absen hari ini, wajib absen masuk dulu (kecuali karyawan harian yang bebas absen)
   if (!isAttendanceFreeUser() && !todayAtt()) {
@@ -10883,16 +10972,32 @@ function renderFastCashier() {
   const { cashFisik, opsTotal, qrisTotal } = getTodayCashFisik();
   const isOpsOpen = state.data.opsCardOpen === true;
 
+  // Data Bonus / Gaji untuk Card ke-3 di Summary Strip
+  let bonusCardLabel = "BONUS BULAN INI";
+  let bonusCardVal = 0;
+  let bonusCardColor = "#7c3aed";
+  if (isDailyUser(state.user)) {
+    const todayTxBonus = txBonusSum(tx);
+    const manualToday = manualBonusToday();
+    bonusCardVal = todayTxBonus + manualToday;
+    bonusCardLabel = "GAJI HARI INI";
+    bonusCardColor = "#10b981";
+  } else {
+    bonusCardVal = remainingBonus();
+    bonusCardLabel = "BONUS BULAN INI";
+    bonusCardColor = "#7c3aed";
+  }
+
   const currentUserKey = key(state.user?.username);
   const isExcluded = ["risma", "aji", "admin"].includes(currentUserKey);
   let warningIcon = "";
   if (!isExcluded) {
     if (tx.length === 0) {
-      warningIcon = `<style>@keyframes zzzFloat { 0%, 100% { transform: translateY(0) scale(1) rotate(-5deg); } 50% { transform: translateY(-4px) scale(1.05) rotate(5deg); } }</style><div style="position:absolute; bottom:8px; right:10px; font-size:26px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: zzzFloat 3s ease-in-out infinite;" title="Masih Molor (Belum Penglaris)">😴</div>`;
+      warningIcon = `<style>@keyframes zzzFloat { 0%, 100% { transform: translateY(0) scale(1) rotate(-5deg); } 50% { transform: translateY(-4px) scale(1.05) rotate(5deg); } }</style><div style="position:absolute; bottom:6px; right:8px; font-size:24px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: zzzFloat 3s ease-in-out infinite; pointer-events:none;" title="Masih Molor (Belum Penglaris)">😴</div>`;
     } else if (tx.length === 1) {
-      warningIcon = `<style>@keyframes bangunGirang { 0%, 100% { transform: translateY(0) scale(1); } 20% { transform: translateY(-6px) scale(1.15) rotate(-10deg); } 40% { transform: translateY(0) scale(1.1) rotate(10deg); } 60% { transform: translateY(-3px) scale(1.1) rotate(-5deg); } 80% { transform: translateY(0) scale(1.05) rotate(5deg); } }</style><div style="position:absolute; bottom:8px; right:10px; font-size:26px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: bangunGirang 1.5s ease-in-out infinite;" title="Alhamdulillah Penglaris!">🤑</div>`;
+      warningIcon = `<style>@keyframes bangunGirang { 0%, 100% { transform: translateY(0) scale(1); } 20% { transform: translateY(-6px) scale(1.15) rotate(-10deg); } 40% { transform: translateY(0) scale(1.1) rotate(10deg); } 60% { transform: translateY(-3px) scale(1.1) rotate(-5deg); } 80% { transform: translateY(0) scale(1.05) rotate(5deg); } }</style><div style="position:absolute; bottom:6px; right:8px; font-size:24px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: bangunGirang 1.5s ease-in-out infinite; pointer-events:none;" title="Alhamdulillah Penglaris!">🤑</div>`;
     } else if (isLowestStaffToday()) {
-      warningIcon = `<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="#ff4d4d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="position:absolute; bottom:8px; right:10px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: pulse 2s infinite;"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline><polyline points="17 18 23 18 23 12"></polyline></svg>`;
+      warningIcon = `<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#ff4d4d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="position:absolute; bottom:6px; right:8px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: pulse 2s infinite; pointer-events:none;"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline><polyline points="17 18 23 18 23 12"></polyline></svg>`;
     }
   }
 
@@ -10957,16 +11062,19 @@ function renderFastCashier() {
         </div>
       ` : ''}
 
-      <!-- Summary Strip: Omset Hari Ini & Total Trx (dengan icon status) -->
+      <!-- Summary Strip: Omset Hari Ini (Gabung Total Trx) & Bonus Bulan Ini (2 Kolom Sejajar) -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-        <div style="background:var(--card,#fff);border:1.5px solid var(--border,#e2e8f0);border-radius:16px;padding:12px 14px;text-align:center;">
-          <div style="font-size:11px;font-weight:800;color:var(--muted,#64748b);text-transform:uppercase;letter-spacing:0.4px;">OMSET HARI INI</div>
-          <div style="font-size:18px;font-weight:950;color:var(--primary,#0284c7);margin-top:3px;">Rp ${rp(todayOmset)}</div>
-        </div>
         <div style="position:relative;background:var(--card,#fff);border:1.5px solid var(--border,#e2e8f0);border-radius:16px;padding:12px 14px;text-align:center;overflow:hidden;">
-          <div style="font-size:11px;font-weight:800;color:var(--muted,#64748b);text-transform:uppercase;letter-spacing:0.4px;">TOTAL TRX</div>
-          <div style="font-size:18px;font-weight:950;color:#0f172a;margin-top:3px;">${txCount} <span style="font-size:12px;font-weight:700;color:var(--muted,#64748b);">struk</span></div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;font-weight:800;color:var(--muted,#64748b);text-transform:uppercase;letter-spacing:0.3px;">
+            <span>OMSET HARI INI</span>
+            <span style="background:#e0f2fe;color:#0284c7;font-size:10.5px;font-weight:950;padding:1px 6px;border-radius:6px;line-height:1.2;">${txCount}x</span>
+          </div>
+          <div class="num" style="font-size:18px;font-weight:950;color:var(--primary,#0284c7);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Rp ${rp(todayOmset)}</div>
           ${warningIcon}
+        </div>
+        <div onclick="showFastCashierBonusDetail()" title="Klik untuk rincian bonus" style="cursor:pointer;background:var(--card,#fff);border:1.5px solid var(--border,#e2e8f0);border-radius:16px;padding:12px 14px;text-align:center;-webkit-tap-highlight-color:transparent;overflow:hidden;">
+          <div style="font-size:11px;font-weight:800;color:var(--muted,#64748b);text-transform:uppercase;letter-spacing:0.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${bonusCardLabel}</div>
+          <div class="num" style="font-size:18px;font-weight:950;color:${bonusCardColor};margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Rp ${rp(bonusCardVal)}</div>
         </div>
       </div>
 
@@ -10975,80 +11083,113 @@ function renderFastCashier() {
         ${dailyTargetCard()}
       </div>
 
-      <!-- Main Nominal Screen Box -->
-      <div style="position:relative;background:#ffffff;border:2.5px solid #0284c7;border-radius:22px;padding:20px 16px;margin-bottom:14px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-          <span style="font-size:11.5px;font-weight:850;color:#0284c7;letter-spacing:0.8px;text-transform:uppercase;">NOMINAL TRANSAKSI</span>
-          <button id="fastClearBtn" type="button" onclick="fastCashierClear()" style="background:#fee2e2;border:1px solid #fca5a5;color:#dc2626;font-size:11.5px;font-weight:850;padding:4px 10px;border-radius:8px;opacity:${clearOpacity};pointer-events:${clearPointer};display:flex;align-items:center;gap:4px;cursor:pointer;">
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
-            Hapus
-          </button>
+      <!-- Retro Pocket Calculator Device (Tema Kalkulator Foto 2) -->
+      <style>
+        .calc-device {
+          background: #475569;
+          border-radius: 26px;
+          padding: 16px 14px;
+          margin-bottom: 14px;
+          box-shadow: 0 12px 28px rgba(15,23,42,0.28), inset 0 2px 2px rgba(255,255,255,0.18);
+          border: 2px solid #334155;
+        }
+        .calc-screen {
+          background: #cbd5e1;
+          border-radius: 16px;
+          padding: 12px 14px 10px;
+          margin-bottom: 14px;
+          border: 2px solid #94a3b8;
+          box-shadow: inset 0 4px 8px rgba(15,23,42,0.22), inset 0 1px 2px rgba(0,0,0,0.12);
+        }
+        .calc-key {
+          height: 56px;
+          font-size: 26px;
+          font-weight: 950;
+          border-radius: 14px;
+          background: #ffffff;
+          border: none;
+          color: #000000;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          -webkit-tap-highlight-color: transparent;
+          box-shadow: 0 5px 0 #94a3b8, 0 6px 8px rgba(0,0,0,0.25);
+          transition: transform 0.05s ease, box-shadow 0.05s ease;
+          user-select: none;
+        }
+        .calc-key:active {
+          transform: translateY(3px);
+          box-shadow: 0 2px 0 #94a3b8, 0 3px 4px rgba(0,0,0,0.25);
+        }
+        .calc-key-orange {
+          height: 56px;
+          border-radius: 14px;
+          background: linear-gradient(180deg, #fb923c 0%, #f97316 100%);
+          border: none;
+          color: #000000;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          -webkit-tap-highlight-color: transparent;
+          box-shadow: 0 5px 0 #c2410c, 0 6px 8px rgba(0,0,0,0.3);
+          transition: transform 0.05s ease, box-shadow 0.05s ease;
+          user-select: none;
+        }
+        .calc-key-orange:active {
+          transform: translateY(3px);
+          box-shadow: 0 2px 0 #c2410c, 0 3px 4px rgba(0,0,0,0.3);
+        }
+      </style>
+
+      <div class="calc-device">
+        <!-- LCD Display Screen -->
+        <div class="calc-screen">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+            <span style="font-size:10.5px;font-weight:850;color:#475569;letter-spacing:0.8px;text-transform:uppercase;">NOMINAL TRANSAKSI</span>
+            <button id="fastClearBtn" type="button" onclick="fastCashierClear()" style="background:rgba(15,23,42,0.12);border:1px solid rgba(15,23,42,0.2);color:#1e293b;font-size:11px;font-weight:850;padding:3px 8px;border-radius:6px;opacity:${clearOpacity};pointer-events:${clearPointer};display:flex;align-items:center;gap:4px;cursor:pointer;-webkit-tap-highlight-color:transparent;">
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              Hapus
+            </button>
+          </div>
+          <div id="fastNominalDisplay" style="font-size:40px;font-weight:950;text-align:right;color:#0f172a;min-height:54px;display:flex;align-items:center;justify-content:flex-end;letter-spacing:-0.5px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;padding-right:4px;">
+            ${displayVal}
+          </div>
         </div>
-        <div id="fastNominalDisplay" style="font-size:42px;font-weight:950;text-align:center;color:#0369a1;min-height:58px;display:flex;align-items:center;justify-content:center;letter-spacing:-0.5px;font-family:inherit;">
-          ${displayVal}
+
+        <!-- 3D Chunky Keypad (7-8-9, 4-5-6, 1-2-3, 0-000-⌫) -->
+        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:10px;">
+          <!-- Baris 1: 7, 8, 9 -->
+          <button type="button" class="calc-key" onclick="fastCashierAddDigit(7)">7</button>
+          <button type="button" class="calc-key" onclick="fastCashierAddDigit(8)">8</button>
+          <button type="button" class="calc-key" onclick="fastCashierAddDigit(9)">9</button>
+
+          <!-- Baris 2: 4, 5, 6 -->
+          <button type="button" class="calc-key" onclick="fastCashierAddDigit(4)">4</button>
+          <button type="button" class="calc-key" onclick="fastCashierAddDigit(5)">5</button>
+          <button type="button" class="calc-key" onclick="fastCashierAddDigit(6)">6</button>
+
+          <!-- Baris 3: 1, 2, 3 -->
+          <button type="button" class="calc-key" onclick="fastCashierAddDigit(1)">1</button>
+          <button type="button" class="calc-key" onclick="fastCashierAddDigit(2)">2</button>
+          <button type="button" class="calc-key" onclick="fastCashierAddDigit(3)">3</button>
+
+          <!-- Baris 4: 0, 000, ⌫ (Orange Accent Key) -->
+          <button type="button" class="calc-key" onclick="fastCashierAddDigit(0)">0</button>
+          <button type="button" class="calc-key" onclick="fastCashierAddDigit('000')" style="font-size:19px;">000</button>
+          <button type="button" class="calc-key-orange" onclick="fastCashierBackspace()" title="Hapus satu angka">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#000000" stroke-width="2.8"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM18 9l-6 6M12 9l6 6"/></svg>
+          </button>
         </div>
       </div>
 
-      <!-- Numeric Keypad -->
-      <div style="background:var(--card,#fff);border:1.5px solid var(--border,#e2e8f0);border-radius:20px;padding:12px;margin-bottom:14px;">
-        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;">
-          <button type="button" onclick="fastCashierAddDigit(1)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">1</button>
-          <button type="button" onclick="fastCashierAddDigit(2)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">2</button>
-          <button type="button" onclick="fastCashierAddDigit(3)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">3</button>
-
-          <button type="button" onclick="fastCashierAddDigit(4)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">4</button>
-          <button type="button" onclick="fastCashierAddDigit(5)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">5</button>
-          <button type="button" onclick="fastCashierAddDigit(6)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">6</button>
-
-          <button type="button" onclick="fastCashierAddDigit(7)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">7</button>
-          <button type="button" onclick="fastCashierAddDigit(8)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">8</button>
-          <button type="button" onclick="fastCashierAddDigit(9)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">9</button>
-
-        ${hasQris ? `
-          <button type="button" class="btn" onclick="submitFastCashierTx('transfer')" style="height:56px;border-radius:14px;background:linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);color:#fff;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:4px 2px;" title="Transfer (Mesin EDC)">
-            <div style="font-size:12px;font-weight:950;display:flex;align-items:center;gap:3px;line-height:1.1;">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>
-              TRANSFER
-            </div>
-            <div style="font-size:9.5px;font-weight:700;opacity:0.9;line-height:1;">Mesin EDC</div>
-          </button>
-        ` : `
-          <div style="height:56px;"></div>
-        `}
-          <button type="button" onclick="fastCashierAddDigit(0)" style="height:56px;font-size:24px;font-weight:900;border-radius:14px;background:#f8fafc;border:1.5px solid #e2e8f0;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">0</button>
-          <button type="button" onclick="fastCashierBackspace()" style="height:56px;font-size:20px;font-weight:900;border-radius:14px;background:#fef2f2;border:1.5px solid #fecaca;color:#dc2626;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;" title="Hapus satu angka">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM18 9l-6 6M12 9l6 6"/></svg>
-          </button>
-        </div>
-      </div>
-
-      <!-- Action Buttons: Tunai & QRIS (atau Transfer Mesin EDC jika QRIS tidak diizinkan) -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <button type="button" class="btn" onclick="submitFastCashierTx('cash')" style="height:66px;border-radius:18px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:#fff;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:6px 2px;">
-          <div style="font-size:14px;font-weight:950;display:flex;align-items:center;gap:4px;">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>
-            TUNAI
-          </div>
-          <div style="font-size:10px;font-weight:700;opacity:0.9;">Cash Fisik</div>
+      <!-- Action Button: Tombol BAYAR Utama (Membuka Popup 3 Metode Pembayaran) -->
+      <div style="margin-bottom:12px;">
+        <button type="button" class="btn" onclick="openFastCashierPaymentModal()" style="width:100%;height:64px;border-radius:18px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:#fff;border:none;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 5px 0 #047857, 0 7px 14px rgba(16,185,129,0.35);">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+          <span style="font-size:18px;font-weight:950;letter-spacing:0.5px;">BAYAR</span>
         </button>
-
-        ${hasQris ? `
-        <button type="button" class="btn" onclick="submitFastCashierTx('qris_transfer')" style="height:66px;border-radius:18px;background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%);color:#fff;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:6px 2px;">
-          <div style="font-size:14px;font-weight:950;display:flex;align-items:center;gap:4px;">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-            QRIS
-          </div>
-          <div style="font-size:10px;font-weight:700;opacity:0.9;">Barcode</div>
-        </button>
-        ` : `
-        <button type="button" class="btn" onclick="submitFastCashierTx('transfer')" style="height:66px;border-radius:18px;background:linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);color:#fff;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:6px 2px;" title="Transfer (Mesin EDC)">
-          <div style="font-size:14px;font-weight:950;display:flex;align-items:center;gap:4px;">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>
-            TRANSFER
-          </div>
-          <div style="font-size:10px;font-weight:700;opacity:0.9;">Mesin EDC</div>
-        </button>
-        `}
       </div>
 
       <!-- Catatan Markas (Pesan Penting) -->
@@ -11064,6 +11205,9 @@ window.fastCashierClear = fastCashierClear;
 window.submitFastCashierTx = submitFastCashierTx;
 window.startFastCashierQris = startFastCashierQris;
 window.finishStaffQris = finishStaffQris;
+window.showFastCashierBonusDetail = showFastCashierBonusDetail;
+window.openFastCashierPaymentModal = openFastCashierPaymentModal;
+window.selectFastCashierPayment = selectFastCashierPayment;
 
 // Support physical keyboard / bluetooth keypad
 window.addEventListener("keydown", (e) => {
@@ -11076,6 +11220,6 @@ window.addEventListener("keydown", (e) => {
   } else if (e.key === "Escape" || e.key.toLowerCase() === "c") {
     fastCashierClear();
   } else if (e.key === "Enter") {
-    submitFastCashierTx("cash");
+    openFastCashierPaymentModal();
   }
 });
