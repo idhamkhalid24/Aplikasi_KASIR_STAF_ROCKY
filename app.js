@@ -10910,11 +10910,7 @@ function renderStaffAttendancePrompt() {
   page.innerHTML = `
     <div class="wrap" style="max-width:500px;margin:30px auto;padding:20px;text-align:center;">
       <div style="background:var(--card,#fff);border:1.5px solid var(--border,#e2e8f0);border-radius:24px;padding:32px 20px;box-shadow:0 8px 30px rgba(0,0,0,0.06);">
-        <div style="width:72px;height:72px;border-radius:24px;background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%);color:#fff;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:32px;box-shadow:0 6px 20px rgba(2,132,199,0.3);">
-          <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-          </svg>
-        </div>
+        
         <div style="font-size:20px;font-weight:900;color:var(--text,#0f172a);">Halo, ${esc(name)}!</div>
         <div style="font-size:13px;color:var(--muted,#64748b);margin-top:6px;line-height:1.5;">
           Silakan lakukan <b>Absen Masuk</b> terlebih dahulu untuk membuka dan memulai transaksi kasir hari ini.
@@ -11146,19 +11142,15 @@ function renderFastCashier() {
       <div class="calc-device">
         <!-- LCD Display Screen -->
         <div class="calc-screen">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+          <div style="margin-bottom:4px;">
             <span style="font-size:10.5px;font-weight:850;color:#475569;letter-spacing:0.8px;text-transform:uppercase;">NOMINAL TRANSAKSI</span>
-            <button id="fastClearBtn" type="button" onclick="fastCashierClear()" style="background:rgba(15,23,42,0.12);border:1px solid rgba(15,23,42,0.2);color:#1e293b;font-size:11px;font-weight:850;padding:3px 8px;border-radius:6px;opacity:${clearOpacity};pointer-events:${clearPointer};display:flex;align-items:center;gap:4px;cursor:pointer;-webkit-tap-highlight-color:transparent;">
-              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M18 6 6 18M6 6l12 12"/></svg>
-              Hapus
-            </button>
           </div>
           <div id="fastNominalDisplay" style="font-size:40px;font-weight:950;text-align:right;color:#0f172a;min-height:54px;display:flex;align-items:center;justify-content:flex-end;letter-spacing:-0.5px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;padding-right:4px;">
             ${displayVal}
           </div>
         </div>
 
-        <!-- 3D Chunky Keypad (7-8-9, 4-5-6, 1-2-3, 0-000-⌫) -->
+        <!-- 3D Chunky Keypad (7-8-9, 4-5-6, 1-2-3, 000-0-⌫) -->
         <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:10px;">
           <!-- Baris 1: 7, 8, 9 -->
           <button type="button" class="calc-key" onclick="fastCashierAddDigit(7)">7</button>
@@ -11175,10 +11167,10 @@ function renderFastCashier() {
           <button type="button" class="calc-key" onclick="fastCashierAddDigit(2)">2</button>
           <button type="button" class="calc-key" onclick="fastCashierAddDigit(3)">3</button>
 
-          <!-- Baris 4: 0, 000, ⌫ (Orange Accent Key) -->
-          <button type="button" class="calc-key" onclick="fastCashierAddDigit(0)">0</button>
+          <!-- Baris 4: 000, 0, ⌫ (Orange Accent Key - Menghapus Semua Angka) -->
           <button type="button" class="calc-key" onclick="fastCashierAddDigit('000')" style="font-size:19px;">000</button>
-          <button type="button" class="calc-key-orange" onclick="fastCashierBackspace()" title="Hapus satu angka">
+          <button type="button" class="calc-key" onclick="fastCashierAddDigit(0)">0</button>
+          <button type="button" class="calc-key-orange" onclick="fastCashierClear()" title="Hapus semua angka">
             <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#000000" stroke-width="2.8"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM18 9l-6 6M12 9l6 6"/></svg>
           </button>
         </div>
