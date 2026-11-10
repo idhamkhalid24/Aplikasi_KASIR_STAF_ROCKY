@@ -5590,20 +5590,90 @@ function notifyAdminFeatureUnlock(row = {}) {
     "Notif buka fitur admin",
   );
 }
-async function requestFeatureUnlock() {
+
+function requestFeatureUnlock() {
   if (!state.user) return toast("Silakan login ulang");
   const lock = missedAttendanceLockForDate();
   if (!lock) return toast("Fitur sudah terbuka");
   if (pendingUnlockForMissedAttendance(lock.targetDate, lock.missedDate))
     return toast("Permintaan buka fitur masih menunggu admin");
-  const note = cleanUnlockText(
-    prompt(
-      "Alasan minta buka fitur?",
-      `Saya tidak absen ${dateID(lock.missedDate)} dan ingin mulai kerja hari ini`,
-    ) || "",
-    220,
-  );
-  if (note.length < 5) return toast("Alasan wajib diisi");
+
+  const missedDateText = dateID(lock.missedDate);
+  const defaultReason = `Saya tidak absen ${missedDateText} dan ingin mulai kerja hari ini`;
+
+  const title = "Minta Buka Fitur Kerja";
+  const body = `
+    <div style="padding:4px 0 10px;">
+      <div style="display:flex;align-items:center;gap:12px;background:#fffbeb;border:1.5px solid #fde68a;border-radius:14px;padding:12px;margin-bottom:14px;">
+        <div style="width:40px;height:40px;border-radius:12px;background:#f59e0b;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </div>
+        <div style="text-align:left;flex:1;">
+          <div style="font-size:13px;font-weight:900;color:#92400e;">Akses Kerja Terkunci</div>
+          <div style="font-size:11.5px;color:#b45309;margin-top:2px;line-height:1.35;">
+            Tidak ada absen tanggal <b>${esc(missedDateText)}</b>. Kirim permohonan ke Admin untuk membuka akses absen & transaksi.
+          </div>
+        </div>
+      </div>
+
+      <div style="text-align:left;margin-bottom:6px;">
+        <label for="unlockReasonInput" style="font-size:12px;font-weight:850;color:var(--text,#0f172a);display:block;margin-bottom:5px;">
+          Alasan Minta Buka Fitur:
+        </label>
+        <textarea id="unlockReasonInput" class="input" rows="3" maxlength="220" style="width:100%;box-sizing:border-box;border-radius:12px;border:1.5px solid var(--border,#cbd5e1);padding:10px 12px;font-size:13px;resize:none;font-family:inherit;line-height:1.45;color:var(--text,#0f172a);background:var(--card,#fff);">${esc(defaultReason)}</textarea>
+        <div style="font-size:11px;color:var(--muted,#64748b);margin-top:8px;line-height:1.35;">
+          Permohonan akan otomatis dicatat di database dan dikirimkan notifikasi WhatsApp ke Admin.
+        </div>
+      </div>
+    </div>
+  `;
+
+  const actions = `
+    <div style="display:grid;grid-template-columns:1fr 1.6fr;gap:8px;width:100%;">
+      <button type="button" class="btn" onclick="closeModal(true)" style="height:46px;font-size:13.5px;font-weight:850;border-radius:14px;background:#f1f5f9;border:1px solid #e2e8f0;color:#64748b;cursor:pointer;-webkit-tap-highlight-color:transparent;">
+        Batal
+      </button>
+      <button type="button" class="btn primary" onclick="submitFeatureUnlockModal()" style="height:46px;font-size:14px;font-weight:900;border-radius:14px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:#fff;border:none;box-shadow:0 4px 14px rgba(16,185,129,0.3);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;-webkit-tap-highlight-color:transparent;">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+        Kirim Permohonan
+      </button>
+    </div>
+  `;
+
+  modal(title, body, actions, "tx-modal");
+  setTimeout(() => {
+    const el = document.getElementById("unlockReasonInput");
+    if (el) { el.focus(); el.select(); }
+  }, 120);
+}
+
+async function submitFeatureUnlockModal() {
+  if (!state.user) {
+    closeModal(true);
+    return toast("Silakan login ulang");
+  }
+  const lock = missedAttendanceLockForDate();
+  if (!lock) {
+    closeModal(true);
+    return toast("Fitur sudah terbuka");
+  }
+  if (pendingUnlockForMissedAttendance(lock.targetDate, lock.missedDate)) {
+    closeModal(true);
+    return toast("Permintaan buka fitur masih menunggu admin");
+  }
+
+  const el = document.getElementById("unlockReasonInput");
+  const note = cleanUnlockText(el ? el.value : "", 220);
+  if (!note || note.length < 5) {
+    return toast("Alasan wajib diisi minimal 5 karakter!");
+  }
+
+  closeModal(true);
+  showLoad(true);
+
   const u = key(state.user.username),
     nowMs = Date.now(),
     id = unlockRequestDocId(u, nowMs),
@@ -5640,7 +5710,7 @@ async function requestFeatureUnlock() {
     ...(state.data.unlockRequests || []),
   ]);
   render();
-  showLoad(true);
+
   try {
     await setDoc(
       doc(db, STAFF_UNLOCK_TABLE, id),
@@ -5660,7 +5730,7 @@ async function requestFeatureUnlock() {
     );
     removePending(id);
     await notifyAdminFeatureUnlock(saved);
-    toast("Permintaan buka fitur terkirim");
+    toast("Permintaan buka fitur terkirim ke Admin");
   } catch (e) {
     console.error(e);
     addPending({
@@ -9428,6 +9498,7 @@ function home() {
   window.appBack = appBack;
   window.openTx = openTx;
   window.requestFeatureUnlock = requestFeatureUnlock;
+    window.submitFeatureUnlockModal = submitFeatureUnlockModal;
   window.openEmptyStock = openEmptyStock;
   window.addEmptyStockVariantRow = addEmptyStockVariantRow;
   window.removeEmptyStockVariantRow = removeEmptyStockVariantRow;
