@@ -10915,7 +10915,14 @@ function renderStaffAttendancePrompt() {
         <div style="font-size:13px;color:var(--muted,#64748b);margin-top:6px;line-height:1.5;">
           Silakan lakukan <b>Absen Masuk</b> terlebih dahulu untuk membuka dan memulai transaksi kasir hari ini.
         </div>
-        ${lock ? `<div class="card bad" style="margin-top:14px;padding:12px;font-size:12px;color:#dc2626;background:#fef2f2;border-radius:12px;border:1px solid #fecaca;">${esc(lockText)}</div>` : ''}
+        ${lock ? `
+          <div style="margin-top:16px;text-align:left;">
+            ${unlockHomeCard()}
+          </div>
+          <div class="card bad" style="margin-top:10px;padding:12px;font-size:12px;color:#dc2626;background:#fef2f2;border-radius:12px;border:1px solid #fecaca;text-align:center;">
+            ${esc(lockText)}
+          </div>
+        ` : ''}
         <button type="button" class="btn primary" onclick="clockIn()" ${lock ? 'disabled' : ''} style="margin-top:24px;width:100%;height:54px;border-radius:16px;font-size:16px;font-weight:900;background:linear-gradient(135deg, #10b981 0%, #059669 100%);border:none;box-shadow:0 6px 18px rgba(16,185,129,0.3);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
           Absen Masuk Sekarang
@@ -11078,6 +11085,9 @@ function renderFastCashier() {
       <div style="margin-bottom:10px;">
         ${dailyTargetCard()}
       </div>
+
+      <!-- Card Buka Fitur (jika ada akses kerja terkunci) -->
+      ${unlockHomeCard() ? `<div style="margin-bottom:10px;">${unlockHomeCard()}</div>` : ''}
 
       <!-- Retro Pocket Calculator Device (Tema Kalkulator Foto 2) -->
       <style>
