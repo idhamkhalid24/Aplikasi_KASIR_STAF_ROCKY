@@ -7860,6 +7860,8 @@ function home() {
     return s || "";
   }
 
+  const notifiedQrisOrderIds = new Set();
+
   function notifyAdminNewTransaction(tx = {}) {
     try {
       if (!ROCKY_ADMIN_NOTIFY_WORKER_URL || !ROCKY_ADMIN_NOTIFY_SECRET) return;
@@ -7871,25 +7873,53 @@ function home() {
           state.user?.username ||
           "Staff",
       );
-      const note = String(tx.note || "Transaksi baru");
+      const rawNote = String(tx.note || "Transaksi baru").trim() || "Transaksi baru";
+      const pm = String(tx.paymentMethod || "").toLowerCase();
+      const ch = String(tx.paymentChannel || "").toLowerCase();
+      const orderId = String(tx.qrisOrderId || tx.orderId || "").trim();
+      const isEdc = ch === "edc" || pm === "transfer";
+      const isQrisBarcode = ch === "qris_barcode" || Boolean(orderId);
+      const isNonCash = isEdc || isQrisBarcode || pm === "qris_transfer";
+      if (orderId) notifiedQrisOrderIds.add(orderId);
+      const notifTitle = isEdc
+        ? "Pembayaran EDC Berhasil"
+        : isQrisBarcode
+          ? "Pembayaran QRIS Berhasil"
+          : isNonCash
+            ? "Pembayaran QRIS / Transfer"
+            : "Transaksi Baru";
+      const notifNote = isEdc
+        ? `[EDC Berhasil] ${rawNote}`
+        : isQrisBarcode
+          ? `[QRIS Barcode${orderId ? " " + orderId : ""}] ${rawNote}`
+          : rawNote;
+      const notifBody = isEdc
+        ? `${staffName} konfirmasi pembayaran EDC Rp ${rp(amount)}${rawNote && rawNote !== "Transaksi" ? " - " + rawNote : ""}`
+        : isQrisBarcode
+          ? `${staffName} terima QRIS Barcode Rp ${rp(amount)}${rawNote && rawNote !== "Transaksi" ? " - " + rawNote : ""}${orderId ? " (" + orderId + ")" : ""}`
+          : `${staffName} input Rp ${rp(amount)}${rawNote ? " - " + rawNote : ""}`;
+      const paymentChannel = isEdc ? "edc" : isQrisBarcode ? "qris_barcode" : String(tx.paymentChannel || "");
       return notifyRockyAdmin(
         ROCKY_ADMIN_NOTIFY_WORKER_URL,
         {
           type: "transaction",
-          title: "Transaksi Baru",
+          title: notifTitle,
+          body: notifBody,
           staff: staffName,
           user: staffName,
           username: String(tx.user || state.user?.username || ""),
           name: staffName,
           amount,
-          note,
+          note: notifNote,
           paymentMethod: String(tx.paymentMethod || ""),
           paymentLabel: String(
             tx.paymentLabel || txPaymentLabel(tx.paymentMethod) || "",
           ),
+          paymentChannel,
+          orderId,
           transactionId: String(tx.id || tx.clientId || ""),
           dateKey: String(tx.dateKey || todayKey()),
-          source: "staff_cashier",
+          source: isQrisBarcode ? "staff_qris_barcode" : isEdc ? "staff_edc" : "staff_cashier",
           app: "Aplikasi_KASIR_STAF_ROCKY",
           createdAt: new Date().toISOString(),
         },
@@ -7900,7 +7930,7 @@ function home() {
           ROCKY_INVESTOR_NOTIFY_URL,
           {
             type: "investor_transaction",
-            note,
+            note: rawNote,
             amount,
             user: staffName,
             username: String(tx.user || state.user?.username || ""),
@@ -7913,6 +7943,51 @@ function home() {
       });
     } catch (err) {
       console.warn("Notif admin gagal:", err?.message || err);
+    }
+  }
+
+  function notifyAdminQrisPaymentSuccess({
+    orderId = "",
+    amount = 0,
+    note = "",
+    kasirName = "",
+    kasirUsername = "",
+  } = {}) {
+    try {
+      if (!ROCKY_ADMIN_NOTIFY_WORKER_URL || !ROCKY_ADMIN_NOTIFY_SECRET) return;
+      if (isTrialRecord(state.user)) return;
+      const amt = Number(amount || 0);
+      const uname = String(kasirUsername || state.user?.username || "staff").toLowerCase();
+      const staffName = String(kasirName || state.user?.name || uname || "Staff");
+      const rawNote = String(note || "").trim();
+      const notifNote = `[QRIS Barcode${orderId ? " " + orderId : ""}]${rawNote ? " " + rawNote : " Pembayaran Lunas"}`;
+      const notifBody = `${staffName} terima QRIS Barcode Rp ${rp(amt)}${rawNote ? " - " + rawNote : ""}${orderId ? " (" + orderId + ")" : ""}`;
+      return notifyRockyAdmin(
+        ROCKY_ADMIN_NOTIFY_WORKER_URL,
+        {
+          type: "transaction",
+          title: "Pembayaran QRIS Berhasil",
+          body: notifBody,
+          staff: staffName,
+          user: staffName,
+          username: uname,
+          name: staffName,
+          amount: amt,
+          note: notifNote,
+          paymentMethod: "qris_transfer",
+          paymentLabel: "QRIS Barcode",
+          paymentChannel: "qris_barcode",
+          orderId: String(orderId || ""),
+          transactionId: String(orderId || ""),
+          dateKey: todayKey(),
+          source: "staff_qris_barcode",
+          app: "Aplikasi_KASIR_STAF_ROCKY",
+          createdAt: new Date().toISOString(),
+        },
+        "Notif QRIS berhasil ke admin",
+      );
+    } catch (err) {
+      console.warn("Notif QRIS admin gagal:", err?.message || err);
     }
   }
 
@@ -8213,7 +8288,13 @@ function home() {
     }
     const payment = normalizeTxPaymentMethod(paymentMethod);
     if (!payment) return toast("Pilih Cash atau QRIS / Transfer dulu");
-    const paymentText = txPaymentLabel(payment);
+    const paymentChannel = String(
+      draft?.paymentChannel || (payment === "transfer" ? "edc" : ""),
+    ).trim();
+    const qrisOrderId = String(draft?.qrisOrderId || "").trim();
+    const paymentText =
+      String(draft?.paymentLabel || txPaymentLabel(payment) || "").trim() ||
+      txPaymentLabel(payment);
     pendingTxDraft = null;
     if (!canTx()) {
       closeModal();
@@ -8254,9 +8335,12 @@ function home() {
       note,
       paymentMethod: payment,
       paymentLabel: paymentText,
+      paymentChannel,
+      qrisOrderId,
       paymentStatus: "success",
-      paymentCashOutType: payment === "qris_transfer" ? "qris" : "",
-      isNonCashPayment: payment === "qris_transfer",
+      paymentCashOutType:
+        payment === "qris_transfer" || payment === "transfer" ? "qris" : "",
+      isNonCashPayment: payment === "qris_transfer" || payment === "transfer",
       paymentConfirmed: true,
       paymentConfirmedAtMs: now,
       notifyAdmin: true,
@@ -10016,6 +10100,7 @@ async function generateStaffQris() {
   if (currentQrisAmount <= 0) {
     return toast("Silakan masukkan nominal pembayaran terlebih dahulu!");
   }
+  currentQrisFromFastCashier = false;
   const noteInput = $("qrisNoteInput");
   currentQrisNote = noteInput ? noteInput.value.trim() : "";
   const kasirUsername = String(state.user?.username || "staff").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -10401,7 +10486,10 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
       await saveTx(false, "qris_transfer", {
         amount: Number(amount || 0),
         note: "Transaksi",
-        paymentMethod: "qris_transfer"
+        paymentMethod: "qris_transfer",
+        paymentChannel: "qris_barcode",
+        paymentLabel: "QRIS Barcode",
+        qrisOrderId: orderId,
       });
     } catch (errTx) {
       console.warn("Gagal simpan transaksi utama QRIS:", errTx);
@@ -10409,8 +10497,8 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
   }
 
   // Simpan record ke tabel database Supabase qris_payments
+  const kasirUsername = String(state.user?.username || "staff").toLowerCase();
   try {
-    const kasirUsername = String(state.user?.username || "staff").toLowerCase();
     await supabase.from("qris_payments").upsert({
       order_id: orderId,
       amount: Number(amount || 0),
@@ -10424,6 +10512,18 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
     }, { onConflict: "order_id" });
   } catch (errSave) {
     console.warn("Gagal simpan ke qris_payments dari app:", errSave);
+  }
+
+  // Pastikan setiap pembayaran QRIS barcode berhasil mengirim 1 notifikasi FCM ke Admin Only
+  if (!notifiedQrisOrderIds.has(orderId) && !isTrialRecord(state.user)) {
+    notifiedQrisOrderIds.add(orderId);
+    notifyAdminQrisPaymentSuccess({
+      orderId,
+      amount,
+      note,
+      kasirName,
+      kasirUsername,
+    });
   }
 
   // Notifikasi WA ke Bos
@@ -10827,7 +10927,9 @@ async function confirmFastCashierEdc(amount) {
     const draft = {
       amount: Number(amount || 0),
       note: "Transaksi",
-      paymentMethod: "transfer"
+      paymentMethod: "transfer",
+      paymentChannel: "edc",
+      paymentLabel: "EDC / Transfer",
     };
 
     fastCashierNominal = 0;
