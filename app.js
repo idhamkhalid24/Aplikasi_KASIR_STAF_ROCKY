@@ -7862,6 +7862,178 @@ function home() {
 
   const notifiedQrisOrderIds = new Set();
 
+  function notifiedQrisStorageKey() {
+    return "rocky_notified_qris_orders_" + todayKey();
+  }
+  function markQrisAdminNotified(orderId) {
+    const oid = String(orderId || "").trim();
+    if (!oid) return;
+    notifiedQrisOrderIds.add(oid);
+    try {
+      const k = notifiedQrisStorageKey();
+      const raw = localStorage.getItem(k);
+      const list = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(list) && !list.includes(oid)) {
+        list.push(oid);
+        localStorage.setItem(k, JSON.stringify(list.slice(-100)));
+      }
+    } catch (e) {}
+  }
+  function wasQrisAdminNotified(orderId) {
+    const oid = String(orderId || "").trim();
+    if (!oid) return false;
+    if (notifiedQrisOrderIds.has(oid)) return true;
+    try {
+      const raw = localStorage.getItem(notifiedQrisStorageKey());
+      const list = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(list) && list.includes(oid)) {
+        notifiedQrisOrderIds.add(oid);
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  function pendingStaffQrisStorageKey() {
+    const u = key(state.user?.username || "staff") || "staff";
+    return "rocky_pending_qris_barcode_tx_v2_" + u + "_" + todayKey();
+  }
+  function consumedStaffQrisStorageKey() {
+    const u = key(state.user?.username || "staff") || "staff";
+    return "rocky_consumed_qris_barcode_tx_v2_" + u + "_" + todayKey();
+  }
+  function getConsumedStaffQrisSet() {
+    const ids = new Set();
+    try {
+      const raw = localStorage.getItem(consumedStaffQrisStorageKey());
+      const arr = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(arr)) arr.forEach((x) => x && ids.add(String(x).trim()));
+    } catch (e) {}
+    return ids;
+  }
+  function markStaffQrisConsumed(orderId) {
+    const oid = String(orderId || "").trim();
+    if (!oid) return;
+    try {
+      const set = getConsumedStaffQrisSet();
+      set.add(oid);
+      localStorage.setItem(consumedStaffQrisStorageKey(), JSON.stringify([...set].slice(-200)));
+    } catch (e) {}
+  }
+  function getRecordedOrDeletedQrisOrderIds() {
+    const ids = getConsumedStaffQrisSet();
+    (state.data?.tx || []).forEach((t) => {
+      const oid = String(t?.qrisOrderId || "").trim();
+      if (oid) ids.add(oid);
+    });
+    return ids;
+  }
+  function getPendingStaffQrisQueue() {
+    try {
+      const raw = localStorage.getItem(pendingStaffQrisStorageKey());
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      const dk = todayKey();
+      const knownOrderIds = getRecordedOrDeletedQrisOrderIds();
+      const cleaned = arr
+        .filter(
+          (item) =>
+            item &&
+            item.orderId &&
+            Number(item.amount || 0) > 0 &&
+            String(item.dateKey || dk) === dk &&
+            !knownOrderIds.has(String(item.orderId).trim()),
+        )
+        .sort((a, b) => Number(b.createdAtMs || 0) - Number(a.createdAtMs || 0));
+      if (cleaned.length !== arr.length) {
+        localStorage.setItem(pendingStaffQrisStorageKey(), JSON.stringify(cleaned));
+      }
+      return cleaned;
+    } catch (e) {
+      return [];
+    }
+  }
+  let syncPendingQrisInFlight = null;
+  async function syncPendingStaffQrisFromServer() {
+    if (!state.user) return [];
+    if (syncPendingQrisInFlight) return syncPendingQrisInFlight;
+    syncPendingQrisInFlight = (async () => {
+      try {
+        const dk = todayKey();
+        const uKey = key(state.user?.username || "");
+        const knownOrderIds = getRecordedOrDeletedQrisOrderIds();
+        const activeSession = getActiveQrisSession();
+        if (
+          activeSession &&
+          activeSession.orderId &&
+          !activeSession.fromFastCashier &&
+          !knownOrderIds.has(String(activeSession.orderId).trim()) &&
+          !getPendingStaffQrisQueue().some((x) => String(x.orderId) === String(activeSession.orderId))
+        ) {
+          try {
+            const res = await fetch("https://myxrvipyodadnldtomzs.supabase.co/functions/v1/clever-responder", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "check_qris", order_id: activeSession.orderId }),
+            });
+            const j = await res.json();
+            const st = String(j?.status || "").toLowerCase();
+            if (res.ok && j?.ok && (st === "settlement" || st === "capture")) {
+              clearActiveQrisSession();
+              addPendingStaffQris({
+                orderId: activeSession.orderId,
+                amount: Number(activeSession.amount || 0),
+                note: String(activeSession.note || ""),
+                kasirUsername: uKey,
+                kasirName: String(activeSession.kasirName || state.user?.name || uKey),
+                createdAtMs: Number(activeSession.createdAtMs || Date.now()),
+                dateKey: dk,
+              });
+            }
+          } catch (e) {}
+        }
+      } catch (e) {
+      } finally {
+        syncPendingQrisInFlight = null;
+      }
+      return getPendingStaffQrisQueue();
+    })();
+    return syncPendingQrisInFlight;
+  }
+  function getActivePendingStaffQris() {
+    const q = getPendingStaffQrisQueue();
+    return q.length ? q[0] : null;
+  }
+  function addPendingStaffQris(entry) {
+    if (!entry || !entry.orderId || Number(entry.amount || 0) <= 0) return;
+    try {
+      const oid = String(entry.orderId).trim();
+      if (getRecordedOrDeletedQrisOrderIds().has(oid)) return;
+      const q = getPendingStaffQrisQueue();
+      if (q.some((x) => String(x.orderId) === oid)) return;
+      q.push({
+        orderId: oid,
+        amount: Number(entry.amount),
+        note: String(entry.note || "").trim(),
+        kasirUsername: String(entry.kasirUsername || state.user?.username || "").toLowerCase(),
+        kasirName: String(entry.kasirName || state.user?.name || ""),
+        createdAtMs: Number(entry.createdAtMs || Date.now()),
+        dateKey: String(entry.dateKey || todayKey()),
+      });
+      localStorage.setItem(pendingStaffQrisStorageKey(), JSON.stringify(q));
+    } catch (e) {}
+  }
+  function consumePendingStaffQris(orderId) {
+    const oid = String(orderId || "").trim();
+    if (!oid) return;
+    markStaffQrisConsumed(oid);
+    try {
+      const q = getPendingStaffQrisQueue().filter((x) => String(x.orderId) !== oid);
+      localStorage.setItem(pendingStaffQrisStorageKey(), JSON.stringify(q));
+    } catch (e) {}
+  }
+
   function notifyAdminNewTransaction(tx = {}) {
     try {
       if (!ROCKY_ADMIN_NOTIFY_WORKER_URL || !ROCKY_ADMIN_NOTIFY_SECRET) return;
@@ -7880,7 +8052,24 @@ function home() {
       const isEdc = ch === "edc" || pm === "transfer";
       const isQrisBarcode = ch === "qris_barcode" || Boolean(orderId);
       const isNonCash = isEdc || isQrisBarcode || pm === "qris_transfer";
-      if (orderId) notifiedQrisOrderIds.add(orderId);
+      const alreadyNotified = orderId && wasQrisAdminNotified(orderId);
+      if (alreadyNotified) {
+        return notifyRockyAdmin(
+          ROCKY_INVESTOR_NOTIFY_URL,
+          {
+            type: "investor_transaction",
+            note: rawNote,
+            amount,
+            user: staffName,
+            username: String(tx.user || state.user?.username || ""),
+            transactionId: String(tx.id || tx.clientId || ""),
+            dateKey: String(tx.dateKey || todayKey()),
+            source: "staff_cashier",
+          },
+          "Notif investor",
+        ).catch(() => {});
+      }
+      if (orderId) markQrisAdminNotified(orderId);
       const notifTitle = isEdc
         ? "Pembayaran EDC Berhasil"
         : isQrisBarcode
@@ -7956,6 +8145,7 @@ function home() {
     try {
       if (!ROCKY_ADMIN_NOTIFY_WORKER_URL || !ROCKY_ADMIN_NOTIFY_SECRET) return;
       if (isTrialRecord(state.user)) return;
+      if (orderId) markQrisAdminNotified(orderId);
       const amt = Number(amount || 0);
       const uname = String(kasirUsername || state.user?.username || "staff").toLowerCase();
       const staffName = String(kasirName || state.user?.name || uname || "Staff");
@@ -8117,15 +8307,32 @@ function home() {
     if (!state.user) return;
     if (!canTx()) return toast(txBlockedMessage());
     primeAppSounds();
+    const isEdit = !!draft?.editId;
+    const pendingQrisQueue = !isEdit ? getPendingStaffQrisQueue() : [];
+    const pendingQris = pendingQrisQueue.length ? pendingQrisQueue[0] : null;
     const defaultNote = String(draft?.note || "").trim();
     txProductDraftItems =
       defaultNote && defaultNote !== "Transaksi"
         ? txProductItemsFromText(defaultNote, "Transaksi")
         : [];
-    const defaultAmount = Number(draft?.amount || 0);
+    const lockedAmount = pendingQris ? Number(pendingQris.amount || 0) : 0;
+    const defaultAmount = lockedAmount > 0 ? lockedAmount : Number(draft?.amount || 0);
     const amountValue = defaultAmount > 0 ? `Rp ${rp(defaultAmount)}` : "";
-    const isEdit = !!draft?.editId;
+    const qrisBanner = pendingQris
+      ? `<div style="background:#e0f2fe;border:1.5px solid #38bdf8;border-radius:14px;padding:10px 12px;margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+            <span style="font-size:11px;font-weight:900;color:#0369a1;text-transform:uppercase;letter-spacing:.3px">QRIS Barcode Sudah Dibayar</span>
+            ${pendingQrisQueue.length > 1 ? `<span style="font-size:10px;font-weight:800;background:#0284c7;color:#fff;padding:2px 7px;border-radius:999px">1 / ${pendingQrisQueue.length}</span>` : ""}
+          </div>
+          <div style="font-size:13.5px;font-weight:900;color:#0f172a;margin-top:3px">Nominal terkunci: Rp ${rp(lockedAmount)}</div>
+          <div style="font-size:10.5px;color:#0369a1;margin-top:2px;font-family:monospace">${esc(pendingQris.orderId)}${pendingQris.note ? " &bull; " + esc(pendingQris.note) : ""}</div>
+        </div>`
+      : "";
+    const amountInputHtml = pendingQris
+      ? `<div class="field"><div class="label">Total Bayar (Terkunci QRIS Barcode)</div><input id="txa" class="tx-amount-input" type="tel" readonly tabindex="-1" value="${esc(amountValue)}" style="text-align:right;font-size:25px;font-weight:950;background:#f0f9ff;color:#0369a1;border-color:#7dd3fc;pointer-events:none;"></div>`
+      : `<div class="field"><div class="label">Total Bayar</div><input id="txa" class="tx-amount-input" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="Rp 0" value="${esc(amountValue)}" oninput="formatRupiahInput(this)" style="text-align:right;font-size:25px;font-weight:950"></div>`;
     const body = `<div class="tx-chip"><span>Input cepat</span><b>${timeNow()} WIB</b></div>
+    <div id="txQrisBannerSlot">${qrisBanner}</div>
     <div class="field tx-product-builder" style="position:relative">
       <div class="label">Rincian Barang</div>
       <form class="tx-product-entry" style="grid-template-columns: minmax(0,1fr) 50px auto !important; margin:0" onsubmit="event.preventDefault(); addTxProductItem(); return false;">
@@ -8136,18 +8343,21 @@ function home() {
       <div id="txProductSuggest" class="tx-product-suggest"></div>
       <div id="txProductList" class="tx-product-list"></div>
     </div>
-    <div class="field"><div class="label">Total Bayar</div><input id="txa" class="tx-amount-input" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="Rp 0" value="${esc(amountValue)}" oninput="formatRupiahInput(this)" style="text-align:right;font-size:25px;font-weight:950"></div>
+    <div id="txAmountFieldWrap">${amountInputHtml}</div>
     `;
     const encodedDraft = escAttr(
       JSON.stringify({
         editId: String(draft?.editId || ""),
         createdAtMs: Number(draft?.createdAtMs || 0),
         paymentMethod: String(draft?.paymentMethod || ""),
+        qrisOrderId: pendingQris ? String(pendingQris.orderId || "") : String(draft?.qrisOrderId || ""),
+        paymentChannel: pendingQris ? "qris_barcode" : String(draft?.paymentChannel || ""),
+        paymentLabel: pendingQris ? "QRIS Barcode" : String(draft?.paymentLabel || ""),
       }),
     );
-    const actions = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;width:100%"><button type="button" class="btn danger" onpointerdown="closeModal(true);event.preventDefault()" ontouchstart="closeModal(true);event.preventDefault()" onclick="closeModal(true)" style="grid-column:1 / -1">Batal</button><button class="btn success" onclick="saveTx(true,'',JSON.parse(this.dataset.draft||'{}'))" data-draft="${encodedDraft}" style="background:var(--green);border-color:var(--green);color:#fff">Cetak</button><button class="btn primary" onclick="saveTx(false,'',JSON.parse(this.dataset.draft||'{}'))" data-draft="${encodedDraft}">${isEdit ? "Update" : "Simpan"}</button></div>`;
+    const actions = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;width:100%"><button type="button" class="btn danger" onpointerdown="closeModal(true);event.preventDefault()" ontouchstart="closeModal(true);event.preventDefault()" onclick="closeModal(true)" style="grid-column:1 / -1">Batal</button><button id="txCetakBtn" class="btn success" onclick="saveTx(true,'',JSON.parse(this.dataset.draft||'{}'))" data-draft="${encodedDraft}" style="background:var(--green);border-color:var(--green);color:#fff">Cetak</button><button id="txSimpanBtn" class="btn primary" onclick="saveTx(false,'',JSON.parse(this.dataset.draft||'{}'))" data-draft="${encodedDraft}">${isEdit ? "Update" : "Simpan"}</button></div>`;
     modal(
-      isEdit ? "Edit Transaksi" : "Transaksi Baru",
+      isEdit ? "Edit Transaksi" : (pendingQris ? "Catat Transaksi QRIS Barcode" : "Transaksi Baru"),
       body,
       actions,
       "tx-modal",
@@ -8168,20 +8378,67 @@ function home() {
       document.removeEventListener("pointerdown", txSuggestOutsideHandler, true);
       document.addEventListener("pointerdown", txSuggestOutsideHandler, true);
     }, 30);
+    if (!isEdit && !pendingQris && !(Number(draft?.amount || 0) > 0)) {
+      syncPendingStaffQrisFromServer().then((q) => {
+        if (!Array.isArray(q) || !q.length) return;
+        const amtInput = $("txa");
+        const bannerSlot = $("txQrisBannerSlot");
+        const amtWrap = $("txAmountFieldWrap");
+        if (!amtInput || !bannerSlot || !amtWrap) return;
+        if (Number(onlyDigits(amtInput.value) || 0) > 0) return;
+        const pq = q[0];
+        const amt = Number(pq.amount || 0);
+        if (amt <= 0) return;
+        bannerSlot.innerHTML = `<div style="background:#e0f2fe;border:1.5px solid #38bdf8;border-radius:14px;padding:10px 12px;margin-bottom:10px;"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px;"><span style="font-size:11px;font-weight:900;color:#0369a1;text-transform:uppercase;letter-spacing:.3px">QRIS Barcode Sudah Dibayar</span>${q.length > 1 ? `<span style="font-size:10px;font-weight:800;background:#0284c7;color:#fff;padding:2px 7px;border-radius:999px">1 / ${q.length}</span>` : ""}</div><div style="font-size:13.5px;font-weight:900;color:#0f172a;margin-top:3px">Nominal terkunci: Rp ${rp(amt)}</div><div style="font-size:10.5px;color:#0369a1;margin-top:2px;font-family:monospace">${esc(pq.orderId)}${pq.note ? " &bull; " + esc(pq.note) : ""}</div></div>`;
+        amtWrap.innerHTML = `<div class="field"><div class="label">Total Bayar (Terkunci QRIS Barcode)</div><input id="txa" class="tx-amount-input" type="tel" readonly tabindex="-1" value="Rp ${rp(amt)}" style="text-align:right;font-size:25px;font-weight:950;background:#f0f9ff;color:#0369a1;border-color:#7dd3fc;pointer-events:none;"></div>`;
+        const titleEl = document.querySelector("#modal .modal-title");
+        if (titleEl) titleEl.textContent = "Catat Transaksi QRIS Barcode";
+        const nextDraft = JSON.stringify({
+          editId: "",
+          createdAtMs: Number(draft?.createdAtMs || 0),
+          paymentMethod: "",
+          qrisOrderId: String(pq.orderId || ""),
+          paymentChannel: "qris_barcode",
+          paymentLabel: "QRIS Barcode",
+        });
+        const btnCetak = $("txCetakBtn");
+        const btnSimpan = $("txSimpanBtn");
+        if (btnCetak) btnCetak.dataset.draft = nextDraft;
+        if (btnSimpan) btnSimpan.dataset.draft = nextDraft;
+      }).catch(() => {});
+    }
   }
   function openTxPaymentChoice(draft) {
     txPaymentSubmitting = false;
+    const isEdit = Boolean(draft?.editId);
+    const activePendingQris = !isEdit ? getActivePendingStaffQris() : null;
+    const lockedOrderId = String(activePendingQris?.orderId || (!isEdit ? draft?.qrisOrderId : "") || "").trim();
+    const lockedAmount = activePendingQris ? Number(activePendingQris.amount || 0) : Number(draft?.amount || 0);
+    const isQrisLocked = Boolean(!isEdit && lockedOrderId);
     pendingTxDraft = {
       printAfterSave: Boolean(draft?.printAfterSave),
-      amount: Number(draft?.amount || 0),
+      amount: lockedAmount,
       note: String(draft?.note || "Transaksi").trim() || "Transaksi",
       editId: String(draft?.editId || ""),
       createdAtMs: Number(draft?.createdAtMs || 0),
       paymentMethod: String(draft?.paymentMethod || ""),
+      qrisOrderId: lockedOrderId || String(draft?.qrisOrderId || ""),
+      paymentChannel: isQrisLocked ? "qris_barcode" : String(draft?.paymentChannel || ""),
+      paymentLabel: isQrisLocked ? "QRIS Barcode" : String(draft?.paymentLabel || ""),
     };
+    const hasQris = state.user?.qrisAccess === true;
+    const choicesHtml = isQrisLocked
+      ? `<div style="text-align:center;font-size:12px;font-weight:700;color:#0369a1;background:#e0f2fe;border:1px solid #7dd3fc;border-radius:12px;padding:8px 10px;margin-bottom:10px;">Nominal & metode dikunci sesuai QRIS Barcode:<br><b style="font-size:15px;color:#0f172a">Rp ${rp(lockedAmount)}</b> <span style="font-family:monospace;font-size:10.5px">(${esc(lockedOrderId)})</span></div>
+         <div class="payment-simple-choices">
+           <button type="button" data-payment-choice="qris_transfer" class="payment-simple-btn payment-simple-qris" style="background:linear-gradient(135deg,#0284c7 0%,#0369a1 100%)!important;border-color:#0369a1!important;box-shadow:0 8px 22px rgba(2,132,199,.32)!important;" onpointerdown="confirmTxPayment('qris_transfer',this,event)" ontouchstart="confirmTxPayment('qris_transfer',this,event)" onclick="confirmTxPayment('qris_transfer',this,event)"><span>QRIS Barcode &bull; Rp ${rp(lockedAmount)}</span></button>
+         </div>`
+      : `<div class="payment-simple-choices">
+           <button type="button" data-payment-choice="cash" class="payment-simple-btn payment-simple-cash" onpointerdown="confirmTxPayment('cash',this,event)" ontouchstart="confirmTxPayment('cash',this,event)" onclick="confirmTxPayment('cash',this,event)"><span>Tunai</span></button>
+           ${!hasQris ? `<button type="button" data-payment-choice="transfer" class="payment-simple-btn payment-simple-qris" onpointerdown="confirmTxPayment('transfer',this,event)" ontouchstart="confirmTxPayment('transfer',this,event)" onclick="confirmTxPayment('transfer',this,event)"><span>Transfer via EDC</span></button>` : ""}
+         </div>`;
     modal(
-      "Pilih Pembayaran",
-      `<div class="payment-simple-choices"><button type="button" data-payment-choice="cash" class="payment-simple-btn payment-simple-cash" onpointerdown="confirmTxPayment('cash',this,event)" ontouchstart="confirmTxPayment('cash',this,event)" onclick="confirmTxPayment('cash',this,event)"><span>Cash</span></button><button type="button" data-payment-choice="qris_transfer" class="payment-simple-btn payment-simple-qris" onpointerdown="confirmTxPayment('qris_transfer',this,event)" ontouchstart="confirmTxPayment('qris_transfer',this,event)" onclick="confirmTxPayment('qris_transfer',this,event)"><span>Qris / Transfer</span></button></div>`,
+      isQrisLocked ? "Konfirmasi QRIS Barcode" : "Pilih Pembayaran",
+      choicesHtml,
       ``,
       "tx-modal payment-picker-modal",
     );
@@ -8229,6 +8486,13 @@ function home() {
       });
       return toast("Data transaksi tidak ditemukan. Isi ulang transaksi.");
     }
+    if (paymentMethod === "transfer") {
+      draft.paymentChannel = "edc";
+      draft.paymentLabel = "Transfer via EDC";
+    } else if (paymentMethod === "cash") {
+      draft.paymentChannel = "";
+      draft.paymentLabel = "Cash";
+    }
     try {
       await saveTx(Boolean(draft.printAfterSave), paymentMethod, draft);
     } finally {
@@ -8247,16 +8511,21 @@ function home() {
     draft = null,
   ) {
     primeAppSounds();
-    const amount = Number(draft?.amount || onlyDigits($("txa")?.value)),
-      note = txProductTextFromItems(
-        txProductItemsFromText(
-          String(draft?.note ?? txProductDraftText()).trim(),
-          "Transaksi",
-        ),
-        "Transaksi",
-      );
     const editId = String(draft?.editId || "");
     const editTx = editId ? findTxById(editId) : null;
+    const activePendingQris = !editId && !draft?.skipPendingQrisCheck ? getActivePendingStaffQris() : null;
+    const isDirectFastCashierQris = Boolean(draft?.fromFastCashierQris);
+    const lockedPendingQris = !isDirectFastCashierQris ? activePendingQris : null;
+    const amount = lockedPendingQris
+      ? Number(lockedPendingQris.amount || 0)
+      : Number(draft?.amount || onlyDigits($("txa")?.value));
+    const note = txProductTextFromItems(
+      txProductItemsFromText(
+        String(draft?.note ?? txProductDraftText()).trim(),
+        "Transaksi",
+      ),
+      "Transaksi",
+    );
 
     // VALIDASI INVESTOR STRICT MODE DIHAPUS
     const lines = note.split("\n").map(l => l.trim()).filter(Boolean);
@@ -8284,17 +8553,37 @@ function home() {
         paymentMethod: String(
           draft?.paymentMethod || editTx?.paymentMethod || "",
         ),
+        qrisOrderId: String(
+          lockedPendingQris?.orderId || draft?.qrisOrderId || editTx?.qrisOrderId || "",
+        ),
+        paymentChannel: String(
+          lockedPendingQris ? "qris_barcode" : (draft?.paymentChannel || editTx?.paymentChannel || ""),
+        ),
+        paymentLabel: String(
+          lockedPendingQris ? "QRIS Barcode" : (draft?.paymentLabel || editTx?.paymentLabel || ""),
+        ),
       });
     }
-    const payment = normalizeTxPaymentMethod(paymentMethod);
-    if (!payment) return toast("Pilih Cash atau QRIS / Transfer dulu");
+    const payment = lockedPendingQris
+      ? "qris_transfer"
+      : normalizeTxPaymentMethod(paymentMethod);
+    if (!payment) return toast("Pilih metode pembayaran dulu");
     const paymentChannel = String(
-      draft?.paymentChannel || (payment === "transfer" ? "edc" : ""),
+      lockedPendingQris
+        ? "qris_barcode"
+        : (payment === "cash" ? "" : payment === "transfer" ? "edc" : (draft?.paymentChannel || (editId ? editTx?.paymentChannel : "") || "")),
     ).trim();
-    const qrisOrderId = String(draft?.qrisOrderId || "").trim();
+    const qrisOrderId = String(
+      payment === "qris_transfer" ? (lockedPendingQris?.orderId || draft?.qrisOrderId || (editId ? editTx?.qrisOrderId : "") || "") : "",
+    ).trim();
     const paymentText =
-      String(draft?.paymentLabel || txPaymentLabel(payment) || "").trim() ||
-      txPaymentLabel(payment);
+      String(
+        (lockedPendingQris ? "QRIS Barcode" : "") ||
+        draft?.paymentLabel ||
+        (payment === "transfer" ? "Transfer via EDC" : "") ||
+        txPaymentLabel(payment) ||
+        "",
+      ).trim() || txPaymentLabel(payment);
     pendingTxDraft = null;
     if (!canTx()) {
       closeModal();
@@ -8448,6 +8737,7 @@ function home() {
       const savedTx = { id, ...payload, pending: false };
       state.data.tx = state.data.tx.map((t) => (t.id === id ? savedTx : t));
       removePending(id);
+      if (savedTx.qrisOrderId) consumePendingStaffQris(savedTx.qrisOrderId);
       playSuccessSound();
       await logAudit("transaction_create", {
         id,
@@ -10017,6 +10307,7 @@ function openStaffQrisModal() {
     currentQrisOrderId = activeSession.orderId;
     currentQrisAmount = activeSession.amount;
     currentQrisNote = activeSession.note;
+    currentQrisFromFastCashier = Boolean(activeSession.fromFastCashier);
     renderStaffQrisBarcodeScreen(
       activeSession.qrImgOrString,
       activeSession.orderId,
@@ -10143,6 +10434,7 @@ async function generateStaffQris() {
       qrImgOrString: data.qr_image_url || data.qr_string,
       kasirUsername,
       kasirName,
+      fromFastCashier: false,
       createdAtMs: now,
       expiresAtMs,
     };
@@ -10321,6 +10613,9 @@ async function checkStaffQrisManual() {
   const orderId = currentQrisOrderId || activeSession?.orderId;
   const amount = currentQrisAmount || activeSession?.amount;
   const note = currentQrisNote || activeSession?.note;
+  if (activeSession && typeof activeSession.fromFastCashier === "boolean") {
+    currentQrisFromFastCashier = activeSession.fromFastCashier;
+  }
   if (!orderId) return;
   toast("Memeriksa status pembayaran...");
   try {
@@ -10469,17 +10764,22 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
   if (!orderId || processedQrisOrders.has(orderId)) return;
   processedQrisOrders.add(orderId);
 
+  const wasFromFastCashier = Boolean(
+    currentQrisFromFastCashier || (note && note.includes("Penjualan Cepat")),
+  );
   clearActiveQrisSession();
   stopQrisPolling();
   stopQrisCountdown();
   currentQrisOrderId = null;
   currentQrisAmount = 0;
   currentQrisNote = "";
+  currentQrisFromFastCashier = false;
   playSuccessSound();
 
-  // Jika pembayaran dari Kasir Cepat, simpan ke transactions agar masuk ke riwayat kasir, omset & bonus
-  if (currentQrisFromFastCashier || (note && (note.includes("Penjualan Cepat") || note === "Transaksi")) ) {
-    currentQrisFromFastCashier = false;
+  const kasirUsername = String(state.user?.username || "staff").toLowerCase();
+
+  // Jika pembayaran dari Kasir Cepat, simpan otomatis ke transactions; jika Mode Staff biasa, kunci ke antrean catat (+)
+  if (wasFromFastCashier) {
     fastCashierNominal = 0;
     try { updateFastCashierDisplay(); } catch (e) {}
     try {
@@ -10490,14 +10790,23 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
         paymentChannel: "qris_barcode",
         paymentLabel: "QRIS Barcode",
         qrisOrderId: orderId,
+        fromFastCashierQris: true,
+        skipPendingQrisCheck: true,
       });
     } catch (errTx) {
       console.warn("Gagal simpan transaksi utama QRIS:", errTx);
     }
+  } else {
+    addPendingStaffQris({
+      orderId,
+      amount: Number(amount || 0),
+      note: note || "",
+      kasirUsername,
+      kasirName: kasirName || state.user?.name || kasirUsername,
+      createdAtMs: Date.now(),
+      dateKey: todayKey(),
+    });
   }
-
-  // Simpan record ke tabel database Supabase qris_payments
-  const kasirUsername = String(state.user?.username || "staff").toLowerCase();
   try {
     await supabase.from("qris_payments").upsert({
       order_id: orderId,
@@ -10618,9 +10927,7 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
           Cetak Struk
         </button>
-        <button type="button" class="btn primary qris-btn-action" style="background:#10b981;height:40px;" onclick="finishStaffQris()">
-          Selesai
-        </button>
+        <button type="button" class="btn primary qris-btn-action" style="background:#10b981;height:40px;" onclick="finishStaffQris()">Selesai</button>
       </div>
     </div>
   `;
@@ -10854,6 +11161,7 @@ async function startFastCashierQris(amount) {
       qrImgOrString: data.qr_image_url || data.qr_string,
       kasirUsername,
       kasirName,
+      fromFastCashier: true,
       createdAtMs: now,
       expiresAtMs,
     };
@@ -10929,7 +11237,8 @@ async function confirmFastCashierEdc(amount) {
       note: "Transaksi",
       paymentMethod: "transfer",
       paymentChannel: "edc",
-      paymentLabel: "EDC / Transfer",
+      paymentLabel: "Transfer via EDC",
+      skipPendingQrisCheck: true,
     };
 
     fastCashierNominal = 0;
@@ -10966,43 +11275,28 @@ function openFastCashierPaymentModal() {
       <div style="font-size:11px;font-weight:800;color:var(--muted,#64748b);text-transform:uppercase;letter-spacing:0.5px;">TOTAL TRANSAKSI</div>
       <div style="font-size:32px;font-weight:950;color:var(--primary,#0284c7);margin-top:2px;">Rp ${rp(amount)}</div>
     </div>
-    <div style="display:flex;flex-direction:column;gap:10px;">
+    <div class="payment-simple-choices">
       <!-- 1. TUNAI -->
-      <button type="button" class="btn" onclick="selectFastCashierPayment('cash')" style="width:100%;min-height:56px;border-radius:16px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:#fff;border:none;display:flex;align-items:center;padding:10px 16px;gap:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 4px 12px rgba(16,185,129,0.25);">
-        <div style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>
-        </div>
-        <div style="text-align:left;flex-grow:1;">
-          <div style="font-size:16px;font-weight:950;line-height:1.2;">TUNAI</div>
-        </div>
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>
+      <button type="button" class="payment-simple-btn payment-simple-cash" onclick="selectFastCashierPayment('cash')">
+        <span>Tunai</span>
       </button>
 
       <!-- 2. QRIS -->
       ${hasQris ? `
-      <button type="button" class="btn" onclick="selectFastCashierPayment('qris_transfer')" style="width:100%;min-height:56px;border-radius:16px;background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%);color:#fff;border:none;display:flex;align-items:center;padding:10px 16px;gap:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 4px 12px rgba(2,132,199,0.25);">
-        <div style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      <button type="button" class="payment-simple-btn payment-simple-qris" style="min-height:68px;background:linear-gradient(135deg,#0284c7 0%,#0369a1 100%)!important;border-color:#0369a1!important;box-shadow:0 8px 22px rgba(2,132,199,.32)!important;" onclick="selectFastCashierPayment('qris_transfer')">
+        <div style="text-align:center;">
+          <div style="font-size:17px;font-weight:950;line-height:1.15;">QRIS</div>
+          <div style="font-size:11px;font-weight:700;opacity:0.92;line-height:1.2;margin-top:2px;">Scan Barcode QRIS</div>
         </div>
-        <div style="text-align:left;flex-grow:1;">
-          <div style="font-size:15px;font-weight:950;line-height:1.2;">QRIS</div>
-          <div style="font-size:11px;font-weight:700;opacity:0.9;line-height:1.2;margin-top:1px;">Scan Barcode QRIS</div>
-        </div>
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>
       </button>
       ` : ''}
 
-      <!-- 3. TRANSFER (MESIN EDC) -->
-      <button type="button" class="btn" onclick="selectFastCashierPayment('transfer')" style="width:100%;min-height:56px;border-radius:16px;background:linear-gradient(135deg, #ff6b00 0%, #ea580c 100%);color:#fff;border:none;display:flex;align-items:center;padding:10px 16px;gap:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 4px 12px rgba(234,88,12,0.32);">
-        <div style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>
-        </div>
-        <div style="text-align:left;flex-grow:1;">
-          <div style="font-size:15px;font-weight:950;line-height:1.2;">TRANSFER</div>
-          <div style="font-size:11px;font-weight:700;opacity:0.9;line-height:1.2;margin-top:1px;">Mesin EDC Fisik</div>
-        </div>
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>
+      <!-- 3. TRANSFER VIA EDC - hanya muncul jika QRIS nonaktif -->
+      ${!hasQris ? `
+      <button type="button" class="payment-simple-btn payment-simple-qris" onclick="selectFastCashierPayment('transfer')">
+        <span>Transfer via EDC</span>
       </button>
+      ` : ''}
     </div>
   `;
 
@@ -11042,6 +11336,9 @@ async function submitFastCashierTx(method = "cash") {
 
   // 2. Jika TRANSFER / MESIN EDC: Munculkan popup konfirmasi untuk memastikan transaksi di mesin EDC fisik sudah berhasil
   if (method === "transfer" || method === "bank_transfer") {
+    if (state.user?.qrisAccess === true) {
+      return toast("Mesin EDC dinonaktifkan saat QRIS aktif. Gunakan QRIS!");
+    }
     return showFastCashierEdcConfirmModal(amount);
   }
 
