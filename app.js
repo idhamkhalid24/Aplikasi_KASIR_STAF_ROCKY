@@ -3470,6 +3470,22 @@ function startStaffRealtime() {
     ),
   );
 
+  staffRealtimeUnsubs.push(
+    onSnapshot(
+      doc(db, "closings", pendingStaffQrisCloudDocId(u)),
+      (snap) => {
+        if (snap.exists()) {
+          applyCloudPendingStaffQrisData(snap.data() || {});
+        }
+      },
+      (err) =>
+        console.warn(
+          "Pending QRIS realtime gagal",
+          err?.code || err?.message || err,
+        ),
+    ),
+  );
+
   const targetTxQ = query(
     collection(db, "transactions"),
     where("dateKey", "==", d),
@@ -4081,6 +4097,7 @@ async function loadStaffData(opts = {}) {
   notifyNewManualBonuses();
   notifyNewBonusWithdrawals();
   if (!opts.skipFlush) flushPending();
+  syncPendingStaffQrisFromServer().catch(() => {});
   flushExpiredPendingStaffQris().catch(() => {});
   startStaffRealtime();
 
@@ -8102,6 +8119,7 @@ function home() {
                 { merge: false },
               );
               markStaffQrisConsumed(oid, itemDateKey);
+              consumePendingStaffQrisInCloud(oid, itemDateKey).catch(() => {});
               markQrisAdminNotified(oid);
               inMemoryOrderIds.add(oid);
               recordedCount++;
@@ -8144,6 +8162,10 @@ function home() {
     })();
     return flushExpiredQrisInFlight;
   }
+  function pendingStaffQrisCloudDocId(u = state.user?.username) {
+    const uKey = key(u || "staff") || "staff";
+    return "__pending_qris_" + uKey;
+  }
   function getRecordedOrDeletedQrisOrderIds() {
     const ids = getConsumedStaffQrisSet();
     (state.data?.tx || []).forEach((t) => {
@@ -8151,6 +8173,21 @@ function home() {
       if (oid) ids.add(oid);
     });
     return ids;
+  }
+  function normalizePendingQrisEntry(entry, dk = todayKey()) {
+    const oid = String(entry?.orderId || "").trim();
+    const amount = Number(entry?.amount || 0);
+    if (!oid || amount <= 0) return null;
+    const uKey = key(entry?.kasirUsername || state.user?.username || "");
+    return {
+      orderId: oid,
+      amount,
+      note: String(entry?.note || "").trim(),
+      kasirUsername: uKey,
+      kasirName: String(entry?.kasirName || state.user?.name || uKey),
+      createdAtMs: Number(entry?.createdAtMs || Date.now()),
+      dateKey: String(entry?.dateKey || dk),
+    };
   }
   function getPendingStaffQrisQueue() {
     try {
@@ -8178,6 +8215,144 @@ function home() {
       return [];
     }
   }
+  function refreshOpenTxModalPendingQrisUI() {
+    try {
+      const btnSimpan = $("txSimpanBtn");
+      const btnCetak = $("txCetakBtn");
+      const amtInput = $("txa");
+      const bannerSlot = $("txQrisBannerSlot");
+      const amtWrap = $("txAmountFieldWrap");
+      if (!btnSimpan || !amtInput || !bannerSlot || !amtWrap) return;
+      let currentDraft = {};
+      try { currentDraft = JSON.parse(btnSimpan.dataset.draft || "{}"); } catch (e) {}
+      if (currentDraft?.editId) return;
+      const q = getPendingStaffQrisQueue();
+      const pq = q.length ? q[0] : null;
+      const titleEl = document.querySelector("#modal .modal-title");
+      const currentLockedId = String(currentDraft?.qrisOrderId || "").trim();
+      if (pq) {
+        const amt = Number(pq.amount || 0);
+        if (amt <= 0) return;
+        if (!currentLockedId && Number(onlyDigits(amtInput.value) || 0) > 0) return;
+        if (currentLockedId === String(pq.orderId) && bannerSlot.innerHTML.trim()) return;
+        bannerSlot.innerHTML = `<div style="background:#e0f2fe;border:1.5px solid #38bdf8;border-radius:14px;padding:10px 12px;margin-bottom:10px;"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px;"><span style="font-size:11px;font-weight:900;color:#0369a1;text-transform:uppercase;letter-spacing:.3px">QRIS Barcode Sudah Dibayar</span>${q.length > 1 ? `<span style="font-size:10px;font-weight:800;background:#0284c7;color:#fff;padding:2px 7px;border-radius:999px">1 / ${q.length}</span>` : ""}</div><div style="font-size:13.5px;font-weight:900;color:#0f172a;margin-top:3px">Nominal terkunci: Rp ${rp(amt)}</div><div style="font-size:10.5px;color:#0369a1;margin-top:2px;font-family:monospace">${esc(pq.orderId)}${pq.note ? " &bull; " + esc(pq.note) : ""}</div></div>`;
+        amtWrap.innerHTML = `<div class="field"><div class="label">Total Bayar (Terkunci QRIS Barcode)</div><input id="txa" class="tx-amount-input" type="tel" readonly tabindex="-1" value="Rp ${rp(amt)}" style="text-align:right;font-size:25px;font-weight:950;background:#f0f9ff;color:#0369a1;border-color:#7dd3fc;pointer-events:none;"></div>`;
+        if (titleEl) titleEl.textContent = "Catat Transaksi QRIS Barcode";
+        const nextDraft = JSON.stringify({
+          editId: "",
+          createdAtMs: Number(currentDraft?.createdAtMs || 0),
+          paymentMethod: "",
+          qrisOrderId: String(pq.orderId || ""),
+          paymentChannel: "qris_barcode",
+          paymentLabel: "QRIS Barcode",
+        });
+        if (btnCetak) btnCetak.dataset.draft = nextDraft;
+        btnSimpan.dataset.draft = nextDraft;
+      } else if (currentLockedId) {
+        bannerSlot.innerHTML = "";
+        amtWrap.innerHTML = `<div class="field"><div class="label">Total Bayar</div><input id="txa" class="tx-amount-input" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="Rp 0" value="" oninput="formatRupiahInput(this)" style="text-align:right;font-size:25px;font-weight:950"></div>`;
+        if (titleEl) titleEl.textContent = "Transaksi Baru";
+        const nextDraft = JSON.stringify({
+          editId: "",
+          createdAtMs: Number(currentDraft?.createdAtMs || 0),
+          paymentMethod: "",
+          qrisOrderId: "",
+          paymentChannel: "",
+          paymentLabel: "",
+        });
+        if (btnCetak) btnCetak.dataset.draft = nextDraft;
+        btnSimpan.dataset.draft = nextDraft;
+      }
+    } catch (e) {}
+  }
+  function applyCloudPendingStaffQrisData(cloudData, dk = todayKey()) {
+    if (!cloudData || !state.user) return false;
+    try {
+      const cloudConsumed = Array.isArray(cloudData.consumedOrderIds) ? cloudData.consumedOrderIds : [];
+      cloudConsumed.forEach((oid) => {
+        if (oid) markStaffQrisConsumed(oid, dk);
+      });
+      const knownOrderIds = getRecordedOrDeletedQrisOrderIds();
+      const localQueue = getPendingStaffQrisQueue();
+      const map = new Map();
+      const rawItems = Array.isArray(cloudData.items) ? cloudData.items : [];
+      [...localQueue, ...rawItems].forEach((entry) => {
+        const norm = normalizePendingQrisEntry(entry, dk);
+        if (!norm) return;
+        if (String(norm.dateKey || dk) !== dk) return;
+        if (knownOrderIds.has(norm.orderId)) return;
+        if (!map.has(norm.orderId)) map.set(norm.orderId, norm);
+      });
+      const merged = [...map.values()].sort((a, b) => Number(b.createdAtMs || 0) - Number(a.createdAtMs || 0));
+      localStorage.setItem(pendingStaffQrisStorageKey(dk), JSON.stringify(merged));
+      refreshOpenTxModalPendingQrisUI();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  async function syncPendingStaffQrisToCloud(extraEntry = null, consumeOrderId = "", dk = todayKey()) {
+    if (!state.user) return null;
+    try {
+      const u = key(state.user?.username || "");
+      if (!u) return null;
+      const docRef = doc(db, "closings", pendingStaffQrisCloudDocId(u));
+      let cloudData = {};
+      try {
+        const snap = await getDocFromServer(docRef);
+        if (snap.exists()) cloudData = snap.data() || {};
+      } catch (e) {}
+      const consumedSet = getConsumedStaffQrisSet(dk);
+      (Array.isArray(cloudData.consumedOrderIds) ? cloudData.consumedOrderIds : []).forEach((id) => {
+        if (id) consumedSet.add(String(id).trim());
+      });
+      (state.data?.tx || []).forEach((t) => {
+        const oid = String(t?.qrisOrderId || "").trim();
+        if (oid) consumedSet.add(oid);
+      });
+      const cOid = String(consumeOrderId || "").trim();
+      if (cOid) {
+        consumedSet.add(cOid);
+        markStaffQrisConsumed(cOid, dk);
+      }
+      const localQueue = getPendingStaffQrisQueue();
+      const cloudItems = Array.isArray(cloudData.items) ? cloudData.items : [];
+      const combined = [...cloudItems, ...localQueue];
+      if (extraEntry) combined.push(extraEntry);
+      const map = new Map();
+      combined.forEach((entry) => {
+        const norm = normalizePendingQrisEntry(entry, dk);
+        if (!norm) return;
+        if (String(norm.dateKey || dk) !== dk) return;
+        if (consumedSet.has(norm.orderId)) return;
+        if (!map.has(norm.orderId)) map.set(norm.orderId, norm);
+      });
+      const items = [...map.values()].sort((a, b) => Number(b.createdAtMs || 0) - Number(a.createdAtMs || 0));
+      const consumedOrderIds = [...consumedSet].slice(-200);
+      localStorage.setItem(consumedStaffQrisStorageKey(dk), JSON.stringify(consumedOrderIds));
+      localStorage.setItem(pendingStaffQrisStorageKey(dk), JSON.stringify(items));
+      await setDoc(
+        docRef,
+        {
+          type: "pending_staff_qris_queue",
+          user: u,
+          items,
+          consumedOrderIds,
+          updatedAtMs: Date.now(),
+        },
+        { merge: false },
+      );
+      return items;
+    } catch (e) {
+      console.warn("syncPendingStaffQrisToCloud failed:", e?.message || e);
+      return null;
+    }
+  }
+  async function consumePendingStaffQrisInCloud(orderId, dk = todayKey()) {
+    const oid = String(orderId || "").trim();
+    if (!oid || !state.user) return;
+    await syncPendingStaffQrisToCloud(null, oid, dk);
+  }
   let syncPendingQrisInFlight = null;
   async function syncPendingStaffQrisFromServer() {
     if (!state.user) return [];
@@ -8186,8 +8361,19 @@ function home() {
       try {
         const dk = todayKey();
         const uKey = key(state.user?.username || "");
+        if (!uKey) return [];
+        const docRef = doc(db, "closings", pendingStaffQrisCloudDocId(uKey));
+        let cloudData = null;
+        try {
+          const snap = await getDocFromServer(docRef);
+          if (snap.exists()) cloudData = snap.data() || {};
+        } catch (e) {}
+        if (cloudData) {
+          applyCloudPendingStaffQrisData(cloudData, dk);
+        }
         const knownOrderIds = getRecordedOrDeletedQrisOrderIds();
         const activeSession = getActiveQrisSession();
+        let addedFromActive = false;
         if (
           activeSession &&
           activeSession.orderId &&
@@ -8205,7 +8391,7 @@ function home() {
             const st = String(j?.status || "").toLowerCase();
             if (res.ok && j?.ok && (st === "settlement" || st === "capture")) {
               clearActiveQrisSession();
-              addPendingStaffQris({
+              await addPendingStaffQris({
                 orderId: activeSession.orderId,
                 amount: Number(activeSession.amount || 0),
                 note: String(activeSession.note || ""),
@@ -8214,9 +8400,27 @@ function home() {
                 createdAtMs: Number(activeSession.createdAtMs || Date.now()),
                 dateKey: dk,
               });
+              addedFromActive = true;
             }
           } catch (e) {}
         }
+        // Pastikan antrean lokal yg belum ada di cloud (mis. dari HP A) langsung ter-push ke cloud agar terbaca di HP B
+        if (!addedFromActive) {
+          const localQueue = getPendingStaffQrisQueue();
+          const cloudIds = new Set(
+            (Array.isArray(cloudData?.items) ? cloudData.items : [])
+              .map((x) => String(x?.orderId || "").trim())
+              .filter(Boolean),
+          );
+          const hasUnpushedLocal = localQueue.some((x) => !cloudIds.has(String(x?.orderId || "").trim()));
+          const cloudHasRecorded = (Array.isArray(cloudData?.items) ? cloudData.items : []).some((x) =>
+            knownOrderIds.has(String(x?.orderId || "").trim()),
+          );
+          if (hasUnpushedLocal || cloudHasRecorded) {
+            await syncPendingStaffQrisToCloud(null, "", dk);
+          }
+        }
+        refreshOpenTxModalPendingQrisUI();
       } catch (e) {
       } finally {
         syncPendingQrisInFlight = null;
@@ -8230,23 +8434,21 @@ function home() {
     return q.length ? q[0] : null;
   }
   function addPendingStaffQris(entry) {
-    if (!entry || !entry.orderId || Number(entry.amount || 0) <= 0) return;
+    if (!entry || !entry.orderId || Number(entry.amount || 0) <= 0) return Promise.resolve(null);
     try {
-      const oid = String(entry.orderId).trim();
-      if (getRecordedOrDeletedQrisOrderIds().has(oid)) return;
+      const norm = normalizePendingQrisEntry(entry, String(entry.dateKey || todayKey()));
+      if (!norm) return Promise.resolve(null);
+      if (getRecordedOrDeletedQrisOrderIds().has(norm.orderId)) return Promise.resolve(null);
+      const dk = norm.dateKey || todayKey();
       const q = getPendingStaffQrisQueue();
-      if (q.some((x) => String(x.orderId) === oid)) return;
-      q.push({
-        orderId: oid,
-        amount: Number(entry.amount),
-        note: String(entry.note || "").trim(),
-        kasirUsername: String(entry.kasirUsername || state.user?.username || "").toLowerCase(),
-        kasirName: String(entry.kasirName || state.user?.name || ""),
-        createdAtMs: Number(entry.createdAtMs || Date.now()),
-        dateKey: String(entry.dateKey || todayKey()),
-      });
-      localStorage.setItem(pendingStaffQrisStorageKey(), JSON.stringify(q));
-    } catch (e) {}
+      if (!q.some((x) => String(x.orderId) === norm.orderId)) {
+        q.push(norm);
+        localStorage.setItem(pendingStaffQrisStorageKey(dk), JSON.stringify(q));
+      }
+      return syncPendingStaffQrisToCloud(norm, "", dk);
+    } catch (e) {
+      return Promise.resolve(null);
+    }
   }
   function consumePendingStaffQris(orderId) {
     const oid = String(orderId || "").trim();
@@ -8256,6 +8458,7 @@ function home() {
       const q = getPendingStaffQrisQueue().filter((x) => String(x.orderId) !== oid);
       localStorage.setItem(pendingStaffQrisStorageKey(), JSON.stringify(q));
     } catch (e) {}
+    consumePendingStaffQrisInCloud(oid, todayKey()).catch(() => {});
   }
 
   function notifyAdminNewTransaction(tx = {}) {
@@ -8602,33 +8805,9 @@ function home() {
       document.removeEventListener("pointerdown", txSuggestOutsideHandler, true);
       document.addEventListener("pointerdown", txSuggestOutsideHandler, true);
     }, 30);
-    if (!isEdit && !pendingQris && !(Number(draft?.amount || 0) > 0)) {
-      syncPendingStaffQrisFromServer().then((q) => {
-        if (!Array.isArray(q) || !q.length) return;
-        const amtInput = $("txa");
-        const bannerSlot = $("txQrisBannerSlot");
-        const amtWrap = $("txAmountFieldWrap");
-        if (!amtInput || !bannerSlot || !amtWrap) return;
-        if (Number(onlyDigits(amtInput.value) || 0) > 0) return;
-        const pq = q[0];
-        const amt = Number(pq.amount || 0);
-        if (amt <= 0) return;
-        bannerSlot.innerHTML = `<div style="background:#e0f2fe;border:1.5px solid #38bdf8;border-radius:14px;padding:10px 12px;margin-bottom:10px;"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px;"><span style="font-size:11px;font-weight:900;color:#0369a1;text-transform:uppercase;letter-spacing:.3px">QRIS Barcode Sudah Dibayar</span>${q.length > 1 ? `<span style="font-size:10px;font-weight:800;background:#0284c7;color:#fff;padding:2px 7px;border-radius:999px">1 / ${q.length}</span>` : ""}</div><div style="font-size:13.5px;font-weight:900;color:#0f172a;margin-top:3px">Nominal terkunci: Rp ${rp(amt)}</div><div style="font-size:10.5px;color:#0369a1;margin-top:2px;font-family:monospace">${esc(pq.orderId)}${pq.note ? " &bull; " + esc(pq.note) : ""}</div></div>`;
-        amtWrap.innerHTML = `<div class="field"><div class="label">Total Bayar (Terkunci QRIS Barcode)</div><input id="txa" class="tx-amount-input" type="tel" readonly tabindex="-1" value="Rp ${rp(amt)}" style="text-align:right;font-size:25px;font-weight:950;background:#f0f9ff;color:#0369a1;border-color:#7dd3fc;pointer-events:none;"></div>`;
-        const titleEl = document.querySelector("#modal .modal-title");
-        if (titleEl) titleEl.textContent = "Catat Transaksi QRIS Barcode";
-        const nextDraft = JSON.stringify({
-          editId: "",
-          createdAtMs: Number(draft?.createdAtMs || 0),
-          paymentMethod: "",
-          qrisOrderId: String(pq.orderId || ""),
-          paymentChannel: "qris_barcode",
-          paymentLabel: "QRIS Barcode",
-        });
-        const btnCetak = $("txCetakBtn");
-        const btnSimpan = $("txSimpanBtn");
-        if (btnCetak) btnCetak.dataset.draft = nextDraft;
-        if (btnSimpan) btnSimpan.dataset.draft = nextDraft;
+    if (!isEdit && (pendingQris || !(Number(draft?.amount || 0) > 0))) {
+      syncPendingStaffQrisFromServer().then(() => {
+        refreshOpenTxModalPendingQrisUI();
       }).catch(() => {});
     }
   }
@@ -10039,6 +10218,7 @@ function home() {
       if (state.user) {
         toast("Online lagi, sync pending dicek");
         flushPending();
+        syncPendingStaffQrisFromServer().catch(() => {});
         flushExpiredPendingStaffQris().catch(() => {});
         startStaffRealtime();
       }
@@ -10046,6 +10226,7 @@ function home() {
     window.addEventListener("focus", async () => {
       const changed = await checkDateChange();
       if (!changed && state.user) {
+        syncPendingStaffQrisFromServer().catch(() => {});
         startStaffRealtime();
         if (typeof loadStaffData === 'function') await loadStaffData({ skipFlush: true });
         render();
@@ -11023,7 +11204,7 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
       console.warn("Gagal simpan transaksi utama QRIS:", errTx);
     }
   } else {
-    addPendingStaffQris({
+    await addPendingStaffQris({
       orderId,
       amount: Number(amount || 0),
       note: note || "",
