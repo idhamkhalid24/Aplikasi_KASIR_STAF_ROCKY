@@ -4081,6 +4081,7 @@ async function loadStaffData(opts = {}) {
   notifyNewManualBonuses();
   notifyNewBonusWithdrawals();
   if (!opts.skipFlush) flushPending();
+  flushExpiredPendingStaffQris().catch(() => {});
   startStaffRealtime();
 
   // FASE 2 (background, TIDAK menahan tampilan): nyusul ambil data "legacy" /
@@ -7894,31 +7895,254 @@ function home() {
     return false;
   }
 
-  function pendingStaffQrisStorageKey() {
+  function pendingStaffQrisStorageKey(dk = todayKey()) {
     const u = key(state.user?.username || "staff") || "staff";
-    return "rocky_pending_qris_barcode_tx_v2_" + u + "_" + todayKey();
+    return "rocky_pending_qris_barcode_tx_v2_" + u + "_" + String(dk || todayKey());
   }
-  function consumedStaffQrisStorageKey() {
+  function consumedStaffQrisStorageKey(dk = todayKey()) {
     const u = key(state.user?.username || "staff") || "staff";
-    return "rocky_consumed_qris_barcode_tx_v2_" + u + "_" + todayKey();
+    return "rocky_consumed_qris_barcode_tx_v2_" + u + "_" + String(dk || todayKey());
   }
-  function getConsumedStaffQrisSet() {
+  function getConsumedStaffQrisSet(dk = todayKey()) {
     const ids = new Set();
     try {
-      const raw = localStorage.getItem(consumedStaffQrisStorageKey());
+      const raw = localStorage.getItem(consumedStaffQrisStorageKey(dk));
       const arr = raw ? JSON.parse(raw) : [];
       if (Array.isArray(arr)) arr.forEach((x) => x && ids.add(String(x).trim()));
     } catch (e) {}
     return ids;
   }
-  function markStaffQrisConsumed(orderId) {
+  function markStaffQrisConsumed(orderId, dk = todayKey()) {
     const oid = String(orderId || "").trim();
     if (!oid) return;
     try {
-      const set = getConsumedStaffQrisSet();
+      const set = getConsumedStaffQrisSet(dk);
       set.add(oid);
-      localStorage.setItem(consumedStaffQrisStorageKey(), JSON.stringify([...set].slice(-200)));
+      localStorage.setItem(consumedStaffQrisStorageKey(dk), JSON.stringify([...set].slice(-200)));
     } catch (e) {}
+  }
+  let flushExpiredQrisInFlight = null;
+  async function flushExpiredPendingStaffQris() {
+    if (!state.user) return 0;
+    if (flushExpiredQrisInFlight) return flushExpiredQrisInFlight;
+    flushExpiredQrisInFlight = (async () => {
+      let recordedCount = 0;
+      let stateUpdated = false;
+      try {
+        const u = key(state.user?.username || "");
+        if (!u) return 0;
+        const currentTodayKey = todayKey();
+        try {
+          const activeSession = getActiveQrisSession();
+          if (activeSession && activeSession.orderId && !activeSession.fromFastCashier) {
+            const sessDate = activeSession.createdAtMs
+              ? todayKey(new Date(Number(activeSession.createdAtMs)))
+              : currentTodayKey;
+            if (/^\d{4}-\d{2}-\d{2}$/.test(sessDate) && sessDate < currentTodayKey) {
+              try {
+                const res = await fetch("https://myxrvipyodadnldtomzs.supabase.co/functions/v1/clever-responder", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "check_qris", order_id: activeSession.orderId }),
+                });
+                const j = await res.json();
+                const st = String(j?.status || "").toLowerCase();
+                if (res.ok && j?.ok && (st === "settlement" || st === "capture")) {
+                  clearActiveQrisSession();
+                  const oldKey = pendingStaffQrisStorageKey(sessDate);
+                  let arr = [];
+                  try {
+                    const parsed = JSON.parse(localStorage.getItem(oldKey) || "[]");
+                    if (Array.isArray(parsed)) arr = parsed;
+                  } catch (e) {}
+                  const oid = String(activeSession.orderId).trim();
+                  if (!arr.some((x) => String(x?.orderId || "").trim() === oid)) {
+                    arr.push({
+                      orderId: oid,
+                      amount: Number(activeSession.amount || 0),
+                      note: String(activeSession.note || "").trim(),
+                      kasirUsername: u,
+                      kasirName: String(activeSession.kasirName || state.user?.name || u),
+                      createdAtMs: Number(activeSession.createdAtMs || Date.now()),
+                      dateKey: sessDate,
+                    });
+                    localStorage.setItem(oldKey, JSON.stringify(arr));
+                  }
+                } else if (res.ok && j?.ok && ["cancel", "deny", "expire"].includes(st)) {
+                  clearActiveQrisSession();
+                }
+              } catch (e) {}
+            }
+          }
+        } catch (e) {}
+
+        const pendingPrefix = "rocky_pending_qris_barcode_tx_v2_" + u + "_";
+        const consumedPrefix = "rocky_consumed_qris_barcode_tx_v2_" + u + "_";
+        const expiredKeys = [];
+        const staleConsumedKeys = [];
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - 7);
+        const cutoffKey = todayKey(cutoffDate);
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (!k) continue;
+          if (k.startsWith(pendingPrefix)) {
+            const dk = k.slice(pendingPrefix.length);
+            if (/^\d{4}-\d{2}-\d{2}$/.test(dk) && dk < currentTodayKey) {
+              expiredKeys.push({ lsKey: k, keyDate: dk });
+            }
+          } else if (k.startsWith(consumedPrefix)) {
+            const dk = k.slice(consumedPrefix.length);
+            if (/^\d{4}-\d{2}-\d{2}$/.test(dk) && dk < cutoffKey) {
+              staleConsumedKeys.push(k);
+            }
+          }
+        }
+        staleConsumedKeys.forEach((k) => {
+          try { localStorage.removeItem(k); } catch (e) {}
+        });
+        expiredKeys.sort((a, b) => a.keyDate.localeCompare(b.keyDate));
+
+        const consumedToday = getConsumedStaffQrisSet(currentTodayKey);
+        const inMemoryOrderIds = new Set(
+          (state.data?.tx || [])
+            .map((t) => String(t?.qrisOrderId || "").trim())
+            .filter(Boolean),
+        );
+        const userRole = isDailyUser(state.user) ? "harian" : "staff";
+        const txRate = userTransactionBonusRate(state.user);
+        const txPercent = Number((txRate * 100).toFixed(3));
+        const closingSnapshot = userClosingBonusPerMinute(state.user);
+
+        for (const { lsKey, keyDate } of expiredKeys) {
+          let arr = [];
+          try {
+            const raw = localStorage.getItem(lsKey);
+            const parsed = raw ? JSON.parse(raw) : [];
+            if (Array.isArray(parsed)) arr = parsed;
+          } catch (e) {
+            arr = [];
+          }
+          if (!arr.length) {
+            try { localStorage.removeItem(lsKey); } catch (e) {}
+            continue;
+          }
+          const remaining = [];
+          for (const item of arr) {
+            const oid = String(item?.orderId || "").trim();
+            const amount = Number(item?.amount || 0);
+            const itemDateKey = /^\d{4}-\d{2}-\d{2}$/.test(String(item?.dateKey || ""))
+              ? String(item.dateKey)
+              : keyDate;
+            if (!oid || amount <= 0) continue;
+            const consumedOnDate = getConsumedStaffQrisSet(itemDateKey);
+            if (consumedOnDate.has(oid) || consumedToday.has(oid)) continue;
+            if (inMemoryOrderIds.has(oid)) {
+              markStaffQrisConsumed(oid, itemDateKey);
+              continue;
+            }
+            const autoDocId = "stafftx_autoqris_" + oid.replace(/[^a-zA-Z0-9_-]/g, "_");
+            try {
+              const [existingAutoSnap, existingByOrderSnap] = await Promise.all([
+                getDocFromServer(doc(db, "transactions", autoDocId)),
+                getDocs(query(collection(db, "transactions"), where("qrisOrderId", "==", oid), limit(1))),
+              ]);
+              if (existingAutoSnap.exists() || !existingByOrderSnap.empty) {
+                markStaffQrisConsumed(oid, itemDateKey);
+                inMemoryOrderIds.add(oid);
+                continue;
+              }
+              const itemCreatedMs = Number(item?.createdAtMs || Date.now());
+              const itemMonthKey = itemDateKey.slice(0, 7);
+              const now = Date.now();
+              const autoPayload = {
+                user: u,
+                name: String(item?.kasirName || state.user?.name || u),
+                amount,
+                note: "Transaksi",
+                paymentMethod: "qris_transfer",
+                paymentLabel: "QRIS Barcode",
+                paymentChannel: "qris_barcode",
+                qrisOrderId: oid,
+                paymentStatus: "success",
+                paymentCashOutType: "qris",
+                isNonCashPayment: true,
+                paymentConfirmed: true,
+                paymentConfirmedAtMs: itemCreatedMs,
+                notifyAdmin: false,
+                notificationType: "staff_transaction",
+                notificationStatus: "sent",
+                dateKey: itemDateKey,
+                monthKey: itemMonthKey,
+                userRole,
+                role: userRole,
+                bonusGroup: userRole === "harian" ? "harian" : "staff",
+                bonusRate: txRate,
+                bonusPercent: txPercent,
+                transactionBonusRate: txRate,
+                transactionBonusPercent: txPercent,
+                closingBonusPerMinuteSnapshot: closingSnapshot,
+                bonusLogicVersion: 3,
+                ...trialRecordFlags(state.user),
+                createdAtMs: itemCreatedMs,
+                autoRecordedAtMs: now,
+                deleted: false,
+                createdBy: u,
+                clientId: autoDocId,
+                source: "auto_qris_day_rollover",
+              };
+              await setDoc(
+                doc(db, "transactions", autoDocId),
+                {
+                  ...autoPayload,
+                  createdAt: serverTimestamp(),
+                  syncedAt: serverTimestamp(),
+                  syncedAtMs: now,
+                },
+                { merge: false },
+              );
+              markStaffQrisConsumed(oid, itemDateKey);
+              markQrisAdminNotified(oid);
+              inMemoryOrderIds.add(oid);
+              recordedCount++;
+              if (itemMonthKey === monthKey() && Array.isArray(state.data?.tx)) {
+                const savedRow = { id: autoDocId, ...autoPayload, pending: false };
+                if (!state.data.tx.some((t) => String(t?.id || "") === autoDocId)) {
+                  state.data.tx = sortDesc([savedRow, ...state.data.tx]);
+                  stateUpdated = true;
+                }
+                if (Array.isArray(state.data.targetTx)) {
+                  state.data.targetTx = mergeRowsById(state.data.targetTx, [savedRow]);
+                }
+              }
+            } catch (err) {
+              console.warn("Auto-record QRIS rollover failed for", oid, err);
+              remaining.push(item);
+            }
+          }
+          try {
+            if (remaining.length > 0) {
+              localStorage.setItem(lsKey, JSON.stringify(remaining));
+            } else {
+              localStorage.removeItem(lsKey);
+            }
+          } catch (e) {}
+        }
+        if (recordedCount > 0) {
+          if (stateUpdated) {
+            syncDailyTargetState();
+            render();
+          }
+          toast(`${recordedCount} QRIS kemarin otomatis tercatat sebagai "Transaksi"`);
+        }
+      } catch (e) {
+        console.warn("flushExpiredPendingStaffQris error", e);
+      } finally {
+        flushExpiredQrisInFlight = null;
+      }
+      return recordedCount;
+    })();
+    return flushExpiredQrisInFlight;
   }
   function getRecordedOrDeletedQrisOrderIds() {
     const ids = getConsumedStaffQrisSet();
@@ -8428,7 +8652,7 @@ function home() {
     };
     const hasQris = state.user?.qrisAccess === true;
     const choicesHtml = isQrisLocked
-      ? `<div style="text-align:center;font-size:12px;font-weight:700;color:#0369a1;background:#e0f2fe;border:1px solid #7dd3fc;border-radius:12px;padding:8px 10px;margin-bottom:10px;">Nominal & metode dikunci sesuai QRIS Barcode:<br><b style="font-size:15px;color:#0f172a">Rp ${rp(lockedAmount)}</b> <span style="font-family:monospace;font-size:10.5px">(${esc(lockedOrderId)})</span></div>
+      ? `<div style="text-align:center;font-size:12px;font-weight:700;color:var(--text,#0f172a);background:var(--amber-light,#fef6e4);border:1.5px solid var(--amber-mid,#fddea0);border-radius:12px;padding:10px 12px;margin-bottom:10px;">Nominal & metode dikunci sesuai QRIS<br><b style="font-size:15px;color:var(--text,#0f172a)">Rp ${rp(lockedAmount)}</b> <span style="font-family:monospace;font-size:10.5px;color:var(--text,#0f172a)">(${esc(lockedOrderId)})</span></div>
          <div class="payment-simple-choices">
            <button type="button" data-payment-choice="qris_transfer" class="payment-simple-btn payment-simple-qris" style="background:linear-gradient(135deg,#0284c7 0%,#0369a1 100%)!important;border-color:#0369a1!important;box-shadow:0 8px 22px rgba(2,132,199,.32)!important;" onpointerdown="confirmTxPayment('qris_transfer',this,event)" ontouchstart="confirmTxPayment('qris_transfer',this,event)" onclick="confirmTxPayment('qris_transfer',this,event)"><span>QRIS Barcode &bull; Rp ${rp(lockedAmount)}</span></button>
          </div>`
@@ -9792,6 +10016,7 @@ function home() {
       clearStaffRealtime();
       if (state.user) {
         toast("Tanggal berganti. Absen & closing diperbarui.");
+        await flushExpiredPendingStaffQris();
         await loadStaffData({ silent: true });
       } else {
         render();
@@ -9814,6 +10039,7 @@ function home() {
       if (state.user) {
         toast("Online lagi, sync pending dicek");
         flushPending();
+        flushExpiredPendingStaffQris().catch(() => {});
         startStaffRealtime();
       }
     });
