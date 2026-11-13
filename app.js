@@ -8892,6 +8892,16 @@ function home() {
     if (paymentMethod === "transfer") {
       draft.paymentChannel = "edc";
       draft.paymentLabel = "Transfer via EDC";
+      draft.paymentMethod = "transfer";
+      pendingTxDraft = draft;
+      txPaymentSubmitting = false;
+      buttons.forEach((b) => {
+        b.disabled = false;
+        b.removeAttribute("aria-busy");
+        b.style.opacity = "";
+        if (b.dataset.originalText) b.textContent = b.dataset.originalText;
+      });
+      return showStaffEdcConfirmModal(draft);
     } else if (paymentMethod === "cash") {
       draft.paymentChannel = "";
       draft.paymentLabel = "Cash";
@@ -8908,6 +8918,87 @@ function home() {
       });
     }
   }
+
+  function showStaffEdcConfirmModal(draft) {
+    const amount = Number(draft?.amount || 0);
+    const title = "Konfirmasi Mesin EDC";
+    const body = `
+      <div style="text-align:center;padding:12px 6px 8px;">
+        <div style="width:58px;height:58px;border-radius:18px;background:linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%);color:#ea580c;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;box-shadow:0 4px 14px rgba(234,88,12,0.22);">
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.3">
+            <path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/>
+          </svg>
+        </div>
+
+        <div style="font-size:16px;font-weight:900;color:var(--text,#0f172a);line-height:1.35;margin-bottom:8px;">
+          Apakah Transaksi Di Mesin EDC Sudah Berhasil?
+        </div>
+
+        <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:10px 14px;margin:10px 0 6px;display:inline-block;min-width:200px;">
+          <div style="font-size:11px;font-weight:800;color:var(--muted,#64748b);text-transform:uppercase;letter-spacing:0.5px;">Nominal Transaksi</div>
+          <div style="font-size:24px;font-weight:950;color:#ea580c;margin-top:2px;">Rp ${rp(amount)}</div>
+        </div>
+
+        <div style="font-size:12px;color:var(--muted,#64748b);margin-top:8px;line-height:1.4;">
+          Pastikan struk EDC sudah keluar atau status di mesin fisik sudah <b style="color:#059669;">BERHASIL</b> sebelum konfirmasi.
+        </div>
+      </div>
+    `;
+
+    const actions = `
+      <button type="button" class="btn" onclick="cancelStaffEdcConfirm()" style="height:48px;font-size:14px;font-weight:900;border-radius:14px;background:#fef2f2;border:1.5px solid #fecaca;color:#dc2626;cursor:pointer;-webkit-tap-highlight-color:transparent;">
+        Belum
+      </button>
+      <button type="button" class="btn primary" id="btnConfirmStaffEdc" onclick="confirmStaffEdc()" style="height:48px;font-size:14px;font-weight:900;border-radius:14px;background:linear-gradient(135deg, #10b981 0%, #059669 100%);border:none;color:#fff;cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 4px 14px rgba(16,185,129,0.25);">
+        Sudah
+      </button>
+    `;
+
+    modal(title, body, actions, "tx-modal");
+  }
+
+  function cancelStaffEdcConfirm() {
+    if (pendingTxDraft) {
+      const d = { ...pendingTxDraft };
+      openTxPaymentChoice(d);
+    } else {
+      closeModal(true);
+    }
+    toast("Transaksi EDC belum berhasil / dibatalkan", true);
+  }
+
+  async function confirmStaffEdc() {
+    if (txPaymentSubmitting) return;
+    const draft = pendingTxDraft ? { ...pendingTxDraft } : null;
+    if (!draft) {
+      closeModal(true);
+      return toast("Data transaksi tidak ditemukan. Isi ulang transaksi.");
+    }
+    const btn = $("btnConfirmStaffEdc");
+    if (btn) {
+      btn.disabled = true;
+      btn.setAttribute("aria-busy", "true");
+      btn.textContent = "Menyimpan...";
+    }
+    txPaymentSubmitting = true;
+    try {
+      draft.paymentMethod = "transfer";
+      draft.paymentChannel = "edc";
+      draft.paymentLabel = "Transfer via EDC";
+      await saveTx(Boolean(draft.printAfterSave), "transfer", draft);
+    } catch (err) {
+      console.error("Gagal simpan transaksi EDC staff:", err);
+      toast("Gagal simpan transaksi: " + (err?.message || err), true);
+      if (btn) {
+        btn.disabled = false;
+        btn.removeAttribute("aria-busy");
+        btn.textContent = "Sudah";
+      }
+    } finally {
+      txPaymentSubmitting = false;
+    }
+  }
+
   async function saveTx(
     printAfterSave = false,
     paymentMethod = "",
@@ -10322,6 +10413,9 @@ function home() {
 window.showFastCashierEdcConfirmModal = showFastCashierEdcConfirmModal;
 window.confirmFastCashierEdc = confirmFastCashierEdc;
 window.cancelFastCashierEdc = cancelFastCashierEdc;
+window.showStaffEdcConfirmModal = showStaffEdcConfirmModal;
+window.confirmStaffEdc = confirmStaffEdc;
+window.cancelStaffEdcConfirm = cancelStaffEdcConfirm;
   window.openTodayQrisHistoryModal = openTodayQrisHistoryModal;
   window.printQrisReceiptManual = printQrisReceiptManual;
   window.printSpecificQrisReceipt = printSpecificQrisReceipt;
