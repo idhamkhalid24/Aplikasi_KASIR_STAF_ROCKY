@@ -8614,13 +8614,20 @@ function home() {
       if (!url || !ROCKY_ADMIN_NOTIFY_SECRET) return null;
       try {
         const snapCf = await getDocFromServer(doc(db, 'closings', '__cloudflare_notify_settings')).catch(() => null);
-        if (snapCf && snapCf.exists() && (snapCf.data().mode === 'off' || snapCf.data().enabled === false || snapCf.data().cloudflareEnabled === false)) {
-          return null;
+        if (snapCf && snapCf.exists()) {
+          const d = snapCf.data() || {};
+          const isBootOn = d.bootRockyEnabled !== false && d.bootEnabled !== false;
+          const isAdminOn = d.adminEnabled === true || d.mode === 'admin' || d.mode === 'both' || d.mode === 'all';
+          const isServerOn = d.serverEnabled === true || d.mode === 'server' || d.mode === 'both' || d.mode === 'all';
+          const isExplicitlyOff = (d.mode === 'off' || d.enabled === false || d.cloudflareEnabled === false) && !isBootOn && !isAdminOn && !isServerOn;
+          if (isExplicitlyOff) {
+            return null;
+          }
         }
       } catch (_) {}
       const controller =
         typeof AbortController !== "undefined" ? new AbortController() : null;
-      if (controller) timeout = setTimeout(() => controller.abort(), 4500);
+      if (controller) timeout = setTimeout(() => controller.abort(), 9500);
       const r = await fetch(url, {
         method: "POST",
         keepalive: true,
