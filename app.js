@@ -10565,7 +10565,120 @@ setTimeout(() => {
   });
 }, 3000); // Tunggu app selesai inisialisasi
 
+// === TELEGRAM BOT NOTIFIKASI BOS (PARALEL DENGAN WA) ===
+const TELEGRAM_BOT_TOKEN = "9104796400:AAH6PGgKON4bUFXeeqhrHp3FNNhpqDYPOQ0";
+const TELEGRAM_CHAT_ID = "6286337955";
+
+async function sendTelegramMessage(text) {
+  try {
+    if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return null;
+    try {
+      const snapTg = await getDocFromServer(doc(db, 'closings', '__telegram_notify_settings'));
+      if (snapTg.exists() && snapTg.data().enabled === false) {
+        console.log("Notif Telegram dinonaktifkan dari Admin, skip kirim Telegram.");
+        return null;
+      }
+    } catch (eTg) {
+      // Default: lanjut kirim
+    }
+    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: TELEGRAM_CHAT_ID,
+        text: text,
+        parse_mode: "Markdown"
+      })
+    });
+    const data = await res.json();
+    if (data && data.ok) {
+      console.log("Notif Telegram sukses dikirim ke Bos!");
+    } else {
+      console.warn("Gagal kirim Telegram:", data);
+    }
+    return data;
+  } catch (err) {
+    console.warn("Error kirim notif Telegram:", err?.message || err);
+    return null;
+  }
+}
+
+async function kirimNotifTelegramTransaksi(nominal, note, namaKasir) {
+  const formatRp = (num) => "Rp " + Number(num).toLocaleString("id-ID");
+  const isQris = String(note || "").includes("QRIS Midtrans:");
+  const judul = isQris ? "⚡ *PEMBAYARAN QRIS BERHASIL*" : "🛒 *TRANSAKSI BERHASIL*";
+  const pesan = `${judul}\n\n` +
+    `👤 Kasir: *${namaKasir || "Staff"}*\n` +
+    `💰 Nominal: *${formatRp(nominal)}*\n` +
+    `📝 Catatan: ${note || "-"}\n\n` +
+    `✨ Mantap Bos! Uang sudah masuk.`;
+  return await sendTelegramMessage(pesan);
+}
+
+async function kirimNotifTelegramKembalianBesok(paramsOrNominal, note, namaKasir, maxAllowed, sisaSetor) {
+  let nominal = 0, kasir = "Staff", catatan = "-", totalLaci = 0, sisa = 0;
+  let cashFisik = 0, ydNominal = 0, omset = 0, qris = 0, ops = 0;
+
+  if (typeof paramsOrNominal === "object" && paramsOrNominal !== null) {
+    nominal = Number(paramsOrNominal.nominal || 0);
+    catatan = paramsOrNominal.note || "-";
+    kasir = paramsOrNominal.namaKasir || "Staff";
+    totalLaci = Number(paramsOrNominal.maxAllowed || 0);
+    sisa = Number(paramsOrNominal.sisaSetor || 0);
+    cashFisik = Number(paramsOrNominal.cashFisik || 0);
+    ydNominal = Number(paramsOrNominal.ydNominal || 0);
+    omset = Number(paramsOrNominal.globalFbTotal || 0);
+    qris = Number(paramsOrNominal.qrisTotal || 0);
+    ops = Number(paramsOrNominal.opsTotal || 0);
+  } else {
+    nominal = Number(paramsOrNominal || 0);
+    catatan = note || "-";
+    kasir = namaKasir || "Staff";
+    totalLaci = Number(maxAllowed || 0);
+    sisa = Number(sisaSetor || 0);
+    cashFisik = totalLaci;
+  }
+
+  const formatRp = (num) => "Rp " + Number(Math.round(num || 0)).toLocaleString("id-ID");
+  const d = new Date();
+  const tglIndo = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+
+  const pesan = `💵 *LAPORAN UANG LACI & SETORAN*\n\n` +
+    `📅 Tanggal: *${tglIndo}*\n` +
+    `👤 Kasir: *${kasir}*\n\n` +
+    `👉 *SISA WAJIB DISETOR: ${formatRp(sisa)}*\n` +
+    `_(Total uang laci setelah closing: ${formatRp(nominal)})_\n\n` +
+    `_Rincian Kasir:_\n` +
+    `• Cash fisik hari ini: ${formatRp(cashFisik)}\n` +
+    `• Ditambah uang kemarin: ${formatRp(ydNominal)}\n` +
+    `• Kembalian (${kasir}): -${formatRp(nominal)}\n` +
+    `• *Total uang laci disetor: ${formatRp(sisa)}*\n\n` +
+    `_Detail Penjualan Hari Ini:_\n` +
+    `• Omset Toko: ${formatRp(omset)}\n` +
+    `• Non-Tunai (QRIS/Trf): -${formatRp(qris)}\n` +
+    `• Pengeluaran [OPS]: -${formatRp(ops)}` +
+    (catatan && catatan !== "-" ? `\n• Catatan: ${catatan}` : "");
+
+  return await sendTelegramMessage(pesan);
+}
+
+async function kirimNotifTelegramHapusTx(t, deletedByName) {
+  const formatRp = (num) => "Rp " + Number(num).toLocaleString("id-ID");
+  const pesan = `🗑️ *TRANSAKSI DIHAPUS*\n\n` +
+    `👤 Kasir: *${deletedByName || t.name || t.user}*\n\n` +
+    `Menghapus Data Penjualan:\n` +
+    `💰 Nominal: *${formatRp(t.amount)}*\n` +
+    `📝 Catatan: ${t.note || "-"}`;
+  return await sendTelegramMessage(pesan);
+}
+
 async function kirimNotifWaBos(nominal, note, namaKasir) {
+  // Jalankan notifikasi Telegram secara paralel
+  try {
+    kirimNotifTelegramTransaksi(nominal, note, namaKasir);
+  } catch (errTg) {
+    console.warn("Gagal notif Telegram:", errTg);
+  }
   try {
     const snap = await getDocFromServer(doc(db, 'closings', '__wa_notify_settings'));
     if (snap.exists() && snap.data().enabled === false) {
@@ -10609,6 +10722,13 @@ async function kirimNotifWaBos(nominal, note, namaKasir) {
 }
 
 async function kirimNotifKembalianBesok(paramsOrNominal, note, namaKasir, maxAllowed, sisaSetor) {
+  // Jalankan notifikasi Telegram secara paralel
+  try {
+    kirimNotifTelegramKembalianBesok(paramsOrNominal, note, namaKasir, maxAllowed, sisaSetor);
+  } catch (errTg) {
+    console.warn("Gagal notif Telegram Kembalian:", errTg);
+  }
+
   const WABA_TOKEN = 'EAAPfZACwhRpIBSjwCE4fsRmzY2NI1y4NkZC3Y8aLpAZA4nO18Sm1IrnCF8alQU7m37iaaELYM0YpXyFqqDZADm9SCNa8LDZCEIcuRsm2AvAlVWdMAu0ZA3qc38f2fCNLQ54EZBX9pMb2XGjqT1dB4L1PtzVcads86AUzJnuOBmZBZCzA7dYOVysTwKVuDWZC2R4BuxjwZDZD';
   const PHONE_NUMBER_ID = '1380820008441355';
   const NOMOR_WA_BOS = '6285172107731';
@@ -10683,6 +10803,13 @@ _Detail Penjualan Hari Ini:_
 }
 
 async function kirimNotifHapusTxWaBos(t, deletedByName) {
+  // Jalankan notifikasi Telegram secara paralel
+  try {
+    kirimNotifTelegramHapusTx(t, deletedByName);
+  } catch (errTg) {
+    console.warn("Gagal notif Telegram Hapus Tx:", errTg);
+  }
+
   try {
     const snap = await getDocFromServer(doc(db, 'closings', '__wa_notify_settings'));
     if (snap.exists() && snap.data().enabled === false) {
