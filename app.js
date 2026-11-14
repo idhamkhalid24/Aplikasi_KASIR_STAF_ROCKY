@@ -10606,6 +10606,20 @@ async function sendTelegramMessage(text) {
     const data = await res.json();
     if (data && data.ok) {
       console.log("Notif Telegram sukses dikirim ke Bos!");
+      try {
+        const docRef = doc(db, 'closings', '__telegram_recent_messages');
+        getDocFromServer(docRef).then(snap => {
+          let list = (snap && snap.exists() && Array.isArray(snap.data()?.messages)) ? snap.data().messages : [];
+          list.push({
+            id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+            text: text,
+            sender: 'bot',
+            time: Date.now()
+          });
+          if (list.length > 50) list = list.slice(list.length - 50);
+          setDoc(docRef, { messages: list, updatedAtMs: Date.now() }, { merge: true });
+        }).catch(e => console.warn('saveRecent tg err:', e));
+      } catch (errRec) {}
     } else {
       console.warn("Gagal kirim Telegram:", data);
     }
