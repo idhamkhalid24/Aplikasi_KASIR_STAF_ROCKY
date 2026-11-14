@@ -8612,6 +8612,12 @@ function home() {
     let timeout = null;
     try {
       if (!url || !ROCKY_ADMIN_NOTIFY_SECRET) return null;
+      try {
+        const snapCf = await getDocFromServer(doc(db, 'closings', '__cloudflare_notify_settings')).catch(() => null);
+        if (snapCf && snapCf.exists() && (snapCf.data().mode === 'off' || snapCf.data().enabled === false || snapCf.data().cloudflareEnabled === false)) {
+          return null;
+        }
+      } catch (_) {}
       const controller =
         typeof AbortController !== "undefined" ? new AbortController() : null;
       if (controller) timeout = setTimeout(() => controller.abort(), 4500);
