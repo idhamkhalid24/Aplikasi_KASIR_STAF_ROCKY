@@ -416,6 +416,8 @@ const ROCKY_ADMIN_NOTIFY_UNLOCK_URL =
   ROCKY_ADMIN_NOTIFY_WORKER_BASE_URL + "/notify-feature-unlock";
 const ROCKY_ADMIN_NOTIFY_TARGET_URL =
   ROCKY_ADMIN_NOTIFY_WORKER_BASE_URL + "/notify-target-achieved";
+const ROCKY_ADMIN_NOTIFY_KEMBALIAN_URL =
+  ROCKY_ADMIN_NOTIFY_WORKER_BASE_URL + "/notify-transaction";
 const ROCKY_STAFF_NOTIFY_MANUAL_BONUS_URL =
   ROCKY_ADMIN_NOTIFY_WORKER_BASE_URL + "/notify-staff-manual-bonus";
 const ROCKY_INVESTOR_NOTIFY_URL =
@@ -7197,7 +7199,34 @@ function home() {
             opsTotal: Number(cashData.opsTotal || 0)
           });
         }
-      } catch(e) {}
+      } catch(e) {
+        console.warn("Gagal notif kembalian telegram/wa:", e);
+      }
+
+      // Kirim Notifikasi Cloudflare FCM ke Aplikasi Bot Rocky & Admin
+      try {
+        if (typeof notifyRockyAdmin === "function") {
+          notifyRockyAdmin(
+            ROCKY_ADMIN_NOTIFY_KEMBALIAN_URL,
+            {
+              type: "kembalian_besok",
+              staff: state.user?.name || state.user?.username || "Staff",
+              user: state.user?.name || state.user?.username || "Staff",
+              name: state.user?.name || state.user?.username || "Staff",
+              nominal: amount,
+              amount: amount,
+              sisaSetor: maxAllowed - amount,
+              note: note || "-",
+              cashFisik,
+              ydNominal,
+              dateKey: todayKey()
+            },
+            "Notif Kembalian Besok"
+          ).catch(() => {});
+        }
+      } catch(eNotif) {
+        console.warn("Gagal notif FCM kembalian:", eNotif);
+      }
       // Re-render history page
       if (state.page === "history") history();
     } catch (e) {
@@ -7227,6 +7256,28 @@ function home() {
       state.staffChangeReserve = null;
       toast("Sisa kembalian dihapus");
       if (state.page === "history") history();
+      try {
+        const kasir = state.user?.name || state.user?.username || "Staff";
+        const formatRp = (num) => "Rp " + Number(Math.round(num || 0)).toLocaleString("id-ID");
+        const delMsg = `🗑️ *KEMBALIAN BESOK DIHAPUS*\n\n` +
+          `👤 Kasir: *${kasir}*\n` +
+          `Nominal kembalian (Rp ${formatRp(reserve.amount || 0)}) telah dibatalkan/dihapus.\n\n` +
+          `_Status uang laci kembali normal._`;
+        sendTelegramMessage(delMsg).catch(() => {});
+        notifyRockyAdmin(
+          ROCKY_ADMIN_NOTIFY_WORKER_URL,
+          {
+            type: "transaction_delete",
+            title: "Kembalian Besok Dihapus",
+            body: `${kasir} menghapus kembalian besok Rp ${formatRp(reserve.amount || 0)}`,
+            speechText: "Kembalian besok dihapus",
+            amount: reserve.amount || 0,
+            user: kasir,
+            staff: kasir
+          },
+          "Notif Hapus Kembalian"
+        ).catch(() => {});
+      } catch (_) {}
     } catch (e) {
       toast(e.message || "Gagal hapus sisa kembalian", true);
     }
@@ -10670,7 +10721,7 @@ async function kirimNotifTelegramKembalianBesok(paramsOrNominal, note, namaKasir
   const d = new Date();
   const tglIndo = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 
-  const pesan = `💵 *LAPORAN UANG LACI & SETORAN*\n\n` +
+  const pesan = `💵 *UANG KEMBALIAN BESOK DISISIHKAN*\n\n` +
     `📅 Tanggal: *${tglIndo}*\n` +
     `👤 Kasir: *${kasir}*\n\n` +
     `👉 *SISA WAJIB DISETOR: ${formatRp(sisa)}*\n` +
