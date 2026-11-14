@@ -7216,7 +7216,6 @@ function home() {
               nominal: amount,
               amount: amount,
               sisaSetor: maxAllowed - amount,
-              sisa_setor: maxAllowed - amount,
               note: note || "-",
               cashFisik,
               ydNominal,
