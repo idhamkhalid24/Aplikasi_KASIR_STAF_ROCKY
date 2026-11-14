@@ -8614,8 +8614,12 @@ function home() {
       if (!url || !ROCKY_ADMIN_NOTIFY_SECRET) return null;
       try {
         const snapCf = await getDocFromServer(doc(db, 'closings', '__cloudflare_notify_settings')).catch(() => null);
-        if (snapCf && snapCf.exists() && (snapCf.data().mode === 'off' || snapCf.data().enabled === false || snapCf.data().cloudflareEnabled === false)) {
-          return null;
+        if (snapCf && snapCf.exists()) {
+          const cf = snapCf.data() || {};
+          const anyActive = cf.bootRockyEnabled === true || cf.adminEnabled === true || cf.serverEnabled === true;
+          if (cf.mode === 'off' || (!anyActive && (cf.enabled === false || cf.cloudflareEnabled === false))) {
+            return null;
+          }
         }
       } catch (_) {}
       const controller =
