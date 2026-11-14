@@ -8667,10 +8667,10 @@ function home() {
         const snapCf = await getDocFromServer(doc(db, 'closings', '__cloudflare_notify_settings')).catch(() => null);
         if (snapCf && snapCf.exists()) {
           const d = snapCf.data() || {};
-          const isBootOn = d.bootRockyEnabled !== false && d.bootEnabled !== false;
-          const isAdminOn = d.adminEnabled === true || d.mode === 'admin' || d.mode === 'both' || d.mode === 'all';
-          const isServerOn = d.serverEnabled === true || d.mode === 'server' || d.mode === 'both' || d.mode === 'all';
-          const isExplicitlyOff = (d.mode === 'off' || d.enabled === false || d.cloudflareEnabled === false) && !isBootOn && !isAdminOn && !isServerOn;
+          const isBootOn = d.bootRockyEnabled === true || d.mode === 'boot' || d.mode === 'both';
+          const isAdminOn = d.adminEnabled === true || d.mode === 'admin' || d.mode === 'both';
+          const isServerOn = d.serverEnabled === true || d.mode === 'server' || d.mode === 'both';
+          const isExplicitlyOff = d.mode === 'off' || d.enabled === false || d.cloudflareEnabled === false || (!isBootOn && !isAdminOn && !isServerOn);
           if (isExplicitlyOff) {
             return null;
           }
