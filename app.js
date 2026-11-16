@@ -8906,7 +8906,7 @@ function home() {
          </div>`
       : `<div class="payment-simple-choices">
            <button type="button" data-payment-choice="cash" class="payment-simple-btn payment-simple-cash" onpointerdown="confirmTxPayment('cash',this,event)" ontouchstart="confirmTxPayment('cash',this,event)" onclick="confirmTxPayment('cash',this,event)"><span>Tunai</span></button>
-           ${!hasQris ? `<button type="button" data-payment-choice="transfer" class="payment-simple-btn payment-simple-qris" onpointerdown="confirmTxPayment('transfer',this,event)" ontouchstart="confirmTxPayment('transfer',this,event)" onclick="confirmTxPayment('transfer',this,event)"><span>Transfer via EDC</span></button>` : ""}
+           <button type="button" data-payment-choice="transfer" class="payment-simple-btn payment-simple-qris" onpointerdown="confirmTxPayment('transfer',this,event)" ontouchstart="confirmTxPayment('transfer',this,event)" onclick="confirmTxPayment('transfer',this,event)"><span>Transfer via EDC</span></button>
          </div>`;
     modal(
       isQrisLocked ? "Konfirmasi QRIS Barcode" : "Pilih Pembayaran",
@@ -12010,12 +12010,10 @@ function openFastCashierPaymentModal() {
         <span>Tunai</span>
       </button>
 
-      <!-- 3. TRANSFER VIA EDC - hanya muncul jika QRIS nonaktif -->
-      ${!hasQris ? `
+      <!-- 2. TRANSFER VIA EDC (Selalu tampil berdampingan dengan Tunai) -->
       <button type="button" class="payment-simple-btn payment-simple-qris" onclick="selectFastCashierPayment('transfer')">
         <span>Transfer via EDC</span>
       </button>
-      ` : ''}
     </div>
   `;
 
@@ -12055,9 +12053,6 @@ async function submitFastCashierTx(method = "cash") {
 
   // 2. Jika TRANSFER / MESIN EDC: Munculkan popup konfirmasi untuk memastikan transaksi di mesin EDC fisik sudah berhasil
   if (method === "transfer" || method === "bank_transfer") {
-    if (state.user?.qrisAccess === true) {
-      return toast("Mesin EDC dinonaktifkan saat QRIS aktif. Gunakan QRIS!");
-    }
     return showFastCashierEdcConfirmModal(amount);
   }
 
