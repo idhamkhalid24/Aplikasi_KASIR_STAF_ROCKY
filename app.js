@@ -3118,7 +3118,8 @@ function nav() {
     // Sembunyikan FAB bulat (+) dan absenFab mengambang agar tidak menutupi tombol bayar
     if (f) f.style.display = "none";
     if (af) af.style.display = "none";
-    if (nQris) nQris.style.display = "none";
+    // Tampilkan tombol QRIS di tengah navigasi bawah persis seperti foto 1
+    if (nQris) nQris.style.display = state.user?.qrisAccess === true ? "flex" : "none";
     if (nHome) {
       const span = nHome.querySelector("span");
       if (span) span.textContent = "Kasir";
@@ -11028,6 +11029,20 @@ function openStaffQrisModal() {
       activeSession.kasirName
     );
     return;
+  }
+
+  // JIKA SEDANG DI MODE CEPAT (FAST CASHIER / KALKULATOR):
+  // Logika persis seperti tombol QRIS di Modal Bayar (Foto 3):
+  // Mengambil nominal yang sudah diketik di kalkulator dan langsung membuka barcode QRIS!
+  if (state.user?.fastCashierAccess === true) {
+    if (state.page !== "home") {
+      go("home");
+    }
+    const amount = Number(fastCashierNominal || 0);
+    if (!amount || amount <= 0) {
+      return toast("Masukkan nominal transaksi dulu!");
+    }
+    return startFastCashierQris(amount);
   }
 
   // Jika tidak ada transaksi aktif, buka formulir baru
