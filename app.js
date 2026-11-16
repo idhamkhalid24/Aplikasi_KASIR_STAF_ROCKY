@@ -11031,26 +11031,20 @@ function openStaffQrisModal() {
     return;
   }
 
-  // JIKA SEDANG DI MODE CEPAT (FAST CASHIER / KALKULATOR):
-  // Logika persis seperti tombol QRIS di Modal Bayar (Foto 3):
-  // Mengambil nominal yang sudah diketik di kalkulator dan langsung membuka barcode QRIS!
-  if (state.user?.fastCashierAccess === true) {
-    if (state.page !== "home") {
-      go("home");
-    }
-    const amount = Number(fastCashierNominal || 0);
-    if (!amount || amount <= 0) {
-      return toast("Masukkan nominal transaksi dulu!");
-    }
-    return startFastCashierQris(amount);
-  }
 
-  // Jika tidak ada transaksi aktif, buka formulir baru
+
+  // Buka formulir modal persis seperti foto 1
   stopQrisPolling();
   stopQrisCountdown();
   currentQrisOrderId = null;
-  currentQrisAmount = 0;
+
+  // Jika dipanggil dari Mode Cepat dan sudah ada angka di kalkulator, otomatis prefill nominalnya!
+  const prefilledAmount = (state.user?.fastCashierAccess === true && Number(fastCashierNominal) > 0)
+    ? Number(fastCashierNominal)
+    : 0;
+  currentQrisAmount = prefilledAmount;
   currentQrisNote = "";
+  const initialDisplayVal = prefilledAmount > 0 ? "Rp " + rp(prefilledAmount) : "";
 
   const title = "Pembayaran QRIS Rocky Hijab";
   const body = `
@@ -11064,7 +11058,7 @@ function openStaffQrisModal() {
 
       <div class="field" style="margin-bottom:16px;">
         <label style="font-size:12.5px;font-weight:700;margin-bottom:6px;display:block;color:var(--muted);text-align:center;">Nominal Pembayaran</label>
-        <input id="qrisNominalInput" class="tx-amount-input" type="tel" inputmode="numeric" placeholder="Rp 0" oninput="formatQrisNominalInput(this)" style="text-align:center;font-size:32px;font-weight:900;height:60px;border-radius:18px;border:2.5px solid #0284c7;color:#0284c7;background:rgba(2,132,199,0.03);" autofocus />
+        <input id="qrisNominalInput" class="tx-amount-input" type="tel" inputmode="numeric" placeholder="Rp 0" value="${initialDisplayVal}" oninput="formatQrisNominalInput(this)" style="text-align:center;font-size:32px;font-weight:900;height:60px;border-radius:18px;border:2.5px solid #0284c7;color:#0284c7;background:rgba(2,132,199,0.03);" autofocus />
       </div>
 
       <div class="field" style="margin-bottom:14px;">
@@ -11112,7 +11106,7 @@ async function generateStaffQris() {
   if (currentQrisAmount <= 0) {
     return toast("Silakan masukkan nominal pembayaran terlebih dahulu!");
   }
-  currentQrisFromFastCashier = false;
+  currentQrisFromFastCashier = Boolean(state.user?.fastCashierAccess === true);
   const noteInput = $("qrisNoteInput");
   currentQrisNote = noteInput ? noteInput.value.trim() : "";
   const kasirUsername = String(state.user?.username || "staff").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -11155,7 +11149,7 @@ async function generateStaffQris() {
       qrImgOrString: data.qr_image_url || data.qr_string,
       kasirUsername,
       kasirName,
-      fromFastCashier: false,
+      fromFastCashier: Boolean(state.user?.fastCashierAccess === true),
       createdAtMs: now,
       expiresAtMs,
     };
@@ -12001,16 +11995,6 @@ function openFastCashierPaymentModal() {
       <button type="button" class="payment-simple-btn payment-simple-cash" onclick="selectFastCashierPayment('cash')">
         <span>Tunai</span>
       </button>
-
-      <!-- 2. QRIS -->
-      ${hasQris ? `
-      <button type="button" class="payment-simple-btn payment-simple-qris" style="min-height:68px;background:linear-gradient(135deg,#0284c7 0%,#0369a1 100%)!important;border-color:#0369a1!important;box-shadow:0 8px 22px rgba(2,132,199,.32)!important;" onclick="selectFastCashierPayment('qris_transfer')">
-        <div style="text-align:center;">
-          <div style="font-size:17px;font-weight:950;line-height:1.15;">QRIS</div>
-          <div style="font-size:11px;font-weight:700;opacity:0.92;line-height:1.2;margin-top:2px;">Scan Barcode QRIS</div>
-        </div>
-      </button>
-      ` : ''}
 
       <!-- 3. TRANSFER VIA EDC - hanya muncul jika QRIS nonaktif -->
       ${!hasQris ? `
