@@ -2731,6 +2731,10 @@ function closeModal(force = false) {
   document.querySelectorAll('.modal[role="dialog"]').forEach((el) => {
     if (!main || !main.contains(el)) el.remove();
   });
+  try {
+    fastCashierNominal = 0;
+    if (typeof updateFastCashierDisplay === "function") updateFastCashierDisplay();
+  } catch (_) {}
 }
 const THEME_KEY = "rocky_staff_theme";
 function normalizeTheme(t) {
@@ -9888,6 +9892,10 @@ function home() {
   function go(p, opts = {}) {
     p = p === "leave" ? "unlock" : p;
     p = p === "history" || p === "unlock" || p === "fast_cashier" ? p : "home";
+    try {
+      fastCashierNominal = 0;
+      if (typeof updateFastCashierDisplay === "function") updateFastCashierDisplay();
+    } catch (_) {}
     if (state.page === p) {
       render();
       return;
@@ -9902,6 +9910,10 @@ function home() {
     try {
       closeModal();
     } catch (e) {}
+    try {
+      fastCashierNominal = 0;
+      if (typeof updateFastCashierDisplay === "function") updateFastCashierDisplay();
+    } catch (_) {}
     if (!state.user) return false;
     const homePage = state.user?.fastCashierAccess === true ? "fast_cashier" : "home";
     if (state.page !== homePage) {
@@ -9920,6 +9932,10 @@ function home() {
     window.__ROCKY_SAFE_BACK_INSTALLED__ = true;
     syncAppBrowserHistory(state.page || "home", "replace");
     window.addEventListener("popstate", () => {
+      try {
+        fastCashierNominal = 0;
+        if (typeof updateFastCashierDisplay === "function") updateFastCashierDisplay();
+      } catch (_) {}
       if (document.querySelector(".modal-wrap.show")) {
         try {
           closeModal();
@@ -11033,18 +11049,16 @@ function openStaffQrisModal() {
 
 
 
-  // Buka formulir modal persis seperti foto 1
+  // Buka formulir modal persis seperti foto 1 (murni membaca dari input modal QRIS)
   stopQrisPolling();
   stopQrisCountdown();
   currentQrisOrderId = null;
-
-  // Jika dipanggil dari Mode Cepat dan sudah ada angka di kalkulator, otomatis prefill nominalnya!
-  const prefilledAmount = (state.user?.fastCashierAccess === true && Number(fastCashierNominal) > 0)
-    ? Number(fastCashierNominal)
-    : 0;
-  currentQrisAmount = prefilledAmount;
+  currentQrisAmount = 0;
   currentQrisNote = "";
-  const initialDisplayVal = prefilledAmount > 0 ? "Rp " + rp(prefilledAmount) : "";
+
+  // Reset kalkulator ke 0 agar bersih
+  fastCashierNominal = 0;
+  try { if (typeof updateFastCashierDisplay === "function") updateFastCashierDisplay(); } catch (_) {}
 
   const title = "Pembayaran QRIS Rocky Hijab";
   const body = `
@@ -11058,7 +11072,7 @@ function openStaffQrisModal() {
 
       <div class="field" style="margin-bottom:16px;">
         <label style="font-size:12.5px;font-weight:700;margin-bottom:6px;display:block;color:var(--muted);text-align:center;">Nominal Pembayaran</label>
-        <input id="qrisNominalInput" class="tx-amount-input" type="tel" inputmode="numeric" placeholder="Rp 0" value="${initialDisplayVal}" oninput="formatQrisNominalInput(this)" style="text-align:center;font-size:32px;font-weight:900;height:60px;border-radius:18px;border:2.5px solid #0284c7;color:#0284c7;background:rgba(2,132,199,0.03);" autofocus />
+        <input id="qrisNominalInput" class="tx-amount-input" type="tel" inputmode="numeric" placeholder="Rp 0" oninput="formatQrisNominalInput(this)" style="text-align:center;font-size:32px;font-weight:900;height:60px;border-radius:18px;border:2.5px solid #0284c7;color:#0284c7;background:rgba(2,132,199,0.03);" autofocus />
       </div>
 
       <div class="field" style="margin-bottom:14px;">
@@ -12398,5 +12412,22 @@ window.addEventListener("keydown", (e) => {
     fastCashierClear();
   } else if (e.key === "Enter") {
     openFastCashierPaymentModal();
+  }
+});
+
+// Reset nominal kalkulator kasir cepat ke 0 setiap kali halaman ditutup/pindah/refresh
+window.addEventListener("pageshow", () => {
+  try {
+    fastCashierNominal = 0;
+    if (typeof updateFastCashierDisplay === "function") updateFastCashierDisplay();
+  } catch (_) {}
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    try {
+      fastCashierNominal = 0;
+      if (typeof updateFastCashierDisplay === "function") updateFastCashierDisplay();
+    } catch (_) {}
   }
 });
