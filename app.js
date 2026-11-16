@@ -405,7 +405,7 @@ const LIMITS = {
 };
 const INITIAL_LEGACY_LIMITS = { tx: 300, att: 90, manual: 200 };
 const ROCKY_ADMIN_NOTIFY_WORKER_BASE_URL =
-  "https://rocky-notif-worker.alfajrihanif24.workers.dev";
+  "https://rocky-notif.pages.dev";
 const ROCKY_ADMIN_NOTIFY_WORKER_URL =
   ROCKY_ADMIN_NOTIFY_WORKER_BASE_URL + "/notify-transaction";
 const ROCKY_ADMIN_NOTIFY_ATTENDANCE_URL =
