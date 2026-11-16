@@ -2731,10 +2731,6 @@ function closeModal(force = false) {
   document.querySelectorAll('.modal[role="dialog"]').forEach((el) => {
     if (!main || !main.contains(el)) el.remove();
   });
-  try {
-    fastCashierNominal = 0;
-    if (typeof updateFastCashierDisplay === "function") updateFastCashierDisplay();
-  } catch (_) {}
 }
 const THEME_KEY = "rocky_staff_theme";
 function normalizeTheme(t) {
@@ -12027,15 +12023,19 @@ function openFastCashierPaymentModal() {
 }
 
 function selectFastCashierPayment(method) {
+  const amount = Number(fastCashierNominal || 0);
+  if (!amount || amount <= 0) {
+    return toast("Masukkan nominal transaksi dulu!");
+  }
   closeModal(true);
   setTimeout(() => {
-    submitFastCashierTx(method);
+    submitFastCashierTx(method, amount);
   }, 60);
 }
 
-async function submitFastCashierTx(method = "cash") {
+async function submitFastCashierTx(method = "cash", customAmount = null) {
   if (fastCashierSubmitting) return;
-  const amount = Number(fastCashierNominal || 0);
+  const amount = Number(customAmount !== null ? customAmount : (fastCashierNominal || 0));
   if (!amount || amount <= 0) {
     return toast("Masukkan nominal transaksi dulu!");
   }
