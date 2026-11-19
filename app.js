@@ -7044,7 +7044,7 @@ function staffBonusWithdrawalAction(cashFisik, sisaBonus) {
     const canWithdraw = sisaBonus >= 1000 && maxSafe >= 1000 && txCount >= 2;
     return `
       <div style="margin-top:12px;">
-        <button type="button" class="btn full" style="width:100%;background:linear-gradient(135deg, #059669, #10b981);color:#fff;font-weight:900;font-size:13px;padding:11px 16px;border-radius:12px;box-shadow:0 3px 12px rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:center;gap:8px;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;" onclick="openStaffWithdrawBonusModal()" ${canWithdraw ? '' : 'disabled style="opacity:0.6;background:#64748b;box-shadow:none;"'}>
+        <button type="button" class="btn full" style="width:100%;background:linear-gradient(135deg, #059669, #10b981);color:#fff;font-weight:900;font-size:13px;padding:11px 16px;border-radius:12px;box-shadow:0 3px 12px rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:center;gap:8px;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;" onclick="openStaffWithdrawBonusModal()">
           <i class="fas fa-money-bill-wave"></i> Withdrawal Bonus
         </button>
       </div>
@@ -7056,17 +7056,22 @@ function staffBonusWithdrawalAction(cashFisik, sisaBonus) {
 window.openStaffWithdrawBonusModal = () => {
   if (!isStaffBiasa()) return toast("Fitur withdrawal bonus hanya untuk karyawan Staff Biasa", true);
   const txCount = todayTx().length;
+  const sName = state.user?.name || "Anda";
   if (txCount < 2) {
-    return toast(`Minimal harus sudah melakukan 2 transaksi hari ini untuk withdrawal bonus (Saat ini: ${txCount} transaksi)`, true);
+    return toast(`Belum bisa ditarik! Wajib minimal sudah melakukan 2 transaksi hari ini (Saat ini ${sName} baru ${txCount} transaksi)`, true);
   }
   const { cashFisik } = getTodayCashFisik();
   const sisaBonus = remainingBonus();
 
   if (cashFisik < 500000) {
-    return toast(`Cash fisik laci saat ini Rp ${rp(cashFisik)}. Tarik bonus aktif jika uang laci minimal Rp 500.000`, true);
+    return toast(`Cash fisik laci saat ini Rp ${rp(cashFisik)}. Minimal uang laci harus Rp 500.000 untuk withdrawal bonus`, true);
   }
   if (sisaBonus < 1000) {
     return toast(`Sisa bonus Anda saat ini Rp ${rp(sisaBonus)}. Belum ada bonus yang bisa ditarik.`, true);
+  }
+  const maxSafeWithdrawal = Math.floor(Math.min(sisaBonus, Math.max(0, cashFisik - 500000)) / 1000) * 1000;
+  if (maxSafeWithdrawal < 1000) {
+    return toast(`Uang laci bersih harus tersisa minimal Rp 500.000. Saat ini uang laci Rp ${rp(cashFisik)}, sehingga belum ada sisa aman yang bisa ditarik.`, true);
   }
 
   // Cek apakah sudah ada permintaan pending
@@ -7118,22 +7123,24 @@ window.openStaffWithdrawBonusModal = () => {
         </div>
       </div>
 
-      <!-- Quick Chips -->
+      <!-- Quick Chips (Hanya tampilkan nominal yang tidak menyebabkan uang laci < 500rb) -->
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
-        <button type="button" class="btn" style="padding:5px 10px;font-size:11px;font-weight:800;border-radius:8px;background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;" onclick="setSwbAmount(10000)">+10rb</button>
-        <button type="button" class="btn" style="padding:5px 10px;font-size:11px;font-weight:800;border-radius:8px;background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;" onclick="setSwbAmount(20000)">+20rb</button>
-        <button type="button" class="btn" style="padding:5px 10px;font-size:11px;font-weight:800;border-radius:8px;background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;" onclick="setSwbAmount(50000)">+50rb</button>
-        <button type="button" class="btn" style="padding:5px 10px;font-size:11px;font-weight:800;border-radius:8px;background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;" onclick="setSwbAmount(100000)">+100rb</button>
+        ${[10000, 20000, 50000, 100000].filter(val => val <= maxSafeWithdrawal).map(val => `
+          <button type="button" class="btn" style="padding:5px 10px;font-size:11px;font-weight:800;border-radius:8px;background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;" onclick="setSwbAmount(${val})">+${val / 1000}rb</button>
+        `).join('')}
         ${maxSafeWithdrawal >= 1000 ? `
           <button type="button" class="btn" style="padding:5px 10px;font-size:11px;font-weight:800;border-radius:8px;background:#dbeafe;border:1px solid #93c5fd;color:#1e40af;" onclick="setSwbAmount(${maxSafeWithdrawal})">Maksimal (${rp(maxSafeWithdrawal)})</button>
         ` : ''}
       </div>
 
       <!-- Estimasi Sisa -->
-      <div id="swbEstimateBox" style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;padding:8px 12px;font-size:11px;color:#64748b;line-height:1.5;margin-bottom:12px;">
+      <div id="swbEstimateBox" style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;padding:8px 12px;font-size:11px;color:#64748b;line-height:1.5;margin-bottom:10px;">
         <div>• Sisa bonus setelah ditarik: <b id="swbEstBonus" style="color:#2563eb;">Rp ${rp(sisaBonus)}</b></div>
         <div>• Sisa cash laci setelah ditarik: <b id="swbEstLaci" style="color:#15803d;">Rp ${rp(cashFisik)}</b></div>
       </div>
+
+      <!-- Warning Box jika sisa laci < 500.000 atau melebihi bonus -->
+      <div id="swbWarnBox" style="display:none;background:#fef2f2;border:1.5px solid #f87171;border-radius:10px;padding:9px 12px;font-size:11.5px;font-weight:800;color:#991b1b;line-height:1.4;margin-bottom:12px;"></div>
 
       <!-- Catatan -->
       <div style="margin-bottom:6px;">
@@ -7147,7 +7154,7 @@ window.openStaffWithdrawBonusModal = () => {
   const actions = `
     <div style="display:grid;grid-template-columns:1fr 2fr;gap:8px;width:100%;">
       <button type="button" class="btn" style="height:46px;font-weight:800;border-radius:12px;background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;" onclick="closeModal(true)">Batal</button>
-      <button type="button" class="btn" style="height:46px;font-weight:900;border-radius:12px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 3px 10px rgba(16,185,129,0.3);" onclick="submitStaffWithdrawBonusRequest()">
+      <button id="swbSubmitBtn" type="button" class="btn" style="height:46px;font-weight:900;border-radius:12px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 3px 10px rgba(16,185,129,0.3);" onclick="submitStaffWithdrawBonusRequest()">
         <i class="fas fa-paper-plane"></i> Ajukan ke Admin
       </button>
     </div>
@@ -7177,14 +7184,45 @@ function updateSwbEstimates(amount) {
 
   const estBonusEl = document.getElementById("swbEstBonus");
   const estLaciEl = document.getElementById("swbEstLaci");
+  const warnEl = document.getElementById("swbWarnBox");
+  const submitBtn = document.getElementById("swbSubmitBtn");
+
+  const remBonus = sisaBonus - amt;
+  const remLaci = cashFisik - amt;
+  const maxSafeWithdrawal = Math.floor(Math.min(sisaBonus, Math.max(0, cashFisik - 500000)) / 1000) * 1000;
+
   if (estBonusEl) {
-    const remBonus = Math.max(0, sisaBonus - amt);
-    estBonusEl.innerText = "Rp " + rp(remBonus);
+    estBonusEl.innerText = "Rp " + rp(Math.max(0, remBonus));
+    estBonusEl.style.color = remBonus < 0 ? "#e11d48" : "#2563eb";
   }
   if (estLaciEl) {
-    const remLaci = cashFisik - amt;
     estLaciEl.innerText = "Rp " + rp(remLaci);
     estLaciEl.style.color = remLaci < 500000 ? "#e11d48" : "#15803d";
+  }
+
+  let errorMsg = "";
+  if (amt > 0) {
+    if (remBonus < 0) {
+      errorMsg = `Nominal melebihi sisa bonus Anda (Rp ${rp(sisaBonus)})`;
+    } else if (remLaci < 500000) {
+      errorMsg = `Penarikan Rp ${rp(amt)} membuat sisa uang laci menjadi Rp ${rp(remLaci)} (kurang dari Rp 500.000). Maksimal yang boleh ditarik hanya Rp ${rp(maxSafeWithdrawal)}`;
+    }
+  }
+
+  if (warnEl) {
+    if (errorMsg) {
+      warnEl.innerHTML = `<i class="fas fa-circle-exclamation"></i> ${errorMsg}`;
+      warnEl.style.display = "block";
+    } else {
+      warnEl.style.display = "none";
+    }
+  }
+
+  if (submitBtn) {
+    const isInvalid = amt <= 0 || remBonus < 0 || remLaci < 500000;
+    submitBtn.disabled = isInvalid;
+    submitBtn.style.opacity = isInvalid ? "0.5" : "1";
+    submitBtn.style.pointerEvents = isInvalid ? "none" : "auto";
   }
 }
 
@@ -7266,8 +7304,9 @@ window.submitStaffWithdrawBonusRequest = async () => {
   if (amount > sisaBonus) {
     return toast(`Nominal melebihi sisa bonus Anda (Rp ${rp(sisaBonus)})!`, true);
   }
-  if ((cashFisik - amount) < 500000) {
-    return toast(`Gagal: Penarikan Rp ${rp(amount)} membuat sisa uang laci menjadi Rp ${rp(cashFisik - amount)} (di bawah syarat minimal Rp 500.000). Maksimal tarik: Rp ${rp(Math.max(0, cashFisik - 500000))}`, true);
+  const maxSafeWithdrawal = Math.floor(Math.min(sisaBonus, Math.max(0, cashFisik - 500000)) / 1000) * 1000;
+  if ((cashFisik - amount) < 500000 || amount > maxSafeWithdrawal) {
+    return toast(`Penarikan Rp ${rp(amount)} ditolak! Uang laci akan tersisa Rp ${rp(cashFisik - amount)} (kurang dari syarat Rp 500.000). Maksimal yang boleh ditarik hanya Rp ${rp(maxSafeWithdrawal)}!`, true);
   }
 
   const staffName = state.user?.name || state.user?.username || "Staff";
