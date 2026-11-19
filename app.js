@@ -7181,6 +7181,36 @@ function updateSwbEstimates(amount) {
   }
 }
 
+function notifyAdminBonusWithdrawalRequest(req = {}) {
+  try {
+    if (!ROCKY_ADMIN_NOTIFY_WORKER_URL || !ROCKY_ADMIN_NOTIFY_SECRET) return;
+    const amount = Number(req.amount || req.withdrawalAmount || 0);
+    const staffName = String(req.name || req.user || state.user?.name || state.user?.username || "Staff");
+    const uname = key(req.user || state.user?.username || "");
+    const note = String(req.note || "Ambil bonus dari uang laci").trim();
+
+    return notifyRockyAdmin(
+      ROCKY_ADMIN_NOTIFY_WORKER_URL,
+      {
+        type: "bonus_withdrawal_request",
+        title: "💵 PERMINTAAN TARIK BONUS",
+        body: `${staffName} minta tarik bonus Rp ${rp(amount)} dari laci kasir (Menunggu ACC)`,
+        amount: amount,
+        user: staffName,
+        username: uname,
+        name: staffName,
+        note: note,
+        dateKey: todayKey(),
+        source: "staff_bonus_withdrawal",
+        sound: "default"
+      },
+      "Notif permintaan tarik bonus ke admin"
+    );
+  } catch(err) {
+    console.warn("Gagal kirim notif tarik bonus ke admin:", err);
+  }
+}
+
 window.submitStaffWithdrawBonusRequest = async () => {
   const input = document.getElementById("swbAmountInput");
   const amount = Number(String(input?.value || "").replace(/\D/g, ""));
@@ -7247,7 +7277,19 @@ window.submitStaffWithdrawBonusRequest = async () => {
     await setDoc(doc(db, "manualBonuses", reqId), payload);
     state.data.manual = mergeRowsById(state.data.manual, [{ id: reqId, ...payload }]);
 
-    // Kirim notifikasi Telegram ke Bos Idham
+    // 1. Kirim push notification ke HP Bos Idham (Boot Rocky) via Cloudflare
+    try {
+      notifyAdminBonusWithdrawalRequest({
+        amount,
+        name: staffName,
+        user: uname,
+        note: note || "Ambil bonus dari uang laci"
+      });
+    } catch(errCf) {
+      console.warn("Gagal notif cloudflare admin:", errCf);
+    }
+
+    // 2. Kirim notifikasi Telegram ke Bos Idham
     const tgMsg = `💵 *PERMINTAAN TARIK BONUS KASIR*
 
 • Kasir / Staf: *${staffName}* (@${uname})
