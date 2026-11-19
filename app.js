@@ -7035,21 +7035,13 @@ function staffBonusWithdrawalAction(cashFisik, sisaBonus) {
     const canWithdraw = sisaBonus >= 1000 && maxSafe >= 1000;
     return `
       <div style="margin-top:12px;">
-        <button type="button" class="btn full" style="background:linear-gradient(135deg, #059669, #10b981);color:#fff;font-weight:900;font-size:13px;padding:11px 16px;border-radius:12px;box-shadow:0 3px 12px rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:center;gap:8px;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;" onclick="openStaffWithdrawBonusModal()" ${canWithdraw ? '' : 'disabled style="opacity:0.6;background:#64748b;box-shadow:none;"'}>
+        <button type="button" class="btn full" style="width:100%;background:linear-gradient(135deg, #059669, #10b981);color:#fff;font-weight:900;font-size:13px;padding:11px 16px;border-radius:12px;box-shadow:0 3px 12px rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:center;gap:8px;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;" onclick="openStaffWithdrawBonusModal()" ${canWithdraw ? '' : 'disabled style="opacity:0.6;background:#64748b;box-shadow:none;"'}>
           <i class="fas fa-money-bill-wave"></i> Tarik Bonus dari Laci
         </button>
-        <div style="font-size:10.5px;color:var(--muted);text-align:center;margin-top:6px;">
-          Cash fisik laci: <b>Rp ${rp(cashFisik)}</b> (Batas aman min. Rp 500.000)
-        </div>
-      </div>
-    `;
-  } else {
-    return `
-      <div style="margin-top:10px;padding:8px 12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;font-size:11px;color:#64748b;text-align:center;">
-        <i class="fas fa-lock" style="color:#94a3b8;margin-right:4px;"></i> Tarik bonus aktif jika cash laci ≥ Rp 500.000 (Saat ini: Rp ${rp(cashFisik)})
       </div>
     `;
   }
+  return "";
 }
 
 window.openStaffWithdrawBonusModal = () => {
@@ -7181,6 +7173,25 @@ function updateSwbEstimates(amount) {
   }
 }
 
+function terbilangIndo(n) {
+  n = Math.floor(Math.abs(Number(n) || 0));
+  if (n === 0) return "nol";
+  const satuan = ["", "satu", "dua", "tiga", "empat", "lima", "enam", "tujuh", "delapan", "sembilan", "sepuluh", "sebelas"];
+  function toWords(num) {
+    if (num < 12) return satuan[num];
+    if (num < 20) return toWords(num - 10) + " belas";
+    if (num < 100) return toWords(Math.floor(num / 10)) + " puluh" + (num % 10 ? " " + toWords(num % 10) : "");
+    if (num < 200) return "seratus" + (num - 100 ? " " + toWords(num - 100) : "");
+    if (num < 1000) return toWords(Math.floor(num / 100)) + " ratus" + (num % 100 ? " " + toWords(num % 100) : "");
+    if (num < 2000) return "seribu" + (num - 1000 ? " " + toWords(num - 1000) : "");
+    if (num < 1000000) return toWords(Math.floor(num / 1000)) + " ribu" + (num % 1000 ? " " + toWords(num % 1000) : "");
+    if (num < 1000000000) return toWords(Math.floor(num / 1000000)) + " juta" + (num % 1000000 ? " " + toWords(num % 1000000) : "");
+    if (num < 1000000000000) return toWords(Math.floor(num / 1000000000)) + " milyar" + (num % 1000000000 ? " " + toWords(num % 1000000000) : "");
+    return String(num);
+  }
+  return toWords(n).trim();
+}
+
 function notifyAdminBonusWithdrawalRequest(req = {}) {
   try {
     if (!ROCKY_ADMIN_NOTIFY_WORKER_URL || !ROCKY_ADMIN_NOTIFY_SECRET) return;
@@ -7188,7 +7199,8 @@ function notifyAdminBonusWithdrawalRequest(req = {}) {
     const staffName = String(req.name || req.user || state.user?.name || state.user?.username || "Staff");
     const uname = key(req.user || state.user?.username || "");
     const note = String(req.note || "Ambil bonus dari uang laci").trim();
-    const voiceMsg = `Request withdraw ${staffName}`;
+    const terbilangNominal = terbilangIndo(amount);
+    const voiceMsg = `Request penarikan ${terbilangNominal} rupiah ${staffName}`;
 
     return notifyRockyAdmin(
       ROCKY_ADMIN_NOTIFY_WORKER_URL,
@@ -7439,7 +7451,7 @@ window.cancelStaffWithdrawBonusRequest = async (id) => {
     takenBonus = bonusWithdrawn(),
     sisaBonus = remainingBonus();
   const { cashFisik } = getTodayCashFisik();
-  page.innerHTML = `${top("Mode Staff", state.user?.name || "Karyawan Staff")}${trialModeCard()}${fastCashierBanner}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero" style="position:relative"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><!-- <div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()} --><div class="stat" style="position:relative"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-head"><div class="label">Bonus Bulan Ini</div><button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring"></span></button></div><div class="big" style="color:var(--blue)">Rp ${rp(sisaBonus)}</div><div class="bonus-note">Bonus terhitung ${rp(earnedBonus)} · sudah diambil ${rp(takenBonus)}</div>${bonusWithdrawalDetailList()}${todayClosingBonusInline()}${staffBonusWithdrawalAction(cashFisik, sisaBonus)}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
+  page.innerHTML = `${top("Mode Staff", state.user?.name || "Karyawan Staff")}${trialModeCard()}${fastCashierBanner}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero" style="position:relative"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><!-- <div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()} --><div class="stat" style="position:relative"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-row"><div class="bonus-plus-info"><div class="label">Bonus Bulan Ini</div><div class="big" style="color:var(--blue);line-height:1.2;margin-top:2px;">Rp ${rp(sisaBonus)}</div><div class="bonus-note" style="margin-top:3px;">Bonus terhitung ${rp(earnedBonus)} · sudah diambil ${rp(takenBonus)}</div></div><button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring"></span></button></div>${bonusWithdrawalDetailList()}${todayClosingBonusInline()}${staffBonusWithdrawalAction(cashFisik, sisaBonus)}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
 }
   // ===== ESTIMASI UANG LACI KEMARIN =====
   // State untuk data tarikan laci kemarin
