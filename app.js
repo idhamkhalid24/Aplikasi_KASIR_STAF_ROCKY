@@ -12974,6 +12974,43 @@ function renderFastCashier() {
     }
   }
 
+  // Cek apakah withdraw bonus aktif / pending untuk staf biasa sebagai penanda logo "W"
+  let fastCashierWithdrawBadge = "";
+  if (isStaffBiasa()) {
+    const pendingReq = (state.data.manual || []).find(b => 
+      !deleted(b) && 
+      isBonusWithdrawalRow(b) && 
+      canReceiveManualBonusRow(b) && 
+      recordMatchesCurrentAccount(b) && 
+      b.status === "pending"
+    );
+
+    if (pendingReq) {
+      fastCashierWithdrawBadge = `
+        <button type="button" onclick="event.stopPropagation(); openStaffWithdrawBonusStatusModal('${pendingReq.id}')" title="Withdraw Bonus Menunggu ACC Admin (Klik untuk Cek Status)" style="position:absolute; top:7px; right:8px; width:25px; height:25px; border-radius:50%; background:linear-gradient(135deg, #d97706, #f59e0b); color:#fff; border:1.5px solid #fff; box-shadow:0 2px 6px rgba(245,158,11,0.5); display:inline-flex; align-items:center; justify-content:center; font-size:12.5px; font-weight:950; cursor:pointer; padding:0; z-index:3; animation:pulse 2s infinite; -webkit-tap-highlight-color:transparent;">
+          W
+        </button>
+      `;
+    } else {
+      const isWdEnabled = state.data.bonus?.withdrawalBonusEnabled !== false;
+      const notWithdrawnToday = !hasStaffWithdrawnBonusToday();
+      const hasEnoughCash = cashFisik >= 500000;
+      const adminNotWithdrawn = !(state.data.drawerWithdrawals || []).some(w => {
+        if (w.deleted || w.status === "deleted") return false;
+        return String(w.dateKey || "").slice(0, 10) === todayKey();
+      });
+      const noReserve = !(state.staffChangeReserve && !state.staffChangeReserve.deleted && (state.staffChangeReserve.date_key === todayKey() || !state.staffChangeReserve.date_key) && Number(state.staffChangeReserve.amount || 0) > 0);
+
+      if (isWdEnabled && notWithdrawnToday && hasEnoughCash && adminNotWithdrawn && noReserve) {
+        fastCashierWithdrawBadge = `
+          <button type="button" onclick="event.stopPropagation(); openStaffWithdrawBonusModal()" title="Tombol Withdraw Bonus Aktif (Klik untuk Tarik Bonus)" style="position:absolute; top:7px; right:8px; width:25px; height:25px; border-radius:50%; background:linear-gradient(135deg, #059669, #10b981); color:#fff; border:1.5px solid #fff; box-shadow:0 2px 6px rgba(16,185,129,0.5); display:inline-flex; align-items:center; justify-content:center; font-size:12.5px; font-weight:950; cursor:pointer; padding:0; z-index:3; animation:pulse 2s infinite; -webkit-tap-highlight-color:transparent;">
+            W
+          </button>
+        `;
+      }
+    }
+  }
+
   page.innerHTML = `
     <div class="wrap fast-cashier-wrap" style="padding-top:10px;padding-bottom:100px;max-width:540px;margin:0 auto;">
       <!-- Top Bar: Cash Fisik & Masuk Kerja (khusus staf biasa) berdampingan di kiri & Nama Staf + Keluar di kanan -->
@@ -13049,7 +13086,8 @@ function renderFastCashier() {
           <div class="num" style="font-size:18px;font-weight:950;color:var(--primary,#0284c7);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Rp ${rp(todayOmset)}</div>
           ${warningIcon}
         </div>
-        <div onclick="showFastCashierBonusDetail()" title="Klik untuk rincian bonus" style="cursor:pointer;background:var(--card,#fff);border:1.5px solid var(--border,#e2e8f0);border-radius:16px;padding:12px 14px;text-align:center;-webkit-tap-highlight-color:transparent;overflow:hidden;">
+        <div onclick="showFastCashierBonusDetail()" title="Klik untuk rincian bonus" style="position:relative;cursor:pointer;background:var(--card,#fff);border:1.5px solid var(--border,#e2e8f0);border-radius:16px;padding:12px 14px;text-align:center;-webkit-tap-highlight-color:transparent;overflow:hidden;">
+          ${fastCashierWithdrawBadge}
           <div style="font-size:11px;font-weight:800;color:var(--muted,#64748b);text-transform:uppercase;letter-spacing:0.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${bonusCardLabel}</div>
           <div class="num" style="font-size:18px;font-weight:950;color:${bonusCardColor};margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Rp ${rp(bonusCardVal)}</div>
         </div>
