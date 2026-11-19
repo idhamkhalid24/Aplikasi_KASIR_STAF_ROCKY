@@ -5531,21 +5531,6 @@ function isTxAfterLatestWithdrawal(t) {
   if (latestMs === 0) return false;
   return ms(t) > latestMs;
 }
-function staffColorHash(name) {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) {
-    h = (h * 31) + name.charCodeAt(i);
-  }
-  const colors = [
-    '#FF85A2', '#FFD93D', '#6BCB77', '#6EE7B7',
-    '#B2A4FF', '#FFB200', '#00D7FF', '#FF9F43',
-    '#F472B6', '#FBBF24', '#34D399', '#818CF8',
-    '#A78BFA', '#F87171', '#38BDF8', '#FB923C',
-    '#FDA4AF', '#FCD34D', '#86EFAC', '#93C5FD'
-  ];
-  const color = colors[Math.abs(h) % colors.length];
-  return `background-color: ${color} !important;`;
-}
 function txItem(t) {
   const pending = t.pending === true;
   const isMine = key(t.user) === key(state.user?.username);
@@ -5589,10 +5574,6 @@ function txItem(t) {
   
   const afterWithdrawal = typeof isTxAfterLatestWithdrawal==='function' && isTxAfterLatestWithdrawal(t);
   let shadowStyle = afterWithdrawal ? 'border: 1px solid #ff4d4d !important; box-shadow: 0 0 5px rgba(255, 77, 77, 0.2) !important; background-color: var(--card) !important;' : '';
-  
-  if (isRismaSpecialUser() && !afterWithdrawal) {
-    shadowStyle += " " + staffColorHash(rawStaffName);
-  }
 
   return `<div class="tx-row tx-row-card-mini" style="${shadowStyle}">
     <div class="tx-card-main">
