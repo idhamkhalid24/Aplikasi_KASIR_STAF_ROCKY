@@ -6942,9 +6942,71 @@ window.closeCashOutModal = () => {
   if (m) m.classList.remove("show");
 };
 
+window.openStaffBonusWdListModal = () => {
+  const d = todayKey();
+  const allWd = (state.data.manual || []).filter(b => 
+    !deleted(b) && 
+    isBonusWithdrawalRow(b) && 
+    recordMatchesCurrentAccount(b) && 
+    (manualBonusDate(b) === d || String(b.dateKey || "").slice(0, 10) === d)
+  );
+
+  const approvedList = allWd.filter(b => b.status === "approved" || b.status === "success" || (!b.status && b.source === BONUS_WITHDRAWAL_TYPE));
+  const totalApproved = approvedList.reduce((s, b) => s + bonusWithdrawalAmount(b), 0);
+
+  let rowsHtml = "";
+  if (!allWd.length) {
+    rowsHtml = `<div style="text-align:center;padding:24px 10px;color:#64748b;font-size:12px;">Belum ada penarikan bonus laci hari ini (${dID(d)})</div>`;
+  } else {
+    rowsHtml = allWd.map(b => {
+      const amt = bonusWithdrawalAmount(b);
+      const st = b.status || "approved";
+      const isApproved = st === "approved" || st === "success" || (!b.status && b.source === BONUS_WITHDRAWAL_TYPE);
+      const isPending = st === "pending";
+      const sName = b.name || b.user || "Staff";
+      const note = b.note || "Tarik uang laci";
+      const timeStr = b.createdAtMs ? new Date(b.createdAtMs).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "";
+      
+      const badgeBg = isApproved ? "#dcfce7" : (isPending ? "#fef3c7" : "#fee2e2");
+      const badgeColor = isApproved ? "#15803d" : (isPending ? "#b45309" : "#b91c1c");
+      const badgeText = isApproved ? "Disetujui Admin" : (isPending ? "Menunggu ACC" : "Ditolak");
+
+      return `
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="min-width:0;flex:1;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:12px;font-weight:900;color:#1e293b;">${esc(sName)}</span>
+              <span style="font-size:9.5px;font-weight:800;padding:2px 6px;border-radius:6px;background:${badgeBg};color:${badgeColor};">${badgeText}</span>
+            </div>
+            <div style="font-size:11px;color:#64748b;margin-top:2px;">${esc(note)}${timeStr ? ` • ${timeStr}` : ''}</div>
+          </div>
+          <b class="num" style="font-size:14px;font-weight:950;color:${isApproved ? '#059669' : '#64748b'};white-space:nowrap;">Rp ${rp(amt)}</b>
+        </div>
+      `;
+    }).join("");
+  }
+
+  const body = `
+    <div style="padding:10px 0 16px;">
+      <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:14px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-size:10px;font-weight:800;color:#15803d;text-transform:uppercase;">Total Tarik Bonus Disetujui</div>
+          <div style="font-size:18px;font-weight:950;color:#166534;margin-top:2px;">Rp ${rp(totalApproved)}</div>
+        </div>
+        <div style="font-size:11px;color:#15803d;font-weight:700;">Hari ini</div>
+      </div>
+      <div style="max-height:50vh;overflow-y:auto;padding-right:2px;">
+        ${rowsHtml}
+      </div>
+    </div>
+  `;
+
+  modal("Tarik Bonus Kasir Hari Ini", body, `<button type="button" class="btn primary block" style="height:44px;font-weight:900;border-radius:12px;" onclick="closeModal(true)">Tutup</button>`);
+};
+
 function opsAccessCard() {
   if (!state.data.opsAccess) return "";
-  const { cashFisik, opsTotal, qrisTotal } = getTodayCashFisik();
+  const { cashFisik, opsTotal, qrisTotal, bonusTotal } = getTodayCashFisik();
   const isOpen = state.data.opsCardOpen === true;
 
   return `
@@ -6966,15 +7028,19 @@ function opsAccessCard() {
           <button onclick="openOpsModal()" style="width:100%; min-height:30px; padding:6px 7px; font-size:10px; line-height:1; border-radius:999px; font-weight:950; border:2px solid #111; box-shadow:2px 2px 0 #111; cursor:pointer; white-space:nowrap; background:#fff3e0; color:#e8820c;">+ Ops</button>
           <button onclick="openCashOutModal()" style="width:100%; min-height:30px; padding:6px 7px; font-size:10px; line-height:1; border-radius:999px; font-weight:950; border:2px solid #111; box-shadow:2px 2px 0 #111; cursor:pointer; white-space:nowrap; background:#dbeafe; color:#1d4ed8;">+ QRIS</button>
         </div>
-        <div class="small" style="font-size:10.2px; color:#4b5563; line-height:1.35; font-weight:850; background:#f8fbff; border:1px solid #dbeafe; border-radius:12px; padding:7px 8px; word-break:break-word; text-align:center;">Operasional Toko - QRIS</div>
+        <div class="small" style="font-size:10.2px; color:#4b5563; line-height:1.35; font-weight:850; background:#f8fbff; border:1px solid #dbeafe; border-radius:12px; padding:7px 8px; word-break:break-word; text-align:center;">Operasional Toko - QRIS - Tarik Bonus</div>
         <div style="margin-top:7px; border:1px solid #dbeafe; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; background:white;">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 9px; border-bottom:1px solid #eef2ff;">
             <span style="font-size:10px; color:var(--muted); font-weight:900;">Operasional Toko</span>
             <b class="num" style="font-size:12.5px; font-weight:950; cursor:pointer; white-space:nowrap; color:#e8820c;" onclick="openOpsModal()">Rp ${rp(opsTotal)}</b>
           </div>
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 9px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 9px; border-bottom:1px solid #eef2ff;">
             <span style="font-size:10px; color:var(--muted); font-weight:900;">QRIS</span>
             <b class="num" style="font-size:12.5px; font-weight:950; cursor:pointer; white-space:nowrap; color:#2563eb;" onclick="openCashOutModal()">Rp ${rp(qrisTotal)}</b>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 9px;">
+            <span style="font-size:10px; color:var(--muted); font-weight:900;">Tarik Bonus Kasir</span>
+            <b class="num" style="font-size:12.5px; font-weight:950; cursor:pointer; white-space:nowrap; color:#059669;" onclick="openStaffBonusWdListModal()">Rp ${rp(bonusTotal || 0)}</b>
           </div>
         </div>
       </div>` : ''}
@@ -7026,6 +7092,21 @@ function home() {
     page.innerHTML = `${top("Mode Harian", state.user?.name || "Karyawan Harian")}${trialModeCard()}${fastCashierBanner}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}<div class="hero daily-income-hero" style="position:relative">${syncBtnDaily}<div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} • ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat" style="position:relative"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard("daily")}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
     return;
   }
+function hasStaffWithdrawnBonusToday() {
+  const current = key(state.user?.username || "");
+  if (!current) return false;
+  return (state.data.manual || []).some(b => {
+    if (deleted(b)) return false;
+    if (!isBonusWithdrawalRow(b)) return false;
+    if (!recordMatchesCurrentAccount(b)) return false;
+    if (!canReceiveManualBonusRow(b)) return false;
+    const d = manualBonusDate(b) || String(b.dateKey || "").slice(0, 10);
+    if (d !== todayKey()) return false;
+    if (b.status === "rejected" || b.status === "canceled") return false;
+    return true; // pending, approved, success
+  });
+}
+
 function staffBonusWithdrawalAction(cashFisik, sisaBonus) {
   if (!isStaffBiasa()) return "";
   
@@ -7033,6 +7114,7 @@ function staffBonusWithdrawalAction(cashFisik, sisaBonus) {
   const pendingReq = (state.data.manual || []).find(b => 
     !deleted(b) && 
     isBonusWithdrawalRow(b) && 
+    canReceiveManualBonusRow(b) &&
     recordMatchesCurrentAccount(b) && 
     b.status === "pending"
   );
@@ -7059,7 +7141,12 @@ function staffBonusWithdrawalAction(cashFisik, sisaBonus) {
     `;
   }
 
-  // 1. Cek izin Admin Universal: Jika admin menonaktifkan, tombol tidak akan muncul sama sekali
+  // 1. Withdrawal bonus hanya bisa dilakukan 1x dalam sehari oleh setiap staf
+  if (hasStaffWithdrawnBonusToday()) {
+    return "";
+  }
+
+  // 2. Cek izin Admin Universal: Jika admin menonaktifkan, tombol tidak akan muncul sama sekali
   if (state.data.bonus?.withdrawalBonusEnabled === false) {
     return "";
   }
@@ -7067,12 +7154,12 @@ function staffBonusWithdrawalAction(cashFisik, sisaBonus) {
   const cashData = getTodayCashFisik();
   const cFisik = Number(cashData?.cashFisik ?? cashFisik ?? 0);
 
-  // 2. Tombol Withdrawal Bonus HANYA muncul jika cash fisik uang laci minimal Rp 500.000
+  // 3. Tombol Withdrawal Bonus HANYA muncul jika cash fisik uang laci minimal Rp 500.000
   if (cFisik < 500000) {
     return "";
   }
 
-  // 3. Juga tidak muncul jika Admin sudah menarik uang laci / menyisihkan kembalian hari ini
+  // 4. Juga tidak muncul jika Admin sudah menarik uang laci / menyisihkan kembalian hari ini
   const adminWithdrawnToday = (state.data.drawerWithdrawals || []).some(w => {
     if (w.deleted || w.status === "deleted") return false;
     return String(w.dateKey || "").slice(0, 10) === todayKey();
@@ -7081,7 +7168,7 @@ function staffBonusWithdrawalAction(cashFisik, sisaBonus) {
     return "";
   }
 
-  // 4. Juga tidak muncul jika kembalian besok sudah dibuat hari ini oleh staf
+  // 5. Juga tidak muncul jika kembalian besok sudah dibuat hari ini oleh staf
   const activeReserve = state.staffChangeReserve && !state.staffChangeReserve.deleted && (state.staffChangeReserve.date_key === todayKey() || !state.staffChangeReserve.date_key) && Number(state.staffChangeReserve.amount || 0) > 0;
   if (activeReserve) {
     return "";
@@ -7102,6 +7189,24 @@ window.openStaffWithdrawBonusModal = async () => {
   if (state.data.bonus?.withdrawalBonusEnabled === false) {
     return toast("Fitur withdrawal bonus sedang dinonaktifkan oleh Admin.", true);
   }
+
+  // Cek apakah staf sudah melakukan penarikan bonus hari ini (1x per hari)
+  const todayWd = (state.data.manual || []).find(b =>
+    !deleted(b) &&
+    isBonusWithdrawalRow(b) &&
+    recordMatchesCurrentAccount(b) &&
+    canReceiveManualBonusRow(b) &&
+    (manualBonusDate(b) || String(b.dateKey || "").slice(0, 10)) === todayKey() &&
+    b.status !== "rejected" &&
+    b.status !== "canceled"
+  );
+  if (todayWd) {
+    if (todayWd.status === "pending") {
+      return openStaffWithdrawBonusStatusModal(todayWd.id);
+    }
+    return toast("Withdrawal bonus hanya bisa dilakukan 1x dalam sehari. Anda sudah melakukan penarikan bonus hari ini.", true);
+  }
+
   const myTodaySales = todayTotal();
   const sName = state.user?.name || "Anda";
   if (myTodaySales < 100000) {
@@ -7144,17 +7249,6 @@ window.openStaffWithdrawBonusModal = async () => {
     return toast(`Uang laci bersih harus tersisa minimal Rp 500.000. Saat ini uang laci Rp ${rp(cashFisik)}, sehingga belum ada sisa aman yang bisa ditarik.`, true);
   }
 
-  // Cek apakah sudah ada permintaan pending
-  const pending = (state.data.manual || []).find(b =>
-    !deleted(b) &&
-    isBonusWithdrawalRow(b) &&
-    recordMatchesCurrentAccount(b) &&
-    b.status === "pending"
-  );
-  if (pending) {
-    return openStaffWithdrawBonusStatusModal(pending.id);
-  }
-
   const body = `
     <div style="padding:10px 0 16px;">
       <!-- Ringkasan Info Saldo -->
@@ -7170,16 +7264,11 @@ window.openStaffWithdrawBonusModal = async () => {
       </div>
 
       <!-- Kotak Aturan -->
-      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:10px 12px;margin-bottom:14px;font-size:11px;color:#1e40af;line-height:1.5;">
-        <div style="font-weight:850;display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:10px 12px;margin-bottom:14px;font-size:11.5px;color:#1e40af;line-height:1.5;">
+        <div style="font-weight:850;display:flex;align-items:center;gap:6px;margin-bottom:2px;">
           <i class="fas fa-shield-halved" style="color:#2563eb"></i> Ketentuan Penarikan:
         </div>
-        <div>• Khusus untuk karyawan <b>Staff Biasa</b>.</div>
-        <div>• Pendapatan pribadi hari ini wajib minimal <b>Rp 100.000</b> (Saat ini: Rp ${rp(myTodaySales)}).</div>
-        <div>• Tidak bisa ditarik jika Admin/Staf sudah menarik laci atau menyisihkan <b>kembalian besok</b>.</div>
-        <div>• Minimal uang laci bersih harus tersisa <b>Rp 500.000</b>.</div>
-        <div>• Nominal <b>wajib bulat ribuan</b> (misal: 10.000, 20.000, 50.000).</div>
-        <div>• <b>Wajib persetujuan Admin (ACC)</b> sebelum mengambil fisik uang.</div>
+        <div>• <b>Wajib persetujuan Admin (ACC)</b> sebelum mengambil uang laci.</div>
       </div>
 
       <!-- Input Nominal -->
@@ -7352,6 +7441,9 @@ window.submitStaffWithdrawBonusRequest = async () => {
   if (!isStaffBiasa()) return toast("Fitur withdrawal bonus hanya untuk karyawan Staff Biasa", true);
   if (state.data.bonus?.withdrawalBonusEnabled === false) {
     return toast("Gagal: Fitur withdrawal bonus sedang dinonaktifkan oleh Admin!", true);
+  }
+  if (hasStaffWithdrawnBonusToday()) {
+    return toast("Gagal: Withdrawal bonus hanya bisa dilakukan 1x dalam sehari!", true);
   }
   const myTodaySales = todayTotal();
   if (myTodaySales < 100000) {
@@ -12779,7 +12871,7 @@ function renderFastCashier() {
   const clearOpacity = fastCashierNominal > 0 ? "1" : "0.3";
   const clearPointer = fastCashierNominal > 0 ? "auto" : "none";
 
-  const { cashFisik, opsTotal, qrisTotal } = getTodayCashFisik();
+  const { cashFisik, opsTotal, qrisTotal, bonusTotal } = getTodayCashFisik();
   const isOpsOpen = state.data.opsCardOpen === true;
 
   // Data Bonus / Gaji untuk Card ke-3 di Summary Strip
@@ -12858,15 +12950,19 @@ function renderFastCashier() {
             <button onclick="openOpsModal()" style="width:100%; min-height:30px; padding:6px 7px; font-size:10px; line-height:1; border-radius:999px; font-weight:950; border:1.5px solid #fdba74; cursor:pointer; white-space:nowrap; background:#fff3e0; color:#e8820c;">+ Ops</button>
             <button onclick="openCashOutModal()" style="width:100%; min-height:30px; padding:6px 7px; font-size:10px; line-height:1; border-radius:999px; font-weight:950; border:1.5px solid #bfdbfe; cursor:pointer; white-space:nowrap; background:#dbeafe; color:#1d4ed8;">+ QRIS</button>
           </div>
-          <div class="small" style="font-size:10.2px; color:#4b5563; line-height:1.35; font-weight:850; background:#f8fbff; border:1px solid #dbeafe; border-radius:12px; padding:7px 8px; word-break:break-word; text-align:center;">Operasional Toko - QRIS</div>
+          <div class="small" style="font-size:10.2px; color:#4b5563; line-height:1.35; font-weight:850; background:#f8fbff; border:1px solid #dbeafe; border-radius:12px; padding:7px 8px; word-break:break-word; text-align:center;">Operasional Toko - QRIS - Tarik Bonus</div>
           <div style="margin-top:7px; border:1px solid #dbeafe; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; background:white;">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 9px; border-bottom:1px solid #eef2ff;">
               <span style="font-size:10px; color:var(--muted); font-weight:900;">Operasional Toko</span>
               <b class="num" style="font-size:12.5px; font-weight:950; cursor:pointer; white-space:nowrap; color:#e8820c;" onclick="openOpsModal()">Rp ${rp(opsTotal)}</b>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 9px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 9px; border-bottom:1px solid #eef2ff;">
               <span style="font-size:10px; color:var(--muted); font-weight:900;">QRIS</span>
               <b class="num" style="font-size:12.5px; font-weight:950; cursor:pointer; white-space:nowrap; color:#2563eb;" onclick="openCashOutModal()">Rp ${rp(qrisTotal)}</b>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 9px;">
+              <span style="font-size:10px; color:var(--muted); font-weight:900;">Tarik Bonus Kasir</span>
+              <b class="num" style="font-size:12.5px; font-weight:950; cursor:pointer; white-space:nowrap; color:#059669;" onclick="openStaffBonusWdListModal()">Rp ${rp(bonusTotal || 0)}</b>
             </div>
           </div>
         </div>
