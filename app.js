@@ -7227,32 +7227,13 @@ window.openWithdrawBonusBlockedModal = function(options = {}) {
   const {
     title = "Belum Memenuhi Syarat Withdraw",
     subtitle = "Syarat penarikan bonus belum terpenuhi",
-    icon = "fa-triangle-exclamation",
-    iconColor = "#d97706",
-    iconBg = "#fef3c7",
-    cardHtml = "",
-    note = "",
     btnText = "Saya Mengerti"
   } = options;
 
   const body = `
-    <div style="padding:14px 0 10px;text-align:center;">
-      <div style="width:68px;height:68px;border-radius:50%;background:${iconBg};border:3px solid ${iconColor};display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;box-shadow:0 6px 18px rgba(0,0,0,0.06);">
-        <i class="fas ${icon}" style="font-size:30px;color:${iconColor};"></i>
-      </div>
+    <div style="padding:18px 8px 14px;text-align:center;">
       <div style="font-size:17px;font-weight:950;color:#0f172a;letter-spacing:-0.2px;">${esc(title)}</div>
-      <div style="font-size:13px;color:#64748b;margin-top:6px;line-height:1.45;padding:0 8px;">${esc(subtitle)}</div>
-
-      ${cardHtml}
-
-      ${note ? `
-        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:11px 13px;margin-top:12px;text-align:left;font-size:12px;color:#1e40af;line-height:1.5;">
-          <div style="font-weight:850;display:flex;align-items:center;gap:6px;margin-bottom:3px;">
-            <i class="fas fa-circle-info" style="color:#2563eb"></i> Ketentuan Toko:
-          </div>
-          <div>${note}</div>
-        </div>
-      ` : ""}
+      <div style="font-size:13.5px;color:#64748b;margin-top:8px;line-height:1.5;padding:0 6px;">${esc(subtitle)}</div>
     </div>
   `;
 
@@ -7269,22 +7250,14 @@ window.openStaffWithdrawBonusModal = async () => {
   if (!isStaffBiasa()) {
     return openWithdrawBonusBlockedModal({
       title: "Khusus Karyawan Staff Biasa",
-      subtitle: "Fitur withdraw bonus dari kasir hanya untuk karyawan Staff Biasa.",
-      icon: "fa-user-lock",
-      iconColor: "#dc2626",
-      iconBg: "#fee2e2",
-      note: "Karyawan harian dan admin tidak menggunakan fitur tarik bonus kasir ini."
+      subtitle: "Fitur withdraw bonus dari kasir hanya untuk karyawan Staff Biasa."
     });
   }
 
   if (state.data.bonus?.withdrawalBonusEnabled === false) {
     return openWithdrawBonusBlockedModal({
       title: "Fitur Sedang Dinonaktifkan",
-      subtitle: "Fitur withdraw bonus sedang dinonaktifkan oleh Admin secara universal.",
-      icon: "fa-ban",
-      iconColor: "#dc2626",
-      iconBg: "#fee2e2",
-      note: "Tombol ini sementara tidak dapat digunakan sampai Admin mengaktifkannya kembali dari panel Admin."
+      subtitle: "Fitur withdraw bonus sedang dinonaktifkan oleh Admin secara universal."
     });
   }
 
@@ -7302,65 +7275,17 @@ window.openStaffWithdrawBonusModal = async () => {
     if (todayWd.status === "pending") {
       return openStaffWithdrawBonusStatusModal(todayWd.id);
     }
-    const statusLabel = todayWd.status === "approved" || todayWd.status === "success" ? "disetujui" : todayWd.status;
-    const wdNominal = bonusWithdrawalAmount(todayWd);
     return openWithdrawBonusBlockedModal({
       title: "Batas 1x Penarikan Hari Ini",
-      subtitle: "Setiap staf kasir hanya dapat melakukan penarikan bonus 1 kali dalam 1 hari.",
-      icon: "fa-calendar-check",
-      iconColor: "#2563eb",
-      iconBg: "#dbeafe",
-      cardHtml: `
-        <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:12px;margin-top:14px;text-align:left;">
-          <div style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;">Riwayat Hari Ini (${esc(todayKey())})</div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
-            <span style="font-size:13px;font-weight:850;color:#0f172a;">Withdraw Bonus</span>
-            <span style="font-size:15px;font-weight:950;color:#059669;">Rp ${rp(wdNominal)}</span>
-          </div>
-          <div style="font-size:11px;color:#059669;margin-top:4px;font-weight:700;">Status: Sudah ${esc(statusLabel)}</div>
-        </div>
-      `,
-      note: "Anda sudah melakukan penarikan bonus hari ini. Penarikan bonus berikutnya dapat diajukan kembali besok."
+      subtitle: "Setiap staf kasir hanya dapat melakukan penarikan bonus 1 kali dalam 1 hari."
     });
   }
 
   const myTodaySales = todayTotal();
-  const sName = state.user?.name || "Anda";
   if (myTodaySales < 100000) {
-    const pct = Math.min(100, Math.max(0, Math.round((myTodaySales / 100000) * 100)));
-    const kekurangan = Math.max(0, 100000 - myTodaySales);
     return openWithdrawBonusBlockedModal({
       title: "Belum Memenuhi Syarat Withdraw",
-      subtitle: `Wajib minimal pendapatan pribadi sudah mencapai Rp 100.000 hari ini.`,
-      icon: "fa-bullseye",
-      iconColor: "#d97706",
-      iconBg: "#fef3c7",
-      cardHtml: `
-        <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:14px;margin-top:14px;text-align:left;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <span style="font-size:11px;font-weight:850;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Target Pendapatan Pribadi</span>
-            <span style="font-size:11px;font-weight:900;color:#059669;background:#dcfce7;padding:3px 8px;border-radius:6px;">${pct}%</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;">
-            <div>
-              <div style="font-size:10px;color:#94a3b8;font-weight:700;">Saat Ini (${esc(sName)})</div>
-              <div style="font-size:19px;font-weight:950;color:#0f172a;">Rp ${rp(myTodaySales)}</div>
-            </div>
-            <div style="text-align:right;">
-              <div style="font-size:10px;color:#94a3b8;font-weight:700;">Target Minimal</div>
-              <div style="font-size:19px;font-weight:950;color:#2563eb;">Rp 100.000</div>
-            </div>
-          </div>
-          <!-- Progress bar -->
-          <div style="height:9px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin-bottom:10px;">
-            <div style="height:100%;width:${pct}%;background:linear-gradient(90deg, #10b981, #059669);border-radius:999px;transition:width 0.3s ease;"></div>
-          </div>
-          <div style="font-size:11.5px;color:#b45309;font-weight:800;display:flex;align-items:center;gap:6px;">
-            <i class="fas fa-circle-exclamation" style="color:#d97706;"></i> Kurang <b>Rp ${rp(kekurangan)}</b> lagi untuk membuka akses withdraw bonus.
-          </div>
-        </div>
-      `,
-      note: "Untuk menjaga kelancaran operasional toko, kasir wajib memiliki transaksi penjualan pribadi minimal <b>Rp 100.000</b> pada hari ini sebelum dapat mengajukan withdraw bonus."
+      subtitle: "Wajib minimal pendapatan pribadi sudah mencapai Rp 100.000 hari ini."
     });
   }
 
@@ -7372,11 +7297,7 @@ window.openStaffWithdrawBonusModal = async () => {
   if (adminWithdrawnToday) {
     return openWithdrawBonusBlockedModal({
       title: "Uang Laci Sudah Ditarik Admin",
-      subtitle: "Admin sudah menarik uang laci / menyisihkan kembalian hari ini.",
-      icon: "fa-lock",
-      iconColor: "#dc2626",
-      iconBg: "#fee2e2",
-      note: "Setelah Admin menarik uang laci kasir pada sore/malam hari, penarikan bonus tidak dapat diajukan lagi untuk mencegah selisih kas toko."
+      subtitle: "Admin sudah menarik uang laci / menyisihkan kembalian hari ini."
     });
   }
 
@@ -7390,23 +7311,9 @@ window.openStaffWithdrawBonusModal = async () => {
   const activeReserve = state.staffChangeReserve && !state.staffChangeReserve.deleted && (state.staffChangeReserve.date_key === todayKey() || !state.staffChangeReserve.date_key) && Number(state.staffChangeReserve.amount || 0) > 0 ? state.staffChangeReserve : null;
   if (activeReserve) {
     const creator = activeReserve.user_name || activeReserve.username || "staf";
-    const reserveAmt = Number(activeReserve.amount || 0);
     return openWithdrawBonusBlockedModal({
       title: "Laci Disiapkan untuk Kembalian",
-      subtitle: `Uang laci sudah disisihkan untuk modal kembalian besok oleh ${creator}.`,
-      icon: "fa-vault",
-      iconColor: "#d97706",
-      iconBg: "#fef3c7",
-      cardHtml: `
-        <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:14px;padding:12px;margin-top:14px;text-align:left;">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:12px;font-weight:800;color:#92400e;">Modal Kembalian Besok</span>
-            <span style="font-size:16px;font-weight:950;color:#b45309;">Rp ${rp(reserveAmt)}</span>
-          </div>
-          <div style="font-size:11px;color:#78350f;margin-top:4px;">Disisihkan oleh: <b>${esc(creator)}</b></div>
-        </div>
-      `,
-      note: "Karena uang laci sudah dikunci untuk modal kembalian esok hari, penarikan bonus tidak dapat dilakukan."
+      subtitle: `Uang laci sudah disisihkan untuk modal kembalian besok oleh ${creator}.`
     });
   }
 
@@ -7416,31 +7323,14 @@ window.openStaffWithdrawBonusModal = async () => {
   if (cashFisik < 500000) {
     return openWithdrawBonusBlockedModal({
       title: "Saldo Kas Laci Kurang",
-      subtitle: `Saldo laci kasir saat ini Rp ${rp(cashFisik)}. Minimal wajib Rp 500.000 untuk withdraw bonus.`,
-      icon: "fa-cash-register",
-      iconColor: "#dc2626",
-      iconBg: "#fee2e2",
-      cardHtml: `
-        <div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:14px;padding:12px;margin-top:14px;text-align:left;">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:12px;font-weight:800;color:#991b1b;">Cash Fisik Laci</span>
-            <span style="font-size:16px;font-weight:950;color:#dc2626;">Rp ${rp(cashFisik)}</span>
-          </div>
-          <div style="font-size:11px;color:#7f1d1d;margin-top:4px;">Batas Minimal Laci: <b>Rp 500.000</b> (Kurang Rp ${rp(500000 - cashFisik)})</div>
-        </div>
-      `,
-      note: "Saldo kas fisik laci harus melebihi Rp 500.000 agar uang kembalian toko tetap tersedia dan aman."
+      subtitle: `Saldo laci kasir saat ini Rp ${rp(cashFisik)}. Minimal wajib Rp 500.000 untuk withdraw bonus.`
     });
   }
 
   if (sisaBonus < 1000) {
     return openWithdrawBonusBlockedModal({
       title: "Sisa Bonus Belum Ada",
-      subtitle: `Sisa bonus Anda saat ini Rp ${rp(sisaBonus)}. Belum ada bonus yang dapat ditarik.`,
-      icon: "fa-wallet",
-      iconColor: "#64748b",
-      iconBg: "#f1f5f9",
-      note: "Bonus akan bertambah secara otomatis dari setiap transaksi penjualan yang Anda input di kasir."
+      subtitle: `Sisa bonus Anda saat ini Rp ${rp(sisaBonus)}. Belum ada bonus yang dapat ditarik.`
     });
   }
 
@@ -7448,23 +7338,7 @@ window.openStaffWithdrawBonusModal = async () => {
   if (maxSafeWithdrawal < 1000) {
     return openWithdrawBonusBlockedModal({
       title: "Batas Aman Laci Belum Cukup",
-      subtitle: `Uang laci bersih wajib tersisa minimal Rp 500.000 setelah penarikan.`,
-      icon: "fa-shield-halved",
-      iconColor: "#d97706",
-      iconBg: "#fef3c7",
-      cardHtml: `
-        <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:12px;margin-top:14px;text-align:left;">
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-            <span style="font-size:11px;color:#64748b;font-weight:700;">Cash Laci Sekarang:</span>
-            <b style="font-size:12px;color:#0f172a;">Rp ${rp(cashFisik)}</b>
-          </div>
-          <div style="display:flex;justify-content:space-between;">
-            <span style="font-size:11px;color:#64748b;font-weight:700;">Wajib Sisa di Laci:</span>
-            <b style="font-size:12px;color:#dc2626;">Rp 500.000</b>
-          </div>
-        </div>
-      `,
-      note: "Uang laci saat ini belum memiliki selisih aman di atas Rp 500.000 untuk bisa ditarik."
+      subtitle: "Uang laci bersih wajib tersisa minimal Rp 500.000 setelah penarikan."
     });
   }
 
