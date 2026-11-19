@@ -7188,6 +7188,7 @@ function notifyAdminBonusWithdrawalRequest(req = {}) {
     const staffName = String(req.name || req.user || state.user?.name || state.user?.username || "Staff");
     const uname = key(req.user || state.user?.username || "");
     const note = String(req.note || "Ambil bonus dari uang laci").trim();
+    const voiceMsg = `Request withdraw ${staffName}`;
 
     return notifyRockyAdmin(
       ROCKY_ADMIN_NOTIFY_WORKER_URL,
@@ -7199,6 +7200,8 @@ function notifyAdminBonusWithdrawalRequest(req = {}) {
         user: staffName,
         username: uname,
         name: staffName,
+        speechText: voiceMsg,
+        voiceText: voiceMsg,
         note: note,
         dateKey: todayKey(),
         source: "staff_bonus_withdrawal",
