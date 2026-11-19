@@ -966,6 +966,14 @@ function isDailyUser(user = state.user) {
 function isDaily() {
   return isDailyUser(state.user);
 }
+function isStaffBiasa(user = state.user) {
+  if (!user) return false;
+  if (isAdmin(user)) return false;
+  if (isDailyUser(user)) return false;
+  if (isTrialUser(user)) return false;
+  const r = String(user.role || "").toLowerCase().trim();
+  return r === "staff" || r === "staff biasa" || r === "staff_biasa";
+}
 function truthyFlag(value) {
   return (
     value === true ||
@@ -6997,7 +7005,7 @@ function home() {
     return;
   }
 function staffBonusWithdrawalAction(cashFisik, sisaBonus) {
-  if (isDaily()) return "";
+  if (!isStaffBiasa()) return "";
   
   // Periksa apakah ada permintaan yang sedang pending untuk staf saat ini
   const pendingReq = (state.data.manual || []).find(b => 
@@ -7031,8 +7039,9 @@ function staffBonusWithdrawalAction(cashFisik, sisaBonus) {
 
   // Syarat tombol muncul: cash fisik uang laci minimal Rp 500.000
   if (cashFisik >= 500000) {
+    const txCount = todayTx().length;
     const maxSafe = Math.min(sisaBonus, Math.max(0, cashFisik - 500000));
-    const canWithdraw = sisaBonus >= 1000 && maxSafe >= 1000;
+    const canWithdraw = sisaBonus >= 1000 && maxSafe >= 1000 && txCount >= 2;
     return `
       <div style="margin-top:12px;">
         <button type="button" class="btn full" style="width:100%;background:linear-gradient(135deg, #059669, #10b981);color:#fff;font-weight:900;font-size:13px;padding:11px 16px;border-radius:12px;box-shadow:0 3px 12px rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:center;gap:8px;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;" onclick="openStaffWithdrawBonusModal()" ${canWithdraw ? '' : 'disabled style="opacity:0.6;background:#64748b;box-shadow:none;"'}>
@@ -7045,7 +7054,11 @@ function staffBonusWithdrawalAction(cashFisik, sisaBonus) {
 }
 
 window.openStaffWithdrawBonusModal = () => {
-  if (isDaily()) return toast("Fitur tarik bonus laci hanya untuk staf bulanan", true);
+  if (!isStaffBiasa()) return toast("Fitur withdrawal bonus hanya untuk karyawan Staff Biasa", true);
+  const txCount = todayTx().length;
+  if (txCount < 2) {
+    return toast(`Minimal harus sudah melakukan 2 transaksi hari ini untuk withdrawal bonus (Saat ini: ${txCount} transaksi)`, true);
+  }
   const { cashFisik } = getTodayCashFisik();
   const sisaBonus = remainingBonus();
 
@@ -7088,6 +7101,8 @@ window.openStaffWithdrawBonusModal = () => {
         <div style="font-weight:850;display:flex;align-items:center;gap:6px;margin-bottom:4px;">
           <i class="fas fa-shield-halved" style="color:#2563eb"></i> Ketentuan Penarikan:
         </div>
+        <div>• Khusus untuk karyawan <b>Staff Biasa</b>.</div>
+        <div>• Wajib minimal sudah melakukan <b>2 transaksi</b> hari ini.</div>
         <div>• Minimal uang laci bersih harus tersisa <b>Rp 500.000</b>.</div>
         <div>• Nominal <b>wajib bulat ribuan</b> (misal: 10.000, 20.000, 50.000).</div>
         <div>• <b>Wajib persetujuan Admin (ACC)</b> sebelum mengambil fisik uang.</div>
@@ -7227,6 +7242,11 @@ function notifyAdminBonusWithdrawalRequest(req = {}) {
 }
 
 window.submitStaffWithdrawBonusRequest = async () => {
+  if (!isStaffBiasa()) return toast("Fitur withdrawal bonus hanya untuk karyawan Staff Biasa", true);
+  const txCount = todayTx().length;
+  if (txCount < 2) {
+    return toast(`Gagal: Wajib minimal 2 transaksi hari ini untuk withdrawal bonus (Saat ini: ${txCount} transaksi)`, true);
+  }
   const input = document.getElementById("swbAmountInput");
   const amount = Number(String(input?.value || "").replace(/\D/g, ""));
   const note = String(document.getElementById("swbNoteInput")?.value || "").trim();
