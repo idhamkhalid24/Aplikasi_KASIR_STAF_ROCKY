@@ -1171,6 +1171,7 @@ function normalizeBonusSettings(data = {}) {
     closingDeadlineHour: parts.hour,
     closingDeadlineMinute: parts.minute,
     closingDeadlineMinutes: parts.hour * 60 + parts.minute,
+    withdrawalBonusEnabled: d.withdrawalBonusEnabled !== false,
   };
 }
 function closingDeadlineTimeLabel(source = null) {
@@ -3498,6 +3499,24 @@ function startStaffRealtime() {
       (err) =>
         console.warn(
           "Pending QRIS realtime gagal",
+          err?.code || err?.message || err,
+        ),
+    ),
+  );
+
+  staffRealtimeUnsubs.push(
+    onSnapshot(
+      doc(db, "closings", "__bonus_settings"),
+      (snap) => {
+        if (snap.exists()) {
+          state.data.bonus = normalizeBonusSettings(snap.data() || {});
+          if (typeof debouncedRender === "function") debouncedRender();
+          else render();
+        }
+      },
+      (err) =>
+        console.warn(
+          "Bonus settings realtime gagal",
           err?.code || err?.message || err,
         ),
     ),
@@ -7040,15 +7059,29 @@ function staffBonusWithdrawalAction(cashFisik, sisaBonus) {
     `;
   }
 
+  // 1. Cek izin Admin Universal: Jika admin menonaktifkan, tombol tidak akan muncul sama sekali
+  if (state.data.bonus?.withdrawalBonusEnabled === false) {
+    return "";
+  }
+
   const cashData = getTodayCashFisik();
   const cFisik = Number(cashData?.cashFisik ?? cashFisik ?? 0);
 
-  // Tombol Withdrawal Bonus HANYA muncul jika cash fisik uang laci minimal Rp 500.000
+  // 2. Tombol Withdrawal Bonus HANYA muncul jika cash fisik uang laci minimal Rp 500.000
   if (cFisik < 500000) {
     return "";
   }
 
-  // Juga tidak muncul jika kembalian besok sudah dibuat hari ini
+  // 3. Juga tidak muncul jika Admin sudah menarik uang laci / menyisihkan kembalian hari ini
+  const adminWithdrawnToday = (state.data.drawerWithdrawals || []).some(w => {
+    if (w.deleted || w.status === "deleted") return false;
+    return String(w.dateKey || "").slice(0, 10) === todayKey();
+  });
+  if (adminWithdrawnToday) {
+    return "";
+  }
+
+  // 4. Juga tidak muncul jika kembalian besok sudah dibuat hari ini oleh staf
   const activeReserve = state.staffChangeReserve && !state.staffChangeReserve.deleted && (state.staffChangeReserve.date_key === todayKey() || !state.staffChangeReserve.date_key) && Number(state.staffChangeReserve.amount || 0) > 0;
   if (activeReserve) {
     return "";
@@ -7066,10 +7099,22 @@ function staffBonusWithdrawalAction(cashFisik, sisaBonus) {
 
 window.openStaffWithdrawBonusModal = async () => {
   if (!isStaffBiasa()) return toast("Fitur withdrawal bonus hanya untuk karyawan Staff Biasa", true);
-  const txCount = todayTx().length;
+  if (state.data.bonus?.withdrawalBonusEnabled === false) {
+    return toast("Fitur withdrawal bonus sedang dinonaktifkan oleh Admin.", true);
+  }
+  const myTodaySales = todayTotal();
   const sName = state.user?.name || "Anda";
-  if (txCount < 2) {
-    return toast(`Belum bisa ditarik! Wajib minimal sudah melakukan 2 transaksi hari ini (Saat ini ${sName} baru ${txCount} transaksi)`, true);
+  if (myTodaySales < 100000) {
+    return toast(`Belum bisa ditarik! Wajib minimal pendapatan pribadi sudah mencapai Rp 100.000 hari ini (Saat ini ${sName} baru Rp ${rp(myTodaySales)})`, true);
+  }
+
+  // Cek apakah Admin sudah menarik laci hari ini
+  const adminWithdrawnToday = (state.data.drawerWithdrawals || []).some(w => {
+    if (w.deleted || w.status === "deleted") return false;
+    return String(w.dateKey || "").slice(0, 10) === todayKey();
+  });
+  if (adminWithdrawnToday) {
+    return toast("Withdrawal bonus tidak bisa dilakukan karena Admin sudah menarik uang laci / menyisihkan kembalian hari ini!", true);
   }
 
   // Cek apakah sudah ada staf yang membuat kembalian besok
@@ -7130,8 +7175,8 @@ window.openStaffWithdrawBonusModal = async () => {
           <i class="fas fa-shield-halved" style="color:#2563eb"></i> Ketentuan Penarikan:
         </div>
         <div>• Khusus untuk karyawan <b>Staff Biasa</b>.</div>
-        <div>• Wajib minimal sudah melakukan <b>2 transaksi</b> hari ini.</div>
-        <div>• Tidak bisa ditarik jika sudah ada yang membuat <b>kembalian besok</b>.</div>
+        <div>• Pendapatan pribadi hari ini wajib minimal <b>Rp 100.000</b> (Saat ini: Rp ${rp(myTodaySales)}).</div>
+        <div>• Tidak bisa ditarik jika Admin/Staf sudah menarik laci atau menyisihkan <b>kembalian besok</b>.</div>
         <div>• Minimal uang laci bersih harus tersisa <b>Rp 500.000</b>.</div>
         <div>• Nominal <b>wajib bulat ribuan</b> (misal: 10.000, 20.000, 50.000).</div>
         <div>• <b>Wajib persetujuan Admin (ACC)</b> sebelum mengambil fisik uang.</div>
@@ -7305,9 +7350,21 @@ function notifyAdminBonusWithdrawalRequest(req = {}) {
 
 window.submitStaffWithdrawBonusRequest = async () => {
   if (!isStaffBiasa()) return toast("Fitur withdrawal bonus hanya untuk karyawan Staff Biasa", true);
-  const txCount = todayTx().length;
-  if (txCount < 2) {
-    return toast(`Gagal: Wajib minimal 2 transaksi hari ini untuk withdrawal bonus (Saat ini: ${txCount} transaksi)`, true);
+  if (state.data.bonus?.withdrawalBonusEnabled === false) {
+    return toast("Gagal: Fitur withdrawal bonus sedang dinonaktifkan oleh Admin!", true);
+  }
+  const myTodaySales = todayTotal();
+  if (myTodaySales < 100000) {
+    return toast(`Gagal: Pendapatan pribadi Anda hari ini belum mencapai Rp 100.000 (Saat ini: Rp ${rp(myTodaySales)})`, true);
+  }
+
+  // Cek apakah Admin sudah menarik laci hari ini
+  const adminWithdrawnToday = (state.data.drawerWithdrawals || []).some(w => {
+    if (w.deleted || w.status === "deleted") return false;
+    return String(w.dateKey || "").slice(0, 10) === todayKey();
+  });
+  if (adminWithdrawnToday) {
+    return toast("Gagal: Admin sudah menarik uang laci / menyisihkan kembalian hari ini, penarikan bonus tidak bisa dilakukan!", true);
   }
 
   // Cek apakah sudah ada staf yang membuat kembalian besok
