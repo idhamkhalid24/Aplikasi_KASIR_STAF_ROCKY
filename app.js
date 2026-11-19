@@ -7036,7 +7036,7 @@ function staffBonusWithdrawalAction(cashFisik, sisaBonus) {
     return `
       <div style="margin-top:12px;">
         <button type="button" class="btn full" style="width:100%;background:linear-gradient(135deg, #059669, #10b981);color:#fff;font-weight:900;font-size:13px;padding:11px 16px;border-radius:12px;box-shadow:0 3px 12px rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:center;gap:8px;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;" onclick="openStaffWithdrawBonusModal()" ${canWithdraw ? '' : 'disabled style="opacity:0.6;background:#64748b;box-shadow:none;"'}>
-          <i class="fas fa-money-bill-wave"></i> Tarik Bonus dari Laci
+          <i class="fas fa-money-bill-wave"></i> Withdrawal Bonus
         </button>
       </div>
     `;
@@ -7138,7 +7138,7 @@ window.openStaffWithdrawBonusModal = () => {
     </div>
   `;
 
-  modal("Tarik Bonus dari Laci", body, actions);
+  modal("Withdrawal Bonus", body, actions);
 };
 
 window.handleSwbAmountInput = (input) => {
