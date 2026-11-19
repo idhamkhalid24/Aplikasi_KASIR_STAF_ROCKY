@@ -7068,50 +7068,6 @@ function opsAccessCard() {
   `;
 }
 
-function home() {
-  const fastCashierBanner = state.user?.fastCashierAccess === true
-    ? `<div class="card" style="margin-top:8px;background:linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);border:1.5px solid #fdba74;cursor:pointer;padding:12px 14px;border-radius:16px;" onclick="go('fast_cashier')">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-          <div style="display:flex;align-items:center;gap:10px;">
-            <div style="width:38px;height:38px;border-radius:12px;background:#ea580c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:900;"><i class="fas fa-bolt"></i></div>
-            <div>
-              <div style="font-weight:800;font-size:13.5px;color:#9a3412;">Mode Kasir Cepat (Toko Ramai)</div>
-              <div style="font-size:11px;color:#c2410c;">Input nominal langsung tanpa isi nama barang</div>
-            </div>
-          </div>
-          <button type="button" class="btn" style="background:#ea580c;color:#fff;font-weight:800;font-size:11.5px;padding:6px 12px;border-radius:10px;border:none;">Buka ⚡</button>
-        </div>
-      </div>`
-    : "";
-
-  const tx = todayTx(),
-    a = todayAtt(),
-    c = todayClosing(),
-    emptyStockCard = ""; // HIDDEN sementara (belum butuh) - fitur & fungsi stockEmptyQuickCard() tetap ada, tinggal balikin ke: stockEmptyQuickCard();
-  
-  const currentUserKey = key(state.user?.username);
-  const isExcluded = ["risma", "aji", "admin"].includes(currentUserKey);
-  
-  let warningIcon = "";
-  if (!isExcluded) {
-    if (tx.length === 0) {
-      warningIcon = `<style>@keyframes zzzFloat { 0%, 100% { transform: translateY(0) scale(1) rotate(-5deg); } 50% { transform: translateY(-4px) scale(1.05) rotate(5deg); } }</style><div style="position:absolute; bottom:12px; right:15px; font-size:32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: zzzFloat 3s ease-in-out infinite;" title="Masih Molor (Belum Penglaris)">😴</div>`;
-    } else if (tx.length === 1) {
-      warningIcon = `<style>@keyframes bangunGirang { 0%, 100% { transform: translateY(0) scale(1); } 20% { transform: translateY(-6px) scale(1.15) rotate(-10deg); } 40% { transform: translateY(0) scale(1.1) rotate(10deg); } 60% { transform: translateY(-3px) scale(1.1) rotate(-5deg); } 80% { transform: translateY(0) scale(1.05) rotate(5deg); } }</style><div style="position:absolute; bottom:12px; right:15px; font-size:32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: bangunGirang 1.5s ease-in-out infinite;" title="Alhamdulillah Penglaris!">🤑</div>`;
-    } else if (isLowestStaffToday()) {
-      warningIcon = `<svg viewBox="0 0 24 24" width="45" height="45" fill="none" stroke="#ff4d4d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="position:absolute; bottom:12px; right:15px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: pulse 2s infinite;"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline><polyline points="17 18 23 18 23 12"></polyline></svg>`;
-    }
-  }
-
-  if (isDaily()) {
-    const todayTxBonus = txBonusSum(tx),
-      manualToday = manualBonusToday(),
-      todayBonus = todayTxBonus + manualToday;
-    const syncBtnDaily = `<button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi" style="top:26px; right:16px; background:rgba(255,255,255,0.2); border-color:rgba(255,255,255,0.4); color:#fff;"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring" style="border-color:#fff"></span></button>`;
-    const manualCard = "";
-    page.innerHTML = `${top("Mode Harian", state.user?.name || "Karyawan Harian")}${trialModeCard()}${fastCashierBanner}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}<div class="hero daily-income-hero" style="position:relative">${syncBtnDaily}<div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} • ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat" style="position:relative"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard("daily")}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
-    return;
-  }
 function hasStaffWithdrawnBonusToday() {
   const current = key(state.user?.username || "");
   if (!current) return false;
@@ -7759,6 +7715,52 @@ window.cancelStaffWithdrawBonusRequest = async (id) => {
     showLoad(false);
   }
 };
+
+
+function home() {
+  const fastCashierBanner = state.user?.fastCashierAccess === true
+    ? `<div class="card" style="margin-top:8px;background:linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);border:1.5px solid #fdba74;cursor:pointer;padding:12px 14px;border-radius:16px;" onclick="go('fast_cashier')">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:38px;height:38px;border-radius:12px;background:#ea580c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:900;"><i class="fas fa-bolt"></i></div>
+            <div>
+              <div style="font-weight:800;font-size:13.5px;color:#9a3412;">Mode Kasir Cepat (Toko Ramai)</div>
+              <div style="font-size:11px;color:#c2410c;">Input nominal langsung tanpa isi nama barang</div>
+            </div>
+          </div>
+          <button type="button" class="btn" style="background:#ea580c;color:#fff;font-weight:800;font-size:11.5px;padding:6px 12px;border-radius:10px;border:none;">Buka ⚡</button>
+        </div>
+      </div>`
+    : "";
+
+  const tx = todayTx(),
+    a = todayAtt(),
+    c = todayClosing(),
+    emptyStockCard = ""; // HIDDEN sementara (belum butuh) - fitur & fungsi stockEmptyQuickCard() tetap ada, tinggal balikin ke: stockEmptyQuickCard();
+  
+  const currentUserKey = key(state.user?.username);
+  const isExcluded = ["risma", "aji", "admin"].includes(currentUserKey);
+  
+  let warningIcon = "";
+  if (!isExcluded) {
+    if (tx.length === 0) {
+      warningIcon = `<style>@keyframes zzzFloat { 0%, 100% { transform: translateY(0) scale(1) rotate(-5deg); } 50% { transform: translateY(-4px) scale(1.05) rotate(5deg); } }</style><div style="position:absolute; bottom:12px; right:15px; font-size:32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: zzzFloat 3s ease-in-out infinite;" title="Masih Molor (Belum Penglaris)">😴</div>`;
+    } else if (tx.length === 1) {
+      warningIcon = `<style>@keyframes bangunGirang { 0%, 100% { transform: translateY(0) scale(1); } 20% { transform: translateY(-6px) scale(1.15) rotate(-10deg); } 40% { transform: translateY(0) scale(1.1) rotate(10deg); } 60% { transform: translateY(-3px) scale(1.1) rotate(-5deg); } 80% { transform: translateY(0) scale(1.05) rotate(5deg); } }</style><div style="position:absolute; bottom:12px; right:15px; font-size:32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: bangunGirang 1.5s ease-in-out infinite;" title="Alhamdulillah Penglaris!">🤑</div>`;
+    } else if (isLowestStaffToday()) {
+      warningIcon = `<svg viewBox="0 0 24 24" width="45" height="45" fill="none" stroke="#ff4d4d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="position:absolute; bottom:12px; right:15px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: pulse 2s infinite;"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline><polyline points="17 18 23 18 23 12"></polyline></svg>`;
+    }
+  }
+
+  if (isDaily()) {
+    const todayTxBonus = txBonusSum(tx),
+      manualToday = manualBonusToday(),
+      todayBonus = todayTxBonus + manualToday;
+    const syncBtnDaily = `<button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi" style="top:26px; right:16px; background:rgba(255,255,255,0.2); border-color:rgba(255,255,255,0.4); color:#fff;"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring" style="border-color:#fff"></span></button>`;
+    const manualCard = "";
+    page.innerHTML = `${top("Mode Harian", state.user?.name || "Karyawan Harian")}${trialModeCard()}${fastCashierBanner}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}<div class="hero daily-income-hero" style="position:relative">${syncBtnDaily}<div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} • ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat" style="position:relative"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard("daily")}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
+    return;
+  }
 
   const mainLabel = c ? "Closing Hari Ini" : "Absen Hari Ini";
   const mainValue = c ? closingTimeText(c) : a ? timeID(ms(a)) : "--:--";
@@ -12976,39 +12978,43 @@ function renderFastCashier() {
 
   // Cek apakah withdraw bonus aktif / pending untuk staf biasa sebagai penanda logo "W"
   let fastCashierWithdrawBadge = "";
-  if (isStaffBiasa()) {
-    const pendingReq = (state.data.manual || []).find(b => 
-      !deleted(b) && 
-      isBonusWithdrawalRow(b) && 
-      canReceiveManualBonusRow(b) && 
-      recordMatchesCurrentAccount(b) && 
-      b.status === "pending"
-    );
+  try {
+    if (typeof isStaffBiasa === "function" && isStaffBiasa()) {
+      const pendingReq = (state.data?.manual || []).find(b => 
+        !deleted(b) && 
+        isBonusWithdrawalRow(b) && 
+        canReceiveManualBonusRow(b) && 
+        recordMatchesCurrentAccount(b) && 
+        b.status === "pending"
+      );
 
-    if (pendingReq) {
-      fastCashierWithdrawBadge = `
-        <button type="button" onclick="event.stopPropagation(); openStaffWithdrawBonusStatusModal('${pendingReq.id}')" title="Withdraw Bonus Menunggu ACC Admin (Klik untuk Cek Status)" style="position:absolute; top:7px; right:8px; width:25px; height:25px; border-radius:50%; background:linear-gradient(135deg, #d97706, #f59e0b); color:#fff; border:1.5px solid #fff; box-shadow:0 2px 6px rgba(245,158,11,0.5); display:inline-flex; align-items:center; justify-content:center; font-size:12.5px; font-weight:950; cursor:pointer; padding:0; z-index:3; animation:pulse 2s infinite; -webkit-tap-highlight-color:transparent;">
-          W
-        </button>
-      `;
-    } else {
-      const isWdEnabled = state.data.bonus?.withdrawalBonusEnabled !== false;
-      const notWithdrawnToday = !hasStaffWithdrawnBonusToday();
-      const hasEnoughCash = cashFisik >= 500000;
-      const adminNotWithdrawn = !(state.data.drawerWithdrawals || []).some(w => {
-        if (w.deleted || w.status === "deleted") return false;
-        return String(w.dateKey || "").slice(0, 10) === todayKey();
-      });
-      const noReserve = !(state.staffChangeReserve && !state.staffChangeReserve.deleted && (state.staffChangeReserve.date_key === todayKey() || !state.staffChangeReserve.date_key) && Number(state.staffChangeReserve.amount || 0) > 0);
-
-      if (isWdEnabled && notWithdrawnToday && hasEnoughCash && adminNotWithdrawn && noReserve) {
+      if (pendingReq) {
         fastCashierWithdrawBadge = `
-          <button type="button" onclick="event.stopPropagation(); openStaffWithdrawBonusModal()" title="Tombol Withdraw Bonus Aktif (Klik untuk Tarik Bonus)" style="position:absolute; top:7px; right:8px; width:25px; height:25px; border-radius:50%; background:linear-gradient(135deg, #059669, #10b981); color:#fff; border:1.5px solid #fff; box-shadow:0 2px 6px rgba(16,185,129,0.5); display:inline-flex; align-items:center; justify-content:center; font-size:12.5px; font-weight:950; cursor:pointer; padding:0; z-index:3; animation:pulse 2s infinite; -webkit-tap-highlight-color:transparent;">
+          <button type="button" onclick="event.stopPropagation(); openStaffWithdrawBonusStatusModal('${pendingReq.id}')" title="Withdraw Bonus Menunggu ACC Admin (Klik untuk Cek Status)" style="position:absolute; top:7px; right:8px; width:25px; height:25px; border-radius:50%; background:linear-gradient(135deg, #d97706, #f59e0b); color:#fff; border:1.5px solid #fff; box-shadow:0 2px 6px rgba(245,158,11,0.5); display:inline-flex; align-items:center; justify-content:center; font-size:12.5px; font-weight:950; cursor:pointer; padding:0; z-index:3; animation:pulse 2s infinite; -webkit-tap-highlight-color:transparent;">
             W
           </button>
         `;
+      } else {
+        const isWdEnabled = state.data?.bonus?.withdrawalBonusEnabled !== false;
+        const notWithdrawnToday = typeof hasStaffWithdrawnBonusToday === "function" ? !hasStaffWithdrawnBonusToday() : true;
+        const hasEnoughCash = Number(cashFisik || 0) >= 500000;
+        const adminNotWithdrawn = !(state.data?.drawerWithdrawals || []).some(w => {
+          if (w.deleted || w.status === "deleted") return false;
+          return String(w.dateKey || "").slice(0, 10) === todayKey();
+        });
+        const noReserve = !(state.staffChangeReserve && !state.staffChangeReserve.deleted && (state.staffChangeReserve.date_key === todayKey() || !state.staffChangeReserve.date_key) && Number(state.staffChangeReserve.amount || 0) > 0);
+
+        if (isWdEnabled && notWithdrawnToday && hasEnoughCash && adminNotWithdrawn && noReserve) {
+          fastCashierWithdrawBadge = `
+            <button type="button" onclick="event.stopPropagation(); openStaffWithdrawBonusModal()" title="Tombol Withdraw Bonus Aktif (Klik untuk Tarik Bonus)" style="position:absolute; top:7px; right:8px; width:25px; height:25px; border-radius:50%; background:linear-gradient(135deg, #059669, #10b981); color:#fff; border:1.5px solid #fff; box-shadow:0 2px 6px rgba(16,185,129,0.5); display:inline-flex; align-items:center; justify-content:center; font-size:12.5px; font-weight:950; cursor:pointer; padding:0; z-index:3; animation:pulse 2s infinite; -webkit-tap-highlight-color:transparent;">
+              W
+            </button>
+          `;
+        }
       }
     }
+  } catch (err) {
+    console.error("Gagal cek status withdraw bonus badge:", err);
   }
 
   page.innerHTML = `
