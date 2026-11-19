@@ -7686,17 +7686,14 @@ window.openStaffWithdrawBonusStatusModal = (id) => {
 
   if (status === "pending") {
     body = `
-      <div style="padding:16px 0;text-align:center;">
-        <div style="width:64px;height:64px;border-radius:50%;background:#fef3c7;border:3px solid #f59e0b;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;animation:pulse 2s infinite;">
-          <i class="fas fa-hourglass-half" style="font-size:28px;color:#d97706;"></i>
-        </div>
+      <div style="padding:14px 0 8px;text-align:center;">
         <div style="font-size:16px;font-weight:900;color:#92400e;">MENUNGGU PERSETUJUAN ADMIN</div>
         <div style="font-size:24px;font-weight:950;color:#1e293b;margin:10px 0;">Rp ${rp(amount)}</div>
         <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:12px;padding:12px;margin:12px 0;text-align:left;font-size:12px;color:#78350f;line-height:1.5;">
           <div style="font-weight:850;display:flex;align-items:center;gap:6px;margin-bottom:4px;">
             <i class="fas fa-triangle-exclamation" style="color:#d97706"></i> PERHATIAN PENTING:
           </div>
-          <div>Jangan mengambil uang tunai dari laci kasir sebelum permintaan ini di-ACC oleh Admin. Notifikasi telah dikirim ke Bos Idham.</div>
+          <div>Jangan mengambil uang tunai dari laci kasir sebelum permintaan ini di-ACC oleh Admin.</div>
         </div>
         <div style="font-size:11px;color:#64748b;">Catatan: <i>${esc(note)}</i></div>
       </div>
