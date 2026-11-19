@@ -3507,9 +3507,30 @@ function startStaffRealtime() {
   staffRealtimeUnsubs.push(
     onSnapshot(
       doc(db, "closings", "__bonus_settings"),
-      (snap) => {
+      async (snap) => {
         if (snap.exists()) {
           state.data.bonus = normalizeBonusSettings(snap.data() || {});
+          // Sinkronisasi realtime jika admin ACC / tolak / hapus penarikan bonus laci
+          if (window.loadAdminTransactions) await window.loadAdminTransactions().catch(() => {});
+          try {
+            const u = key(state.user?.username), d = todayKey();
+            if (u && d) {
+              const freshManual = await getDocs(
+                query(
+                  collection(db, "manualBonuses"),
+                  where("user", "==", u),
+                  where("dateKey", "==", d),
+                  limit(LIMITS.manualToday || 80)
+                )
+              );
+              const freshRows = sortDesc(
+                freshManual.docs
+                  .map(x => ({ ...(x.data() || {}), id: x.id, docId: x.id }))
+                  .filter(b => !deleted(b) && b.status !== 'deleted' && b.status !== 'canceled')
+              );
+              replaceScopedRows("manual", freshRows, t => key(t.user) === u && manualBonusDate(t) === d);
+            }
+          } catch(eM) {}
           if (typeof debouncedRender === "function") debouncedRender();
           else render();
         }
@@ -3999,7 +4020,11 @@ async function loadStaffData(opts = {}) {
     state.data.tx = sortDesc(txRows);
     seedTxProductHistoryFromTx(state.data.tx);
     state.data.att = dedupeAttendanceRows(attRows);
-    state.data.manual = sortDesc(manualRows.filter((b) => !deleted(b)));
+    state.data.manual = sortDesc(
+      manualRows.filter(
+        (b) => !deleted(b) && b.status !== "deleted" && b.status !== "canceled",
+      ),
+    );
     state.data.unlockRequests = sortDesc(unlockRows.filter((r) => !deleted(r)));
     state.data.closings = sortDesc(
       closingRows.filter(
@@ -4130,6 +4155,9 @@ async function loadStaffData(opts = {}) {
   await loadDailyTargetData({ apply: true });
   if (typeof loadStaffChangeReserve === "function") {
     await loadStaffChangeReserve().catch(() => null);
+  }
+  if (window.loadAdminTransactions) {
+    await window.loadAdminTransactions().catch(() => null);
   }
   if (!silent) showLoad(false);
   render();
@@ -4503,6 +4531,8 @@ function bonusWithdrawalRowsForMonth(month = monthKey()) {
         recordMatchesCurrentAccount(b) &&
         manualBonusMonth(b) === m &&
         bonusWithdrawalAmount(b) > 0 &&
+        b.status !== "deleted" &&
+        b.status !== "canceled" &&
         (b.status === "approved" || b.status === "success" || (!b.status && b.source === BONUS_WITHDRAWAL_TYPE)),
     ),
   );
@@ -6824,7 +6854,14 @@ function getTodayCashFisik() {
 
   // Hitung juga penarikan bonus laci yang sudah di-ACC hari ini dari state.data.manual
   const todayApprovedBonusWd = (state.data.manual || [])
-    .filter(b => !deleted(b) && isBonusWithdrawalRow(b) && manualBonusDate(b) === todayKey() && (b.status === "approved" || b.status === "success" || (!b.status && b.source === BONUS_WITHDRAWAL_TYPE)))
+    .filter(b => {
+      if (deleted(b)) return false;
+      if (!isBonusWithdrawalRow(b)) return false;
+      if (manualBonusDate(b) !== todayKey()) return false;
+      const st = String(b.status || "").toLowerCase().trim();
+      if (st === "deleted" || st === "canceled" || st === "rejected") return false;
+      return st === "approved" || st === "success" || (!b.status && b.source === BONUS_WITHDRAWAL_TYPE);
+    })
     .reduce((sum, b) => sum + bonusWithdrawalAmount(b), 0);
   const finalBonusWdTotal = Math.max(bonusTotal, todayApprovedBonusWd);
 
@@ -6947,6 +6984,8 @@ window.openStaffBonusWdListModal = () => {
   const allWd = (state.data.manual || []).filter(b => 
     !deleted(b) && 
     isBonusWithdrawalRow(b) && 
+    b.status !== "deleted" &&
+    b.status !== "canceled" &&
     recordMatchesCurrentAccount(b) && 
     (manualBonusDate(b) === d || String(b.dateKey || "").slice(0, 10) === d)
   );
