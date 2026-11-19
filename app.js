@@ -7040,6 +7040,20 @@ function staffBonusWithdrawalAction(cashFisik, sisaBonus) {
     `;
   }
 
+  const cashData = getTodayCashFisik();
+  const cFisik = Number(cashData?.cashFisik ?? cashFisik ?? 0);
+
+  // Tombol Withdrawal Bonus HANYA muncul jika cash fisik uang laci minimal Rp 500.000
+  if (cFisik < 500000) {
+    return "";
+  }
+
+  // Juga tidak muncul jika kembalian besok sudah dibuat hari ini
+  const activeReserve = state.staffChangeReserve && !state.staffChangeReserve.deleted && (state.staffChangeReserve.date_key === todayKey() || !state.staffChangeReserve.date_key) && Number(state.staffChangeReserve.amount || 0) > 0;
+  if (activeReserve) {
+    return "";
+  }
+
   // Tombol Withdrawal Bonus khusus karyawan Staff Biasa
   return `
     <div style="margin-top:12px;">
