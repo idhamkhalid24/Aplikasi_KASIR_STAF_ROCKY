@@ -1325,6 +1325,7 @@ function showLoad(v) {
   state.busy = !!v;
   $("loading").style.display = v ? "flex" : "none";
 }
+const setBusy = (v) => showLoad(v);
 function toast(msg) {
   const t = $("toast");
   t.textContent = msg;
@@ -7074,7 +7075,7 @@ window.openStaffWithdrawBonusModal = () => {
     return openStaffWithdrawBonusStatusModal(pending.id);
   }
 
-  const maxSafeWithdrawal = Math.min(sisaBonus, Math.max(0, cashFisik - 500000));
+  const maxSafeWithdrawal = Math.floor(Math.min(sisaBonus, Math.max(0, cashFisik - 500000)) / 1000) * 1000;
 
   const body = `
     <div style="padding:10px 0 16px;">
@@ -7207,7 +7208,7 @@ window.submitStaffWithdrawBonusRequest = async () => {
   const staffName = state.user?.name || state.user?.username || "Staff";
   const uname = key(state.user?.username);
 
-  setBusy(true);
+  showLoad(true);
   try {
     const reqId = "bonuswd_req_" + Date.now();
     const nowMs = Date.now();
@@ -7260,16 +7261,19 @@ window.submitStaffWithdrawBonusRequest = async () => {
 ⏳ *STATUS: MENUNGGU PERSETUJUAN ADMIN*
 _Karyawan belum mengambil uang laci sebelum disetujui Admin._`;
 
-    sendTelegramMessage(tgMsg).catch(() => {});
+    try {
+      sendTelegramMessage(tgMsg).catch(() => {});
+    } catch(eTg) {}
 
     closeModal(true);
     toast("Permintaan tarik bonus terkirim ke Admin!");
     openStaffWithdrawBonusStatusModal(reqId);
     render();
   } catch (e) {
-    toast("Gagal mengajukan tarik bonus: " + (e.message || e), true);
+    console.error("Gagal submit tarik bonus:", e);
+    toast("Gagal mengajukan tarik bonus: " + (e.message || e));
   } finally {
-    setBusy(false);
+    showLoad(false);
   }
 };
 
@@ -7360,7 +7364,7 @@ window.cancelStaffWithdrawBonusRequest = async (id) => {
   const conf = confirm("Batalkan permintaan tarik bonus ini?");
   if (!conf) return;
 
-  setBusy(true);
+  showLoad(true);
   try {
     const patch = {
       deleted: true,
@@ -7376,9 +7380,9 @@ window.cancelStaffWithdrawBonusRequest = async (id) => {
     toast("Permintaan tarik bonus dibatalkan");
     render();
   } catch (e) {
-    toast("Gagal membatalkan: " + (e.message || e), true);
+    toast("Gagal membatalkan: " + (e.message || e));
   } finally {
-    setBusy(false);
+    showLoad(false);
   }
 };
 
