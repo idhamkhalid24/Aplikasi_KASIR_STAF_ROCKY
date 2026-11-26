@@ -5576,10 +5576,12 @@ function txItem(t) {
     ? `<div class="tx-card-actions">${detailBtn}<span class="pill amber">Sync</span></div>`
     : `<div class="tx-card-actions">${detailBtn}${printBtn}${deleteBtn}</div>`;
 
+  const isPpob = t.isPpob === true || t.type === "ppob" || t.category === "ppob" || t.source === "ppob_transaction";
   const method = normalizeTxPaymentMethod(t.paymentMethod || t.paymentLabel);
-  const label = txPaymentLabel(method);
+  const label = isPpob ? "PPOB" : txPaymentLabel(method);
+  const badgeCls = isPpob ? "ppob" : (method === "cash" ? "cash" : "qris");
   const payBadge = label
-    ? `<span class="tx-pay-badge ${method === "cash" ? "cash" : "qris"}">${esc(label)}</span>`
+    ? `<span class="tx-pay-badge ${badgeCls}"${isPpob ? ' style="background:#2563eb!important;color:#fff!important;border:none!important;"' : ""}>${esc(label)}</span>`
     : "";
   const rawStaffName = String(t.name || t.user || "-").trim();
   const staffNameLabel = isRismaSpecialUser() ? `<span style="font-weight:700;color:var(--text);margin-right:4px;">${esc(rawStaffName)}</span><span style="color:var(--muted);margin-right:4px;">•</span>` : "";
@@ -13399,7 +13401,7 @@ const DEFAULT_PPOB_PRODUCTS = [
 ];
 
 let ppobState = {
-  tab: "pulsa", // 'pulsa', 'pln', 'emoney'
+  tab: "pulsa", // 'pulsa', 'data', 'pln', 'emoney'
   brand: "TELKOMSEL",
   customerNo: "",
   products: [...DEFAULT_PPOB_PRODUCTS],
@@ -13638,6 +13640,16 @@ async function loadPpobProductsFromDb() {
   }
 }
 
+function getPpobCategoryTab(p) {
+  const cat = String(p?.category || "").toLowerCase().trim();
+  const brand = String(p?.brand || "").toUpperCase().trim();
+  if (cat === "pln" || cat.includes("pln") || cat.includes("listrik") || brand === "PLN") return "pln";
+  if (cat === "e-money" || cat === "emoney" || cat.includes("money") || cat.includes("wallet")) return "emoney";
+  if (cat === "data" || cat.includes("data") || cat.includes("kuota") || cat.includes("internet") || (cat.includes("paket") && !cat.includes("pulsa"))) return "data";
+  if (cat === "pulsa" || cat.includes("pulsa")) return "pulsa";
+  return "other";
+}
+
 function renderPpob() {
   if (state.user?.ppobAccess !== true && state.user?.fastCashierAccess !== true) {
     toast("Anda tidak memiliki izin transaksi PPOB dari Admin!");
@@ -13650,7 +13662,8 @@ function renderPpob() {
     if (listEl) updatePpobProductList();
   });
 
-  const detectedBrand = ppobState.tab === "pulsa" ? detectPhoneBrand(ppobState.customerNo) : "";
+  const isPhoneTab = ppobState.tab === "pulsa" || ppobState.tab === "data";
+  const detectedBrand = isPhoneTab ? detectPhoneBrand(ppobState.customerNo) : "";
   const currentBrand = detectedBrand || ppobState.brand;
 
   page.innerHTML = `
@@ -13666,16 +13679,20 @@ function renderPpob() {
       </div>
 
       <!-- Kategori Nav -->
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;">
-        <button class="btn ${ppobState.tab === 'pulsa' ? 'primary' : ''}" style="${ppobState.tab === 'pulsa' ? 'background:#059669;color:#fff;' : 'background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);'}font-weight:800;border-radius:12px;padding:10px 4px;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:4px;" onclick="switchPpobTab('pulsa')">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px;">
+        <button class="btn ${ppobState.tab === 'pulsa' ? 'primary' : ''}" style="${ppobState.tab === 'pulsa' ? 'background:#059669;color:#fff;border:none;' : 'background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);'}font-weight:800;border-radius:12px;padding:10px 4px;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:4px;" onclick="switchPpobTab('pulsa')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
-          <span>Pulsa & Data</span>
+          <span>Pulsa</span>
         </button>
-        <button class="btn ${ppobState.tab === 'pln' ? 'primary' : ''}" style="${ppobState.tab === 'pln' ? 'background:#059669;color:#fff;' : 'background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);'}font-weight:800;border-radius:12px;padding:10px 4px;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:4px;" onclick="switchPpobTab('pln')">
+        <button class="btn ${ppobState.tab === 'data' ? 'primary' : ''}" style="${ppobState.tab === 'data' ? 'background:#059669;color:#fff;border:none;' : 'background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);'}font-weight:800;border-radius:12px;padding:10px 4px;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:4px;" onclick="switchPpobTab('data')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+          <span>Paket Data</span>
+        </button>
+        <button class="btn ${ppobState.tab === 'pln' ? 'primary' : ''}" style="${ppobState.tab === 'pln' ? 'background:#059669;color:#fff;border:none;' : 'background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);'}font-weight:800;border-radius:12px;padding:10px 4px;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:4px;" onclick="switchPpobTab('pln')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 4 14 11 14 11 22 20 10 13 10 13 2"></polygon></svg>
           <span>Token PLN</span>
         </button>
-        <button class="btn ${ppobState.tab === 'emoney' ? 'primary' : ''}" style="${ppobState.tab === 'emoney' ? 'background:#059669;color:#fff;' : 'background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);'}font-weight:800;border-radius:12px;padding:10px 4px;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:4px;" onclick="switchPpobTab('emoney')">
+        <button class="btn ${ppobState.tab === 'emoney' ? 'primary' : ''}" style="${ppobState.tab === 'emoney' ? 'background:#059669;color:#fff;border:none;' : 'background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);'}font-weight:800;border-radius:12px;padding:10px 4px;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:4px;" onclick="switchPpobTab('emoney')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
           <span>E-Money</span>
         </button>
@@ -13697,14 +13714,17 @@ function renderPpob() {
         </div>
       </div>
 
-      <!-- Brand Filter (Khusus E-Money atau manual) -->
+      <!-- Brand Filter (Khusus E-Money) -->
       ${ppobState.tab === 'emoney' ? `
-        <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;">
-          ${['DANA', 'GO PAY', 'OVO', 'SHOPEE PAY'].map(b => `
-            <button id="btnPpobBrand_${b.replace(/\s+/g, '')}" class="btn" onclick="selectPpobBrand('${b}')" style="${ppobState.brand === b ? 'background:#059669;color:#fff;' : 'background:var(--card,#fff);border:1px solid var(--line);'}border-radius:10px;font-size:11.5px;font-weight:800;padding:6px 12px;white-space:nowrap;">
-              ${b}
-            </button>
-          `).join('')}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+          ${PPOB_EMONEY_BRANDS.map(meta => {
+            const active = ppobState.brand === meta.key;
+            return `
+              <button id="btnPpobBrand_${meta.id}" class="btn" onclick="selectPpobBrand('${meta.key}')" style="${getPpobEmoneyBtnStyle(meta, active)}">
+                <span>${meta.label}</span>
+              </button>
+            `;
+          }).join('')}
         </div>
       ` : ''}
 
@@ -13722,6 +13742,7 @@ function switchPpobTab(tabName) {
   ppobState.tab = tabName;
   if (tabName === "pln") ppobState.brand = "PLN";
   else if (tabName === "emoney") ppobState.brand = "DANA";
+  else ppobState.brand = detectPhoneBrand(ppobState.customerNo) || "";
   renderPpob();
 }
 
@@ -13731,7 +13752,7 @@ function handlePpobCustomerInput(val) {
   const clearBtn = document.getElementById("btnPpobClearInput");
   if (clearBtn) clearBtn.style.display = ppobState.customerNo ? "inline-flex" : "none";
 
-  if (ppobState.tab === "pulsa") {
+  if (ppobState.tab === "pulsa" || ppobState.tab === "data") {
     const detected = detectPhoneBrand(ppobState.customerNo);
     ppobState.brand = detected;
     const badgeEl = document.getElementById("ppobDetectedBadge");
@@ -13756,25 +13777,31 @@ function clearPpobCustomerInput() {
   if (clearBtn) clearBtn.style.display = "none";
   const badgeEl = document.getElementById("ppobDetectedBadge");
   if (badgeEl) badgeEl.style.display = "none";
-  if (ppobState.tab === "pulsa") ppobState.brand = "";
+  if (ppobState.tab === "pulsa" || ppobState.tab === "data") ppobState.brand = "";
   updatePpobProductList();
+}
+
+const PPOB_EMONEY_BRANDS = [
+  { key: 'DANA', id: 'DANA', label: 'DANA', color: '#118EEA', bgSoft: '#eff8ff', borderSoft: '#bae6fd', shadow: 'rgba(17,142,234,0.28)' },
+  { key: 'GO PAY', id: 'GOPAY', label: 'GoPay', color: '#00AA13', bgSoft: '#f0fdf4', borderSoft: '#bbf7d0', shadow: 'rgba(0,170,19,0.28)' },
+  { key: 'OVO', id: 'OVO', label: 'OVO', color: '#4C3494', bgSoft: '#f5f3ff', borderSoft: '#ddd6fe', shadow: 'rgba(76,52,148,0.28)' },
+  { key: 'SHOPEE PAY', id: 'SHOPEEPAY', label: 'ShopeePay', color: '#EE4D2D', bgSoft: '#fff7ed', borderSoft: '#fed7aa', shadow: 'rgba(238,77,45,0.28)' }
+];
+
+function getPpobEmoneyBtnStyle(meta, active) {
+  const base = 'display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;padding:10px 12px;border-radius:14px;font-size:14px;font-weight:800;letter-spacing:0.2px;transition:all 0.15s ease;';
+  if (active) {
+    return `${base}background:${meta.color};color:#fff;border:2px solid ${meta.color};box-shadow:0 4px 12px ${meta.shadow};`;
+  }
+  return `${base}background:${meta.bgSoft};color:${meta.color};border:1.5px solid ${meta.borderSoft};box-shadow:none;`;
 }
 
 function selectPpobBrand(brandName) {
   ppobState.brand = brandName;
-  ['DANA', 'GO PAY', 'OVO', 'SHOPEE PAY'].forEach(b => {
-    const btn = document.getElementById(`btnPpobBrand_${b.replace(/\s+/g, '')}`);
-    if (btn) {
-      if (b === brandName) {
-        btn.style.background = "#059669";
-        btn.style.color = "#fff";
-        btn.style.border = "none";
-      } else {
-        btn.style.background = "var(--card,#fff)";
-        btn.style.color = "inherit";
-        btn.style.border = "1px solid var(--line)";
-      }
-    }
+  PPOB_EMONEY_BRANDS.forEach(meta => {
+    const btn = document.getElementById(`btnPpobBrand_${meta.id}`);
+    if (!btn) return;
+    btn.setAttribute('style', getPpobEmoneyBtnStyle(meta, meta.key === brandName));
   });
   updatePpobProductList();
 }
@@ -13787,16 +13814,19 @@ function getFilteredPpobProducts() {
 
   return list.filter(p => {
     const pBrand = String(p.brand || "").toUpperCase().trim();
-    const pCat = String(p.category || "").toLowerCase().trim();
+    const pCatTab = getPpobCategoryTab(p);
 
     if (tab === "pulsa") {
       const activeBrand = (detectPhoneBrand(ppobState.customerNo) || ppobState.brand || "").toUpperCase().trim();
-      return (pCat === "pulsa" || pCat === "data") && (!activeBrand || pBrand === activeBrand);
+      return pCatTab === "pulsa" && (!activeBrand || pBrand === activeBrand);
+    } else if (tab === "data") {
+      const activeBrand = (detectPhoneBrand(ppobState.customerNo) || ppobState.brand || "").toUpperCase().trim();
+      return pCatTab === "data" && (!activeBrand || pBrand === activeBrand);
     } else if (tab === "pln") {
-      return pCat === "pln" || pBrand === "PLN";
+      return pCatTab === "pln";
     } else if (tab === "emoney") {
       const activeBrand = String(ppobState.brand || "DANA").toUpperCase().trim();
-      return (pCat === "e-money" || pCat === "emoney") && (!activeBrand || pBrand === activeBrand);
+      return pCatTab === "emoney" && (!activeBrand || pBrand === activeBrand);
     }
     return true;
   }).sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
@@ -13808,11 +13838,12 @@ function updatePpobProductList() {
 
   const items = getFilteredPpobProducts();
   if (!items.length) {
+    const noDataInCatalog = ppobState.tab === "data" && !(ppobState.products || []).some(p => getPpobCategoryTab(p) === "data");
     container.innerHTML = `
       <div class="card pad" style="text-align:center;color:var(--muted);padding:24px;">
         <i class="fas fa-box-open" style="font-size:28px;margin-bottom:8px;opacity:0.5;"></i>
-        <div style="font-weight:700;">Tidak ada produk untuk pilihan ini</div>
-        <div style="font-size:11px;margin-top:4px;">Pastikan nomor tujuan sesuai atau pilih operator lain</div>
+        <div style="font-weight:700;">${noDataInCatalog ? 'Belum ada produk Paket Data' : 'Tidak ada produk untuk pilihan ini'}</div>
+        <div style="font-size:11px;margin-top:4px;">${noDataInCatalog ? 'Minta Admin klik Tarik Produk Digiflazz di menu Kelola Harga PPOB' : 'Pastikan nomor tujuan sesuai atau pilih operator lain'}</div>
       </div>
     `;
     return;
@@ -13867,10 +13898,9 @@ function confirmPpobOrder(sku) {
   const product = ppobState.products.find(p => p.sku === sku);
   if (!product) return toast("Produk tidak ditemukan");
   if (!ppobState.customerNo || ppobState.customerNo.length < 4) {
-    return toast("Nomor tujuan belum diisi dengan benar!", true);
+    return toast("Nomor tujuan belum diisi dengan benar!");
   }
 
-  const modalPrice = Number(product.price || 0);
   const sellPrice = getPpobSellPrice(product);
   const isPln = product.category === 'PLN';
   const labelTujuan = isPln ? 'No. Meter / ID Pelanggan' : 'Nomor HP Pelanggan';
@@ -13893,17 +13923,9 @@ function confirmPpobOrder(sku) {
         </div>
       </div>
 
-      <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:12px;padding:10px 12px;font-size:11px;color:#92400e;line-height:1.4;display:flex;gap:8px;align-items:flex-start;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-        <div><b>Pilih Jalur Transaksi:</b><br>Klik <b>Tes Simulasi</b> untuk mencoba alur & cetak struk tanpa potong saldo riil, atau <b>Bayar Real</b> jika sudah ada deposit di Digiflazz.</div>
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">
-        <button type="button" class="btn" style="background:#0284c7;color:#fff;font-weight:800;border-radius:12px;padding:12px;font-size:12.5px;display:flex;align-items:center;justify-content:center;gap:6px;" onclick="closeModal(); processPpobTransaction('${esc(sku)}', ${sellPrice}, true)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"></path><path d="M8.5 2h7"></path><path d="M7 16h10"></path></svg> Tes Simulasi
-        </button>
-        <button type="button" class="btn" style="background:#059669;color:#fff;font-weight:800;border-radius:12px;padding:12px;font-size:12.5px;display:flex;align-items:center;justify-content:center;gap:6px;" onclick="closeModal(); processPpobTransaction('${esc(sku)}', ${sellPrice}, false)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg> Bayar Real
+      <div style="margin-top:4px;">
+        <button type="button" class="btn" style="width:100%;background:#059669;color:#fff;font-weight:800;border-radius:12px;padding:13px 14px;font-size:13.5px;display:flex;align-items:center;justify-content:center;gap:8px;letter-spacing:0.3px;" onclick="promptPpobPinAndPay('${esc(sku)}', ${sellPrice})">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg> BAYAR PPOB
         </button>
       </div>
     </div>
@@ -13912,7 +13934,97 @@ function confirmPpobOrder(sku) {
   modal("Konfirmasi Pembelian PPOB", body, "", "");
 }
 
-async function processPpobTransaction(sku, sellPrice, isTesting = true) {
+function promptPpobPinAndPay(sku, sellPrice) {
+  const product = ppobState.products.find(p => p.sku === sku);
+  if (!product) return toast("Produk tidak ditemukan");
+
+  const userName = state.user?.name || state.user?.username || "Kasir";
+  const body = `
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:11px 13px;">
+        <div style="font-size:11px;font-weight:800;color:#065f46;text-transform:uppercase;">Verifikasi Kasir: ${esc(userName)}</div>
+        <div style="font-size:13.5px;font-weight:800;color:#0f172a;margin-top:3px;">${esc(product.name)} &bull; ${esc(ppobState.customerNo)}</div>
+        <div style="font-size:14px;font-weight:900;color:#059669;margin-top:2px;">Total: Rp ${rp(sellPrice)}</div>
+      </div>
+
+      <div>
+        <label style="font-size:11.5px;font-weight:800;color:var(--muted);display:block;margin-bottom:6px;text-transform:uppercase;">Masukkan PIN Akun Anda</label>
+        <input id="ppobConfirmPinInput" class="input" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Masukkan PIN Anda" style="width:100%;box-sizing:border-box;font-size:18px;font-weight:900;text-align:center;letter-spacing:4px;border-radius:12px;padding:12px;" onkeydown="if(event.key==='Enter'){event.preventDefault();submitPpobPinConfirm('${esc(sku)}', ${sellPrice});}">
+        <div id="ppobPinErrorMsg" style="display:none;margin-top:6px;font-size:11.5px;font-weight:800;color:#dc2626;text-align:center;"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:8px;margin-top:2px;">
+        <button type="button" class="btn" style="background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;font-weight:800;border-radius:12px;padding:12px;font-size:13px;" onclick="confirmPpobOrder('${esc(sku)}')">
+          Kembali
+        </button>
+        <button id="btnSubmitPpobPin" type="button" class="btn" style="background:#059669;color:#fff;font-weight:800;border-radius:12px;padding:12px;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;" onclick="submitPpobPinConfirm('${esc(sku)}', ${sellPrice})">
+          Konfirmasi &amp; Bayar
+        </button>
+      </div>
+    </div>
+  `;
+
+  modal("Masukkan PIN User", body, "", "");
+  setTimeout(() => {
+    const inp = document.getElementById("ppobConfirmPinInput");
+    if (inp) inp.focus();
+  }, 120);
+}
+
+async function submitPpobPinConfirm(sku, sellPrice) {
+  const inp = document.getElementById("ppobConfirmPinInput");
+  const errEl = document.getElementById("ppobPinErrorMsg");
+  const btn = document.getElementById("btnSubmitPpobPin");
+  const enteredPin = String(inp?.value || "").trim();
+
+  const showPinError = (msg) => {
+    if (errEl) {
+      errEl.textContent = msg;
+      errEl.style.display = "block";
+    }
+    toast(msg);
+    if (inp) {
+      inp.value = "";
+      inp.focus();
+    }
+  };
+
+  if (!enteredPin) {
+    return showPinError("PIN wajib diisi!");
+  }
+
+  let expectedPin = String(state.user?.pin || "").trim();
+  const uname = cleanUser(state.user?.username || "");
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Memeriksa PIN...";
+  }
+  try {
+    if (uname) {
+      const uSnap = await getDocFromServer(doc(db, "users", uname)).catch(() => null);
+      if (uSnap && uSnap.exists()) {
+        const srvPin = String(uSnap.data()?.pin || "").trim();
+        if (srvPin) expectedPin = srvPin;
+      }
+    }
+  } catch (e) {}
+  finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Konfirmasi & Bayar";
+    }
+  }
+
+  if (!expectedPin || enteredPin !== expectedPin) {
+    return showPinError("PIN salah! Gunakan PIN akun Anda sendiri.");
+  }
+
+  closeModal();
+  await processPpobTransaction(sku, sellPrice, false);
+}
+
+async function processPpobTransaction(sku, sellPrice, isTesting = false) {
   const product = ppobState.products.find(p => p.sku === sku);
   if (!product) return toast("Produk tidak ditemukan");
 
@@ -14196,6 +14308,8 @@ window.handlePpobCustomerInput = handlePpobCustomerInput;
 window.clearPpobCustomerInput = clearPpobCustomerInput;
 window.selectPpobBrand = selectPpobBrand;
 window.confirmPpobOrder = confirmPpobOrder;
+window.promptPpobPinAndPay = promptPpobPinAndPay;
+window.submitPpobPinConfirm = submitPpobPinConfirm;
 window.processPpobTransaction = processPpobTransaction;
 window.renderPpob = renderPpob;
 
