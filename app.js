@@ -5625,14 +5625,13 @@ function openTxDetail(id) {
   const pay = txPaymentLabel(t.paymentMethod || t.paymentLabel) || "Cash";
   const cashier = esc(t.name || state.user?.name || t.user || "Staff");
   const meta = `${cashier} · ${timeID(ms(t))} · ${esc(pay)}`;
-  const isPpob = t.isPpob === true || t.type === "ppob" || t.category === "ppob";
+  const isPpob = isPpobTx(t);
   const productHtml = isPpob
     ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;">
         <div style="font-size:11px;color:var(--muted);font-weight:700;">PRODUK DIGITAL (PPOB)</div>
         <div style="font-size:13.5px;font-weight:800;color:var(--text-main);margin-top:2px;">${esc(t.product_name || t.note)}</div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">No Tujuan: <b style="color:var(--text-main);">${esc(t.customer_no || '-')}</b></div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">SN / Token: <b style="color:#059669;word-break:break-all;">${esc(t.sn || '-')}</b></div>
-        <div style="font-size:11px;color:#64748b;margin-top:4px;">*Penjualan PPOB non-bonus staf</div>
       </div>`
     : txProductDetailHtml(t.note || "Transaksi");
   const body = `<div class="tx-admin-detail">
@@ -8533,7 +8532,6 @@ function home() {
         </div>
         <div style="text-align:right;">
           <div style="font-size:14px;font-weight:900;color:#15803d;">Rp ${rp(ppobTotalAmount)}</div>
-          <div style="font-size:10px;color:var(--muted);font-weight:700;">(Non-Bonus Staf)</div>
         </div>
       </div>` : "";
 
@@ -13712,25 +13710,9 @@ function renderPpob() {
         </button>
       </div>
 
-      <!-- Input Nomor Tujuan -->
-      <div class="card pad" style="border-radius:16px;border:1.5px solid var(--line,#e2e8f0);box-shadow:0 4px 12px rgba(0,0,0,0.03);margin-bottom:14px;">
-        <div style="font-size:12px;font-weight:800;color:var(--muted,#64748b);margin-bottom:6px;">
-          ${ppobState.tab === 'pln' ? 'NOMOR METER / ID PELANGGAN PLN' : (ppobState.tab === 'emoney' ? 'NOMOR HP AKUN E-MONEY' : 'NOMOR HP PELANGGAN')}
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <input id="ppobCustomerInput" class="input" type="tel" inputmode="numeric" placeholder="${ppobState.tab === 'pln' ? 'Contoh: 14012345678' : 'Contoh: 081234567890'}" value="${esc(ppobState.customerNo)}" oninput="handlePpobCustomerInput(this.value)" style="font-size:16px;font-weight:800;letter-spacing:1px;border-radius:12px;">
-          <button id="btnPpobClearInput" class="btn" onclick="clearPpobCustomerInput()" style="background:#f1f5f9;border-radius:10px;padding:10px 14px;display:${ppobState.customerNo ? 'inline-flex' : 'none'};align-items:center;justify-content:center;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-          </button>
-        </div>
-        <div id="ppobDetectedBadge" style="margin-top:8px;display:${detectedBrand ? 'flex' : 'none'};align-items:center;gap:6px;font-size:11.5px;font-weight:800;color:#059669;">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> Operator terdeteksi: <span class="chip" style="background:rgba(5,150,105,0.15);color:#059669;padding:2px 8px;">${detectedBrand}</span>
-        </div>
-      </div>
-
-      <!-- Brand Filter (Khusus E-Money) -->
+      <!-- Brand Filter (Khusus E-Money: langkah 1 pilih e-wallet dulu) -->
       ${ppobState.tab === 'emoney' ? `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
           ${PPOB_EMONEY_BRANDS.map(meta => {
             const active = ppobState.brand === meta.key;
             return `
@@ -13739,6 +13721,28 @@ function renderPpob() {
               </button>
             `;
           }).join('')}
+        </div>
+      ` : ''}
+
+      <!-- Input Nomor Tujuan (Untuk E-Money baru muncul setelah pilih e-wallet) -->
+      ${(ppobState.tab !== 'emoney' || ppobState.brand) ? `
+        <div class="card pad" style="border-radius:16px;border:1.5px solid var(--line,#e2e8f0);box-shadow:0 4px 12px rgba(0,0,0,0.03);margin-bottom:14px;">
+          <div style="font-size:12px;font-weight:800;color:var(--muted,#64748b);margin-bottom:8px;">
+            ${ppobState.tab === 'pln'
+              ? 'NOMOR METER / ID PELANGGAN PLN'
+              : (ppobState.tab === 'emoney'
+                ? `NOMOR HP AKUN ${esc((PPOB_EMONEY_BRANDS.find(m => m.key === ppobState.brand)?.label || ppobState.brand || 'E-MONEY').toUpperCase())}`
+                : 'NOMOR HP PELANGGAN')}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input id="ppobCustomerInput" class="input" type="tel" inputmode="numeric" placeholder="" value="${esc(ppobState.customerNo)}" oninput="handlePpobCustomerInput(this.value)" style="width:100%;box-sizing:border-box;min-height:58px;padding:12px 16px;font-size:24px;font-weight:900;letter-spacing:1.5px;border-radius:14px;">
+            <button id="btnPpobClearInput" class="btn" onclick="clearPpobCustomerInput()" style="background:#f1f5f9;border-radius:14px;min-height:58px;padding:0 14px;display:${ppobState.customerNo ? 'inline-flex' : 'none'};align-items:center;justify-content:center;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+          <div id="ppobDetectedBadge" style="margin-top:8px;display:${detectedBrand ? 'flex' : 'none'};align-items:center;gap:6px;font-size:11.5px;font-weight:800;color:#059669;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> Operator terdeteksi: <span class="chip" style="background:rgba(5,150,105,0.15);color:#059669;padding:2px 8px;">${detectedBrand}</span>
+          </div>
         </div>
       ` : ''}
 
@@ -13753,15 +13757,27 @@ function renderPpob() {
 }
 
 function switchPpobTab(tabName) {
+  const prevTab = ppobState.tab;
   ppobState.tab = tabName;
-  if (tabName === "pln") ppobState.brand = "PLN";
-  else if (tabName === "emoney") ppobState.brand = "DANA";
-  else ppobState.brand = detectPhoneBrand(ppobState.customerNo) || "";
+  if (tabName === "pln") {
+    ppobState.brand = "PLN";
+    if (prevTab !== "pln") ppobState.customerNo = "";
+  } else if (tabName === "emoney") {
+    ppobState.brand = "";
+    ppobState.customerNo = "";
+  } else {
+    if (prevTab === "pln" || prevTab === "emoney") ppobState.customerNo = "";
+    ppobState.brand = detectPhoneBrand(ppobState.customerNo) || "";
+  }
   renderPpob();
 }
 
 function handlePpobCustomerInput(val) {
   ppobState.customerNo = String(val || "").replace(/[^0-9]/g, "");
+  const inputEl = document.getElementById("ppobCustomerInput");
+  if (inputEl && inputEl.value !== ppobState.customerNo) {
+    inputEl.value = ppobState.customerNo;
+  }
 
   const clearBtn = document.getElementById("btnPpobClearInput");
   if (clearBtn) clearBtn.style.display = ppobState.customerNo ? "inline-flex" : "none";
@@ -13812,12 +13828,11 @@ function getPpobEmoneyBtnStyle(meta, active) {
 
 function selectPpobBrand(brandName) {
   ppobState.brand = brandName;
-  PPOB_EMONEY_BRANDS.forEach(meta => {
-    const btn = document.getElementById(`btnPpobBrand_${meta.id}`);
-    if (!btn) return;
-    btn.setAttribute('style', getPpobEmoneyBtnStyle(meta, meta.key === brandName));
-  });
-  updatePpobProductList();
+  renderPpob();
+  setTimeout(() => {
+    const inputEl = document.getElementById("ppobCustomerInput");
+    if (inputEl) inputEl.focus();
+  }, 40);
 }
 
 function getFilteredPpobProducts() {
@@ -13839,8 +13854,9 @@ function getFilteredPpobProducts() {
     } else if (tab === "pln") {
       return pCatTab === "pln";
     } else if (tab === "emoney") {
-      const activeBrand = String(ppobState.brand || "DANA").toUpperCase().trim();
-      return pCatTab === "emoney" && (!activeBrand || pBrand === activeBrand);
+      const activeBrand = String(ppobState.brand || "").toUpperCase().trim();
+      if (!activeBrand || String(ppobState.customerNo || "").length < 10) return false;
+      return pCatTab === "emoney" && pBrand === activeBrand;
     }
     return true;
   }).sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
@@ -13849,6 +13865,29 @@ function getFilteredPpobProducts() {
 function updatePpobProductList() {
   const container = document.getElementById("ppobProductList");
   if (!container) return;
+
+  if (ppobState.tab === "emoney") {
+    if (!ppobState.brand) {
+      container.innerHTML = `
+        <div class="card pad" style="text-align:center;color:var(--muted);padding:22px 16px;">
+          <div style="font-weight:800;font-size:13.5px;color:var(--text-main,#0f172a);">Pilih E-Wallet terlebih dahulu</div>
+          <div style="font-size:11.5px;margin-top:4px;">Klik salah satu pilihan DANA, GoPay, OVO, atau ShopeePay di atas</div>
+        </div>
+      `;
+      return;
+    }
+    const digitLen = String(ppobState.customerNo || "").length;
+    if (digitLen < 10) {
+      const brandLabel = PPOB_EMONEY_BRANDS.find(m => m.key === ppobState.brand)?.label || ppobState.brand;
+      container.innerHTML = `
+        <div class="card pad" style="text-align:center;color:var(--muted);padding:22px 16px;">
+          <div style="font-weight:800;font-size:13.5px;color:var(--text-main,#0f172a);">Masukkan nomor HP akun ${esc(brandLabel)}</div>
+          <div style="font-size:11.5px;margin-top:4px;">Produk ${esc(brandLabel)} akan muncul setelah nomor minimal 10 digit (${digitLen}/10)</div>
+        </div>
+      `;
+      return;
+    }
+  }
 
   const items = getFilteredPpobProducts();
   if (!items.length) {
