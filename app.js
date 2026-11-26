@@ -3767,6 +3767,26 @@ function startStaffRealtime() {
 
   staffRealtimeUnsubs.push(
     onSnapshot(
+      doc(db, "closings", "__ppob_balance"),
+      (snap) => {
+        if (typeof applyPpobBalanceDoc === "function") applyPpobBalanceDoc("digiflazz", snap);
+      },
+      (err) => handleRealtimeError("Saldo Digiflazz", err),
+    ),
+  );
+
+  staffRealtimeUnsubs.push(
+    onSnapshot(
+      doc(db, "closings", "__zidstore_balance"),
+      (snap) => {
+        if (typeof applyPpobBalanceDoc === "function") applyPpobBalanceDoc("zidstore", snap);
+      },
+      (err) => handleRealtimeError("Saldo ZidStore", err),
+    ),
+  );
+
+  staffRealtimeUnsubs.push(
+    onSnapshot(
       doc(db, "ops_access", `ops_access_${u}`),
       (snap) => {
         const wasGranted = !!state.data.opsAccess;
@@ -13522,6 +13542,7 @@ let ppobState = {
   markup: 1500,
   roundUpTo: 1000,
   customPrices: {},
+  balance: null,
   ppobPublicIp: "157.85.208.5",
   ppobLocalIp: "192.168.1.100",
   ppobPort: 3001
@@ -13769,6 +13790,7 @@ function renderPpob() {
   }
 
   syncStaffPublicIpToDb(false);
+  loadPpobAndZidBalancesFromDb();
   loadPpobProductsFromDb().then(() => {
     const listEl = document.getElementById("ppobProductList");
     if (listEl) updatePpobProductList();
@@ -13780,7 +13802,7 @@ function renderPpob() {
 
   page.innerHTML = `
     <div class="wrap ppob-wrap" style="padding-bottom:90px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
         <button class="btn" onclick="go('ppob_hub')" style="background:var(--bg,#f8fafc);border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:8px 12px;display:flex;align-items:center;gap:6px;font-weight:700;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg> Kembali
         </button>
@@ -13789,6 +13811,8 @@ function renderPpob() {
         </div>
         <div style="width:70px;"></div>
       </div>
+
+      <div id="ppobPageBalanceBar">${renderProviderBalanceBar("digiflazz")}</div>
 
       <!-- Kategori Nav -->
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px;">
@@ -13810,19 +13834,8 @@ function renderPpob() {
         </button>
       </div>
 
-      <!-- Brand Filter (Khusus E-Money: langkah 1 pilih e-wallet dulu) -->
-      ${ppobState.tab === 'emoney' ? `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-          ${PPOB_EMONEY_BRANDS.map(meta => {
-            const active = ppobState.brand === meta.key;
-            return `
-              <button type="button" id="btnPpobBrand_${meta.id}" onclick="selectPpobBrand('${meta.key}')" style="${getPpobEmoneyBtnStyle(meta, active)}">
-                <span>${meta.label}</span>
-              </button>
-            `;
-          }).join('')}
-        </div>
-      ` : ''}
+      <!-- Brand Filter (Khusus E-Money: langkah 1 pilih e-wallet dulu, card lain auto-hide setelah dipilih) -->
+      ${ppobState.tab === 'emoney' ? renderEmoneyBrandPicker(PPOB_EMONEY_BRANDS, ppobState.brand, 'selectPpobBrand') : ''}
 
       <!-- Input Nomor Tujuan (Untuk E-Money baru muncul setelah pilih e-wallet) -->
       ${(ppobState.tab !== 'emoney' || ppobState.brand) ? `
@@ -13926,13 +13939,39 @@ function getPpobEmoneyBtnStyle(meta, active) {
   return `${base}background:${meta.bgSoft};color:${meta.color};border:1.5px solid ${meta.borderSoft};box-shadow:none;`;
 }
 
+function renderEmoneyBrandPicker(brands, selectedKey, selectFnName) {
+  if (selectedKey) {
+    const meta = brands.find(m => m.key === selectedKey) || { label: selectedKey, color: "#059669", bgSoft: "#ecfdf5", borderSoft: "#86efac" };
+    return `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:${meta.bgSoft};border:1.5px solid ${meta.borderSoft};border-radius:16px;padding:10px 14px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+          <span style="display:inline-flex;align-items:center;justify-content:center;padding:6px 14px;border-radius:11px;background:${meta.color};color:#fff;font-size:14px;font-weight:900;letter-spacing:0.3px;">${esc(meta.label)}</span>
+          <span style="font-size:11.5px;font-weight:700;color:${meta.color};">E-Wallet dipilih</span>
+        </div>
+        <button type="button" onclick="${selectFnName}('')" style="background:#fff;border:1px solid ${meta.borderSoft};color:${meta.color};border-radius:10px;padding:7px 11px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap;">Ganti E-Wallet</button>
+      </div>
+    `;
+  }
+  return `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+      ${brands.map(meta => `
+        <button type="button" id="btnPpobBrand_${meta.id}" onclick="${selectFnName}('${meta.key}')" style="${getPpobEmoneyBtnStyle(meta, false)}">
+          <span>${esc(meta.label)}</span>
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
 function selectPpobBrand(brandName) {
   ppobState.brand = brandName;
   renderPpob();
-  setTimeout(() => {
-    const inputEl = document.getElementById("ppobCustomerInput");
-    if (inputEl) inputEl.focus();
-  }, 40);
+  if (brandName) {
+    setTimeout(() => {
+      const inputEl = document.getElementById("ppobCustomerInput");
+      if (inputEl) inputEl.focus();
+    }, 40);
+  }
 }
 
 function getFilteredPpobProducts() {
@@ -14298,6 +14337,15 @@ async function processPpobTransaction(sku, sellPrice, isTesting = false) {
         }
         throw new Error(realMessage || "Transaksi ditolak oleh provider Digiflazz");
       }
+      const lastSaldo = typeof d.buyer_last_saldo === "number"
+        ? d.buyer_last_saldo
+        : (typeof d.deposit === "number" ? d.deposit : null);
+      if (lastSaldo !== null) {
+        const balPayload = { id: "__ppob_balance", deposit: Number(lastSaldo), updatedAtMs: Date.now() };
+        ppobState.balance = balPayload;
+        setDoc(doc(db, "closings", "__ppob_balance"), balPayload, { merge: true }).catch(() => {});
+        if (typeof updatePpobBalanceUi === "function") updatePpobBalanceUi();
+      }
     }
 
     const now = Date.now();
@@ -14411,6 +14459,9 @@ async function processPpobTransaction(sku, sellPrice, isTesting = false) {
       notifyAdminNewTransaction(txPayload);
       if (typeof kirimNotifWaBos === "function") kirimNotifWaBos(sellPrice, txPayload.note, kasirName);
     }
+    if (typeof loadPpobAndZidBalancesFromDb === "function") {
+      setTimeout(() => loadPpobAndZidBalancesFromDb(true), 1500);
+    }
     if (typeof playSuccessSound === "function") playSuccessSound();
 
     // 5. Format teks struk
@@ -14477,8 +14528,134 @@ let zidState = {
   markup: 1500,
   roundUpTo: 1000,
   customPrices: {},
+  balance: null,
   loading: false
 };
+
+let lastPpobBalanceFetchAtMs = 0;
+
+function applyPpobBalanceDoc(provider, snap) {
+  const isDigi = provider === "digiflazz";
+  const nextVal = (snap && snap.exists && snap.exists() && typeof snap.data()?.deposit === "number")
+    ? {
+        loaded: true,
+        deposit: Number(snap.data().deposit),
+        updatedAtMs: Number(snap.data().updatedAtMs || 0),
+        username: String(snap.data().username || "")
+      }
+    : { loaded: true, missing: true, deposit: null, updatedAtMs: 0, username: "" };
+  if (isDigi) ppobState.balance = nextVal;
+  else zidState.balance = nextVal;
+  updatePpobBalanceUi();
+}
+
+async function loadPpobAndZidBalancesFromDb(force = false) {
+  const nowMs = Date.now();
+  if (!force && lastPpobBalanceFetchAtMs && (nowMs - lastPpobBalanceFetchAtMs < 15000)) {
+    return;
+  }
+  lastPpobBalanceFetchAtMs = nowMs;
+  try {
+    const [digiSnap, zidSnap] = await Promise.all([
+      getDocFromServer(doc(db, "closings", "__ppob_balance")).catch(() => null),
+      getDocFromServer(doc(db, "closings", "__zidstore_balance")).catch(() => null)
+    ]);
+    if (digiSnap) applyPpobBalanceDoc("digiflazz", digiSnap);
+    else if (!ppobState.balance) ppobState.balance = { loaded: true, missing: true, deposit: null, updatedAtMs: 0 };
+    if (zidSnap) applyPpobBalanceDoc("zidstore", zidSnap);
+    else if (!zidState.balance) zidState.balance = { loaded: true, missing: true, deposit: null, updatedAtMs: 0 };
+    updatePpobBalanceUi();
+  } catch (e) {}
+}
+
+function getProviderBalanceView(provider) {
+  const isDigi = provider === "digiflazz";
+  const info = isDigi ? ppobState.balance : zidState.balance;
+  const label = isDigi ? "Saldo Digiflazz" : "Saldo ZidStore";
+  if (!info) {
+    return { label, amountText: "Memuat...", timeText: "", status: "loading", isEmpty: false };
+  }
+  if (info.missing || typeof info.deposit !== "number") {
+    return { label, amountText: "Belum dicek Admin", timeText: "", status: "missing", isEmpty: false };
+  }
+  const dep = Number(info.deposit || 0);
+  const timeText = info.updatedAtMs
+    ? new Date(info.updatedAtMs).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
+    : "";
+  const status = dep <= 0 ? "empty" : (dep < 25000 ? "low" : "ok");
+  return {
+    label,
+    amountText: `Rp ${rp(dep)}`,
+    timeText,
+    status,
+    isEmpty: dep <= 0
+  };
+}
+
+function renderProviderBalanceBadge(provider) {
+  const isDigi = provider === "digiflazz";
+  const v = getProviderBalanceView(provider);
+  let bg = isDigi ? "rgba(5,150,105,0.12)" : "rgba(79,70,229,0.12)";
+  let border = isDigi ? "rgba(5,150,105,0.3)" : "rgba(79,70,229,0.28)";
+  let color = isDigi ? "#065f46" : "#3730a3";
+  if (v.status === "empty") {
+    bg = "#fef2f2";
+    border = "#fca5a5";
+    color = "#b91c1c";
+  } else if (v.status === "low") {
+    bg = "#fffbeb";
+    border = "#fcd34d";
+    color = "#b45309";
+  } else if (v.status === "loading" || v.status === "missing") {
+    bg = "rgba(255,255,255,0.75)";
+    border = "rgba(148,163,184,0.4)";
+    color = "#475569";
+  }
+  const warnSuffix = v.status === "empty" ? " (Kosong)" : (v.status === "low" ? " (Menipis)" : "");
+  const timeSuffix = v.timeText ? ` &bull; ${v.timeText}` : "";
+  return `<div style="display:inline-flex;align-items:center;gap:5px;margin-top:6px;padding:4px 9px;border-radius:9px;background:${bg};border:1px solid ${border};color:${color};font-size:11px;font-weight:800;max-width:100%;">
+    <span>Saldo: ${v.amountText}${warnSuffix}</span>${timeSuffix ? `<span style="font-weight:600;opacity:0.8;">${timeSuffix}</span>` : ""}
+  </div>`;
+}
+
+function renderProviderBalanceBar(provider) {
+  const isDigi = provider === "digiflazz";
+  const v = getProviderBalanceView(provider);
+  let bg = isDigi ? "#ecfdf5" : "#eef2ff";
+  let border = isDigi ? "#86efac" : "#a5b4fc";
+  let color = isDigi ? "#065f46" : "#312e81";
+  let valColor = isDigi ? "#047857" : "#3730a3";
+  if (v.status === "empty") {
+    bg = "#fef2f2";
+    border = "#fca5a5";
+    color = "#991b1b";
+    valColor = "#b91c1c";
+  } else if (v.status === "low") {
+    bg = "#fffbeb";
+    border = "#fcd34d";
+    color = "#92400e";
+    valColor = "#b45309";
+  }
+  const badgeText = v.status === "empty" ? "Saldo kosong" : (v.status === "low" ? "Saldo menipis" : (v.timeText ? `Update ${v.timeText}` : "Ikut Admin Only"));
+  return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:${bg};border:1.5px solid ${border};border-radius:12px;padding:8px 12px;margin-bottom:12px;">
+    <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+      <span style="font-size:11px;font-weight:800;color:${color};">${v.label}:</span>
+      <span class="num" style="font-size:13.5px;font-weight:900;color:${valColor};">${v.amountText}</span>
+    </div>
+    <span style="font-size:10px;font-weight:800;color:${color};background:rgba(255,255,255,0.75);padding:2px 8px;border-radius:999px;white-space:nowrap;">${badgeText}</span>
+  </div>`;
+}
+
+function updatePpobBalanceUi() {
+  const hubDigi = document.getElementById("hubDigiBalanceBadge");
+  if (hubDigi) hubDigi.innerHTML = renderProviderBalanceBadge("digiflazz");
+  const hubZid = document.getElementById("hubZidBalanceBadge");
+  if (hubZid) hubZid.innerHTML = renderProviderBalanceBadge("zidstore");
+  const ppobBar = document.getElementById("ppobPageBalanceBar");
+  if (ppobBar) ppobBar.innerHTML = renderProviderBalanceBar("digiflazz");
+  const zidBar = document.getElementById("zidPageBalanceBar");
+  if (zidBar) zidBar.innerHTML = renderProviderBalanceBar("zidstore");
+}
 
 function hasDigiflazzAccess() {
   return Boolean(state.user && state.user.ppobAccess === true);
@@ -14494,6 +14671,8 @@ function renderPpobHub() {
     toast("Anda tidak memiliki izin transaksi PPOB dari Admin!");
     return go("home");
   }
+
+  loadPpobAndZidBalancesFromDb();
 
   const allToday = todayTx();
   const digitalItems = allToday
@@ -14537,6 +14716,7 @@ function renderPpobHub() {
                   <span class="chip" style="background:#059669;color:#fff;font-size:9px;padding:2px 7px;border:none;">UTAMA</span>
                 </div>
                 <div style="font-size:11.5px;color:#047857;margin-top:3px;">Pulsa, Paket Data, Token PLN, E-Money</div>
+                <div id="hubDigiBalanceBadge">${renderProviderBalanceBadge("digiflazz")}</div>
               </div>
             </div>
             <button type="button" class="btn" style="background:#059669;color:#fff;font-weight:800;font-size:12px;padding:9px 14px;border-radius:12px;border:none;flex-shrink:0;">Buka &rarr;</button>
@@ -14555,6 +14735,7 @@ function renderPpobHub() {
                   <span class="chip" style="background:#ea580c;color:#fff;font-size:9px;padding:2px 7px;border:none;">AKRAB &amp; PPOB</span>
                 </div>
                 <div style="font-size:11.5px;color:#4338ca;margin-top:3px;">XL/AXIS Akrab${akrabCount ? ` (${akrabCount} paket ready)` : ""}, Pulsa, Data, E-Money, Game</div>
+                <div id="hubZidBalanceBadge">${renderProviderBalanceBadge("zidstore")}</div>
               </div>
             </div>
             <button type="button" class="btn" style="background:#4f46e5;color:#fff;font-weight:800;font-size:12px;padding:9px 14px;border-radius:12px;border:none;flex-shrink:0;">Buka &rarr;</button>
@@ -14691,6 +14872,7 @@ function renderZidStore() {
     return go("home");
   }
 
+  loadPpobAndZidBalancesFromDb();
   loadZidStoreCatalogFromDb().then(() => {
     if (state.page === "zidstore") updateZidStoreList();
     if (zidState.tab === "akrab") refreshZidStoreAkrabStockLive();
@@ -14708,7 +14890,7 @@ function renderZidStore() {
 
   page.innerHTML = `
     <div class="wrap ppob-wrap" style="padding-bottom:90px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
         <button class="btn" onclick="go('ppob_hub')" style="background:var(--bg,#f8fafc);border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:8px 12px;display:flex;align-items:center;gap:6px;font-weight:700;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg> Kembali
         </button>
@@ -14717,6 +14899,8 @@ function renderZidStore() {
         </div>
         <div style="width:65px;"></div>
       </div>
+
+      <div id="zidPageBalanceBar">${renderProviderBalanceBar("zidstore")}</div>
 
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px;">
         ${ZIDSTORE_TABS.map(t => {
@@ -14729,18 +14913,7 @@ function renderZidStore() {
         }).join("")}
       </div>
 
-      ${zidState.tab === "emoney" ? `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-          ${ZIDSTORE_EMONEY_BRANDS.map(meta => {
-            const active = zidState.brand === meta.key;
-            return `
-              <button type="button" onclick="selectZidStoreEmoneyBrand('${meta.key}')" style="${getPpobEmoneyBtnStyle(meta, active)}">
-                <span>${meta.label}</span>
-              </button>
-            `;
-          }).join("")}
-        </div>
-      ` : ""}
+      ${zidState.tab === "emoney" ? renderEmoneyBrandPicker(ZIDSTORE_EMONEY_BRANDS, zidState.brand, "selectZidStoreEmoneyBrand") : ""}
 
       ${showInputCard ? `
         <div class="card pad" style="border-radius:16px;border:1.5px solid var(--line,#e2e8f0);margin-bottom:14px;">
@@ -14795,10 +14968,12 @@ function switchZidStoreTab(tabName) {
 function selectZidStoreEmoneyBrand(brandKey) {
   zidState.brand = brandKey;
   renderZidStore();
-  setTimeout(() => {
-    const el = document.getElementById("zidCustomerInput");
-    if (el) el.focus();
-  }, 40);
+  if (brandKey) {
+    setTimeout(() => {
+      const el = document.getElementById("zidCustomerInput");
+      if (el) el.focus();
+    }, 40);
+  }
 }
 
 function handleZidCustomerInput(val) {
@@ -15175,6 +15350,9 @@ async function processZidStoreTransaction(code, kind, sellPrice, openQty = 0) {
     if (!isTrialRecord(txPayload)) {
       notifyAdminNewTransaction(txPayload);
       if (typeof kirimNotifWaBos === "function") kirimNotifWaBos(sellPrice, txPayload.note, kasirName);
+    }
+    if (typeof loadPpobAndZidBalancesFromDb === "function") {
+      setTimeout(() => loadPpobAndZidBalancesFromDb(true), 1500);
     }
     if (typeof playSuccessSound === "function") playSuccessSound();
 
