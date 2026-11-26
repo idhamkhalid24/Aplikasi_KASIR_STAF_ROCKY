@@ -1234,7 +1234,7 @@ function userClosingBonusPerMinute(user = state.user) {
 }
 function txBonusRate(t) {
   if (t) {
-    if (t.isPpob === true || t.type === "ppob" || t.bonusExempt === true || t.category === "ppob") return 0;
+    if (t.isPpob === true || t.type === "ppob" || t.isZidstore === true || t.type === "zidstore" || t.provider === "zidstore" || t.bonusExempt === true || t.category === "ppob") return 0;
     if (hasBonusValue(t.bonusRate)) {
       const r = Number(t.bonusRate);
       if (Number.isFinite(r) && r >= 0) return r;
@@ -1255,7 +1255,7 @@ function txBonusRate(t) {
   return userTransactionBonusRate();
 }
 function txBonusValue(t) {
-  if (t?.isPpob === true || t?.type === "ppob" || t?.bonusExempt === true || t?.category === "ppob") return 0;
+  if (t?.isPpob === true || t?.type === "ppob" || t?.isZidstore === true || t?.type === "zidstore" || t?.provider === "zidstore" || t?.bonusExempt === true || t?.category === "ppob") return 0;
   return Math.round(Number(t?.amount || 0) * txBonusRate(t));
 }
 function txBonusSum(list) {
@@ -3118,6 +3118,7 @@ function nav() {
     f = $("fab"),
     af = $("absenFab"),
     nQris = $("nav-qris"),
+    nPpob = $("nav-ppob"),
     nHome = $("nav-home");
 
   if (!state.user) {
@@ -3129,6 +3130,7 @@ function nav() {
   n.style.display = "flex";
 
   const isFast = state.user?.fastCashierAccess === true;
+  const showPpobTab = hasDigiflazzAccess() || hasZidStoreAccess();
 
   if (isFast) {
     // Mode Kasir Cepat (Toko Ramai):
@@ -3137,6 +3139,7 @@ function nav() {
     if (af) af.style.display = "none";
     // Tampilkan tombol QRIS di tengah navigasi bawah persis seperti foto 1
     if (nQris) nQris.style.display = state.user?.qrisAccess === true ? "flex" : "none";
+    if (nPpob) nPpob.style.display = showPpobTab ? "flex" : "none";
     if (nHome) {
       const span = nHome.querySelector("span");
       if (span) span.textContent = "Kasir";
@@ -3147,6 +3150,7 @@ function nav() {
     if (f) f.style.display = (state.page === "home" && !missedAttendanceLockForDate()) ? "block" : "none";
     if (af) af.style.display = showStaffAbsenFab() ? "flex" : "none";
     if (nQris) nQris.style.display = state.user?.qrisAccess === true ? "flex" : "none";
+    if (nPpob) nPpob.style.display = showPpobTab ? "flex" : "none";
     if (nHome) {
       const span = nHome.querySelector("span");
       if (span) span.textContent = "Home";
@@ -3158,6 +3162,8 @@ function nav() {
     .forEach((b) => b.classList.remove("active"));
   if (state.page === "history") {
     $("nav-history")?.classList.add("active");
+  } else if (state.page === "ppob_hub" || state.page === "ppob" || state.page === "zidstore") {
+    $("nav-ppob")?.classList.add("active");
   } else {
     $("nav-home")?.classList.add("active");
   }
@@ -3243,12 +3249,26 @@ function renderNow() {
     return history();
   }
   if (state.page === "unlock") return renderUnlockPage();
+  if (state.page === "ppob_hub") {
+    if (!hasDigiflazzAccess() && !hasZidStoreAccess()) {
+      toast("Anda tidak memiliki izin transaksi PPOB dari Admin!");
+      return go("home");
+    }
+    return renderPpobHub();
+  }
   if (state.page === "ppob") {
-    if (state.user?.ppobAccess !== true && state.user?.fastCashierAccess !== true) {
+    if (!hasDigiflazzAccess()) {
       toast("Anda tidak memiliki izin transaksi PPOB dari Admin!");
       return go("home");
     }
     return renderPpob();
+  }
+  if (state.page === "zidstore") {
+    if (!hasZidStoreAccess()) {
+      toast("Anda tidak memiliki izin transaksi ZidStore dari Admin!");
+      return go("home");
+    }
+    return renderZidStore();
   }
 
   // HANYA staff yang diberi akses Kasir Cepat oleh admin yang masuk ke Kasir Cepat:
@@ -3806,6 +3826,7 @@ function startStaffRealtime() {
           qrisAccess: fresh.qrisAccess === true,
           fastCashierAccess: fresh.fastCashierAccess === true,
           ppobAccess: fresh.ppobAccess === true,
+          zidstoreAccess: fresh.zidstoreAccess === true,
           transactionBonusRate: hasBonusValue(fresh.transactionBonusRate)
             ? Number(fresh.transactionBonusRate)
             : null,
@@ -4105,6 +4126,7 @@ async function loadStaffData(opts = {}) {
         qrisAccess: fresh.qrisAccess === true,
         fastCashierAccess: fresh.fastCashierAccess === true,
         ppobAccess: fresh.ppobAccess === true,
+        zidstoreAccess: fresh.zidstoreAccess === true,
         transactionBonusRate: hasBonusValue(fresh.transactionBonusRate)
           ? Number(fresh.transactionBonusRate)
           : null,
@@ -4139,6 +4161,7 @@ async function loadStaffData(opts = {}) {
         qrisAccess: state.user.qrisAccess === true,
         fastCashierAccess: state.user.fastCashierAccess === true,
         ppobAccess: state.user.ppobAccess === true,
+        zidstoreAccess: state.user.zidstoreAccess === true,
         transactionBonusRate: state.user.transactionBonusRate,
         transactionBonusPercent: state.user.transactionBonusPercent,
         closingBonusPerMinute: isDailyUser(state.user)
@@ -5062,6 +5085,7 @@ async function latestBonusSnapshotForSave() {
       qrisAccess: (fresh.qrisAccess !== undefined ? fresh.qrisAccess === true : state.user?.qrisAccess === true),
       fastCashierAccess: (fresh.fastCashierAccess !== undefined ? fresh.fastCashierAccess === true : state.user?.fastCashierAccess === true),
       ppobAccess: (fresh.ppobAccess !== undefined ? fresh.ppobAccess === true : state.user?.ppobAccess === true),
+      zidstoreAccess: (fresh.zidstoreAccess !== undefined ? fresh.zidstoreAccess === true : state.user?.zidstoreAccess === true),
       transactionBonusRate: hasBonusValue(fresh.transactionBonusRate)
         ? Number(fresh.transactionBonusRate)
         : null,
@@ -5545,14 +5569,23 @@ function isTxAfterLatestWithdrawal(t) {
   if (latestMs === 0) return false;
   return ms(t) > latestMs;
 }
+function isZidStoreTx(t) {
+  return Boolean(t && (t.provider === "zidstore" || t.isZidstore === true || t.type === "zidstore" || t.source === "zidstore_transaction"));
+}
+function isZidStoreAkrabTx(t) {
+  return Boolean(isZidStoreTx(t) && (t.zidstoreKind === "akrab" || String(t.ppobCategory || t.category || "").toLowerCase() === "akrab"));
+}
 function isPpobTx(t) {
-  return Boolean(t && (t.isPpob === true || t.type === "ppob" || t.category === "ppob" || t.source === "ppob_transaction"));
+  return Boolean(!isZidStoreTx(t) && t && (t.isPpob === true || t.type === "ppob" || t.category === "ppob" || t.source === "ppob_transaction"));
 }
 function txItem(t) {
   const pending = t.pending === true;
+  const isZid = isZidStoreTx(t);
+  const isAkrab = isZidStoreAkrabTx(t);
   const isPpob = isPpobTx(t);
+  const isDigital = isPpob || isZid;
   const isMine = key(t.user) === key(state.user?.username);
-  const canDelete = txDate(t) === todayKey() && !pending && isMine && (!isPpob || isAdmin(state.user));
+  const canDelete = txDate(t) === todayKey() && !pending && isMine && (!isDigital || isAdmin(state.user));
   const id = esc(t.id);
 
   const noteLines = String(t.note || "").split("\n").map(x => x.trim()).filter(Boolean);
@@ -5569,7 +5602,7 @@ function txItem(t) {
     }
   }
   const detailIconHtml = totalQty > 0 ? `<span style="font-weight:900;font-size:16px;color:var(--text-main);display:flex;align-items:center;justify-content:center">${totalQty}</span>` : txHistoryIcon("list");
-  const detailBtn = !isPpob
+  const detailBtn = !isDigital
     ? `<button class="btn sm tx-card-btn tx-card-detail" onclick="openTxDetail('${id}')" aria-label="Detail transaksi" title="Detail">${detailIconHtml}</button>`
     : "";
   const printBtn = (!pending && isMine)
@@ -5583,19 +5616,20 @@ function txItem(t) {
     : `<div class="tx-card-actions">${detailBtn}${printBtn}${deleteBtn}</div>`;
 
   const method = normalizeTxPaymentMethod(t.paymentMethod || t.paymentLabel);
-  const label = isPpob ? "PPOB" : txPaymentLabel(method);
-  const badgeCls = isPpob ? "ppob" : (method === "cash" ? "cash" : "qris");
+  const label = isAkrab ? "AKRAB" : (isZid ? "ZIDSTORE" : (isPpob ? "PPOB" : txPaymentLabel(method)));
+  const badgeCls = isDigital ? "ppob" : (method === "cash" ? "cash" : "qris");
+  const digitalBadgeBg = isAkrab ? "#ea580c" : (isZid ? "#4f46e5" : "#2563eb");
   const payBadge = label
-    ? `<span class="tx-pay-badge ${badgeCls}"${isPpob ? ' style="background:#2563eb!important;color:#fff!important;border:none!important;"' : ""}>${esc(label)}</span>`
+    ? `<span class="tx-pay-badge ${badgeCls}"${isDigital ? ` style="background:${digitalBadgeBg}!important;color:#fff!important;border:none!important;"` : ""}>${esc(label)}</span>`
     : "";
   const rawStaffName = String(t.name || t.user || "-").trim();
   const staffNameLabel = isRismaSpecialUser() ? `<span style="font-weight:700;color:var(--text);margin-right:4px;">${esc(rawStaffName)}</span><span style="color:var(--muted);margin-right:4px;">•</span>` : "";
   const timeLabel = timeID(ms(t));
   const infoPay = payBadge ? `<span style="color:var(--muted);margin:0 4px;">•</span>${payBadge}` : "";
-  const ppobProductName = isPpob
-    ? String(t.product_name || t.note || "Produk PPOB").replace(/^\[PPOB\]\s*/i, "").trim()
+  const ppobProductName = isDigital
+    ? String(t.product_name || t.note || "Produk Digital").replace(/^\[(PPOB|ZIDSTORE|AKRAB)\]\s*/i, "").trim()
     : "";
-  const ppobProductLine = isPpob
+  const ppobProductLine = isDigital
     ? `<div onclick="openTxDetail('${id}')" style="margin-top:4px;font-size:11.5px;font-weight:800;color:var(--text,#0f172a);line-height:1.25;white-space:normal;word-break:break-word;cursor:pointer;">${esc(ppobProductName)}${t.customer_no && !ppobProductName.includes(String(t.customer_no)) ? ` <span style="font-weight:600;color:var(--muted,#64748b);font-size:10.5px;">&bull; ${esc(t.customer_no)}</span>` : ""}</div>`
     : "";
 
@@ -5625,13 +5659,19 @@ function openTxDetail(id) {
   const pay = txPaymentLabel(t.paymentMethod || t.paymentLabel) || "Cash";
   const cashier = esc(t.name || state.user?.name || t.user || "Staff");
   const meta = `${cashier} · ${timeID(ms(t))} · ${esc(pay)}`;
+  const isZid = isZidStoreTx(t);
+  const isAkrab = isZidStoreAkrabTx(t);
   const isPpob = isPpobTx(t);
-  const productHtml = isPpob
+  const isDigital = isPpob || isZid;
+  const prodTitle = isAkrab ? "XL/AXIS AKRAB (ZIDSTORE)" : (isZid ? "ZIDSTORE (PPOB)" : "PRODUK DIGITAL (PPOB)");
+  const productHtml = isDigital
     ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;">
-        <div style="font-size:11px;color:var(--muted);font-weight:700;">PRODUK DIGITAL (PPOB)</div>
-        <div style="font-size:13.5px;font-weight:800;color:var(--text-main);margin-top:2px;">${esc(t.product_name || t.note)}</div>
+        <div style="font-size:11px;color:var(--muted);font-weight:700;">${prodTitle}</div>
+        <div style="font-size:13.5px;font-weight:800;color:var(--text-main);margin-top:2px;">${esc(String(t.product_name || t.note || "").replace(/^\[(PPOB|ZIDSTORE|AKRAB)\]\s*/i, ""))}</div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">No Tujuan: <b style="color:var(--text-main);">${esc(t.customer_no || '-')}</b></div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Status: <b style="color:#0f172a;">${esc(t.status || 'Pending')}</b></div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">SN / Token: <b style="color:#059669;word-break:break-all;">${esc(t.sn || '-')}</b></div>
+        ${isZid && String(t.status || "").toLowerCase() !== "sukses" ? `<button type="button" class="btn" style="margin-top:8px;width:100%;background:#4f46e5;color:#fff;font-weight:800;border-radius:10px;padding:9px;font-size:12px;" onclick="checkStaffZidStoreOrderStatus('${esc(t.id)}')">↻ Cek Status / SN ZidStore</button>` : ""}
       </div>`
     : txProductDetailHtml(t.note || "Transaksi");
   const body = `<div class="tx-admin-detail">
@@ -5641,7 +5681,7 @@ function openTxDetail(id) {
       <div class="tx-detail-meta">${meta}</div>
     </div>
     <div class="tx-detail-card tx-detail-products-card">
-      <div class="tx-detail-label">${isPpob ? 'Detail PPOB' : 'Daftar Barang'}</div>
+      <div class="tx-detail-label">${isDigital ? (isZid ? 'Detail ZidStore' : 'Detail PPOB') : 'Daftar Barang'}</div>
       ${productHtml}
     </div>
   </div>`;
@@ -6039,8 +6079,8 @@ let receiptPreviewTitle = "Struk Transaksi";
 function printReceiptFromTx(id) {
   const t = findTxById(id);
   if (!t) return toast("Transaksi tidak ditemukan");
-  const isPpob = t.isPpob === true || t.type === "ppob" || t.category === "ppob";
-  const text = isPpob ? receiptTextForPpob(t) : receiptTextForTx(t);
+  const isDigital = isPpobTx(t) || isZidStoreTx(t);
+  const text = isDigital ? receiptTextForPpob(t) : receiptTextForTx(t);
   openReceiptPreview(text, `Struk · ${dateID(txDate(t))}`);
 }
 
@@ -7794,6 +7834,23 @@ function home() {
       </div>`
     : "";
 
+  const zidstoreBanner = hasZidStoreAccess()
+    ? `<div class="card" style="margin-top:8px;margin-bottom:14px;background:linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);border:1.5px solid #a5b4fc;cursor:pointer;padding:12px 14px;border-radius:16px;box-shadow:0 3px 10px rgba(79,70,229,0.08);" onclick="go('zidstore')">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#4f46e5 0%,#6366f1 100%);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(79,70,229,0.28);flex-shrink:0;">
+              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+            </div>
+            <div>
+              <div style="font-weight:800;font-size:13.5px;color:#312e81;">ZidStore (PPOB &amp; Paket Akrab)</div>
+              <div style="font-size:11px;color:#4338ca;">XL/AXIS Akrab, Pulsa, Kuota Data, E-Wallet, Game</div>
+            </div>
+          </div>
+          <button type="button" class="btn" style="background:#4f46e5;color:#fff;font-weight:800;font-size:11.5px;padding:6px 12px;border-radius:10px;border:none;">Buka ⚡</button>
+        </div>
+      </div>`
+    : "";
+
   const tx = todayTx(),
     a = todayAtt(),
     c = todayClosing(),
@@ -7819,7 +7876,7 @@ function home() {
       todayBonus = todayTxBonus + manualToday;
     const syncBtnDaily = `<button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi" style="position:absolute!important; top:16px!important; right:16px!important; z-index:10; background:rgba(255,255,255,0.2); border-color:rgba(255,255,255,0.4); color:#fff;"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring" style="border-color:#fff"></span></button>`;
     const manualCard = "";
-    page.innerHTML = `${top("Mode Harian", state.user?.name || "Karyawan Harian")}${trialModeCard()}${fastCashierBanner}${ppobBanner}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}<div class="hero daily-income-hero" style="position:relative">${syncBtnDaily}<div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} • ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat" style="position:relative"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard("daily")}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
+    page.innerHTML = `${top("Mode Harian", state.user?.name || "Karyawan Harian")}${trialModeCard()}${fastCashierBanner}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}<div class="hero daily-income-hero" style="position:relative">${syncBtnDaily}<div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} • ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat" style="position:relative"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard("daily")}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
     return;
   }
 
@@ -7831,7 +7888,7 @@ function home() {
     takenBonus = bonusWithdrawn(),
     sisaBonus = remainingBonus();
   const { cashFisik } = getTodayCashFisik();
-  page.innerHTML = `${top("Mode Staff", state.user?.name || "Karyawan Staff")}${trialModeCard()}${fastCashierBanner}${ppobBanner}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero" style="position:relative"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><!-- <div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()} --><div class="stat" style="position:relative"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-row"><div class="bonus-plus-info"><div class="label">Bonus Bulan Ini</div><div class="big" style="color:var(--blue);line-height:1.2;margin-top:2px;">Rp ${rp(sisaBonus)}</div><div class="bonus-note" style="margin-top:3px;">Bonus terhitung ${rp(earnedBonus)} · sudah diambil ${rp(takenBonus)}</div></div><button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring"></span></button></div>${bonusWithdrawalDetailList()}${todayClosingBonusInline()}${staffBonusWithdrawalAction(cashFisik, sisaBonus)}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
+  page.innerHTML = `${top("Mode Staff", state.user?.name || "Karyawan Staff")}${trialModeCard()}${fastCashierBanner}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero" style="position:relative"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><!-- <div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()} --><div class="stat" style="position:relative"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-row"><div class="bonus-plus-info"><div class="label">Bonus Bulan Ini</div><div class="big" style="color:var(--blue);line-height:1.2;margin-top:2px;">Rp ${rp(sisaBonus)}</div><div class="bonus-note" style="margin-top:3px;">Bonus terhitung ${rp(earnedBonus)} · sudah diambil ${rp(takenBonus)}</div></div><button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring"></span></button></div>${bonusWithdrawalDetailList()}${todayClosingBonusInline()}${staffBonusWithdrawalAction(cashFisik, sisaBonus)}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
 }
   // ===== ESTIMASI UANG LACI KEMARIN =====
   // State untuk data tarikan laci kemarin
@@ -8517,7 +8574,7 @@ function home() {
       body = `<div class="tx-table"><div class="tx-head"><span>Nama / Jam</span><span>Nominal</span><span style="text-align:right">Aksi</span></div><div class="tx-list">${items.map(txItem).join("")}</div></div>`;
     }
 
-    const ppobHistoryItems = items.filter(t => t.isPpob === true || t.type === 'ppob' || t.category === 'ppob');
+    const ppobHistoryItems = items.filter(t => isPpobTx(t));
     const ppobTotalAmount = ppobHistoryItems.reduce((s, t) => s + Number(t.amount || 0), 0);
     const ppobCard = ppobHistoryItems.length ? `
       <div class="card" style="margin-bottom:8px;background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:14px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;">
@@ -8534,8 +8591,25 @@ function home() {
           <div style="font-size:14px;font-weight:900;color:#15803d;">Rp ${rp(ppobTotalAmount)}</div>
         </div>
       </div>` : "";
+    const zidHistoryItems = items.filter(t => isZidStoreTx(t));
+    const zidTotalAmount = zidHistoryItems.reduce((s, t) => s + Number(t.amount || 0), 0);
+    const zidCard = zidHistoryItems.length ? `
+      <div class="card" style="margin-bottom:8px;background:#eef2ff;border:1.5px solid #c7d2fe;border-radius:14px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:34px;height:34px;border-radius:10px;background:#4f46e5;color:#fff;display:flex;align-items:center;justify-content:center;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:800;color:#312e81;letter-spacing:0.5px;">ZIDSTORE (PPOB &amp; AKRAB)</div>
+            <div style="font-size:11.5px;color:var(--muted);">${zidHistoryItems.length} Trx Hari Ini</div>
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:14px;font-weight:900;color:#4f46e5;">Rp ${rp(zidTotalAmount)}</div>
+        </div>
+      </div>` : "";
 
-    page.innerHTML = `${top("Riwayat Hari Ini", `${items.length} transaksi • Rp ${rp(totalHistoryAmount)}`)}${syncBar()}${ppobCard}${drawerCard}${reserveCard}${printAllCard}${body}`;
+    page.innerHTML = `${top("Riwayat Hari Ini", `${items.length} transaksi • Rp ${rp(totalHistoryAmount)}`)}${syncBar()}${ppobCard}${zidCard}${drawerCard}${reserveCard}${printAllCard}${body}`;
 
     // Jika belum load data async, load dan re-render
     if (!state.staffDrawerYesterday.loaded || state.staffChangeReserve === undefined) {
@@ -10209,8 +10283,8 @@ function home() {
   async function delTx(id) {
     const t = state.data.tx.find((x) => String(x.id) === String(id));
     if (!t) return toast("Transaksi tidak ditemukan");
-    if (isPpobTx(t) && !isAdmin(state.user))
-      return toast("Transaksi PPOB tidak dapat dihapus staf. Hanya Admin yang bisa menghapus.");
+    if ((isPpobTx(t) || isZidStoreTx(t)) && !isAdmin(state.user))
+      return toast("Transaksi PPOB/ZidStore tidak dapat dihapus staf. Hanya Admin yang bisa menghapus.");
     if (key(t.user) !== key(state.user.username))
       return toast("Tidak bisa hapus transaksi orang lain");
     const p = await pinAsk(`Hapus transaksi Rp ${rp(t.amount)}?`);
@@ -10521,6 +10595,7 @@ function home() {
         qrisAccess: data.qrisAccess === true,
         fastCashierAccess: data.fastCashierAccess === true,
         ppobAccess: data.ppobAccess === true,
+        zidstoreAccess: data.zidstoreAccess === true,
         transactionBonusRate: hasBonusValue(data.transactionBonusRate)
           ? Number(data.transactionBonusRate)
           : null,
@@ -10551,6 +10626,7 @@ function home() {
         qrisAccess: state.user.qrisAccess === true,
         fastCashierAccess: state.user.fastCashierAccess === true,
         ppobAccess: state.user.ppobAccess === true,
+        zidstoreAccess: state.user.zidstoreAccess === true,
         transactionBonusRate: state.user.transactionBonusRate,
         transactionBonusPercent: state.user.transactionBonusPercent,
         closingBonusPerMinute: isDailyUser(state.user)
@@ -10670,6 +10746,7 @@ function home() {
             qrisAccess: data.qrisAccess === true,
         fastCashierAccess: data.fastCashierAccess === true,
         ppobAccess: data.ppobAccess === true,
+        zidstoreAccess: data.zidstoreAccess === true,
             transactionBonusRate: hasBonusValue(data.transactionBonusRate)
               ? Number(data.transactionBonusRate)
               : null,
@@ -10700,6 +10777,7 @@ function home() {
             qrisAccess: state.user.qrisAccess === true,
         fastCashierAccess: state.user.fastCashierAccess === true,
         ppobAccess: state.user.ppobAccess === true,
+        zidstoreAccess: state.user.zidstoreAccess === true,
             transactionBonusRate: state.user.transactionBonusRate,
             transactionBonusPercent: state.user.transactionBonusPercent,
             closingBonusPerMinute: isDailyUser(state.user)
@@ -10755,7 +10833,7 @@ function home() {
   }
   function go(p, opts = {}) {
     p = p === "leave" ? "unlock" : p;
-    p = p === "history" || p === "unlock" || p === "fast_cashier" || p === "ppob" ? p : "home";
+    p = p === "history" || p === "unlock" || p === "fast_cashier" || p === "ppob_hub" || p === "ppob" || p === "zidstore" ? p : "home";
     try {
       fastCashierNominal = 0;
       if (typeof updateFastCashierDisplay === "function") updateFastCashierDisplay();
@@ -10779,6 +10857,12 @@ function home() {
       if (typeof updateFastCashierDisplay === "function") updateFastCashierDisplay();
     } catch (_) {}
     if (!state.user) return false;
+    if (state.page === "ppob" || state.page === "zidstore") {
+      state.page = "ppob_hub";
+      syncAppBrowserHistory("ppob_hub", "push");
+      render();
+      return true;
+    }
     const homePage = state.user?.fastCashierAccess === true ? "fast_cashier" : "home";
     if (state.page !== homePage) {
       state.page = homePage;
@@ -13123,6 +13207,23 @@ function renderFastCashier() {
       </div>`
     : "";
 
+  const fastCashierZidStoreBanner = hasZidStoreAccess()
+    ? `<div class="card" style="margin-bottom:12px;background:linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);border:1.5px solid #a5b4fc;cursor:pointer;padding:11px 14px;border-radius:16px;box-shadow:0 3px 10px rgba(79,70,229,0.08);" onclick="go('zidstore')">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,#4f46e5 0%,#6366f1 100%);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+            </div>
+            <div>
+              <div style="font-weight:800;font-size:13px;color:#312e81;">ZidStore (PPOB &amp; Akrab)</div>
+              <div style="font-size:10.5px;color:#4338ca;">XL/AXIS Akrab, Pulsa, Data, E-Wallet, Game</div>
+            </div>
+          </div>
+          <button type="button" class="btn" style="background:#4f46e5;color:#fff;font-weight:800;font-size:11px;padding:6px 12px;border-radius:10px;border:none;">Buka ⚡</button>
+        </div>
+      </div>`
+    : "";
+
   page.innerHTML = `
     <div class="wrap fast-cashier-wrap" style="padding-top:10px;padding-bottom:100px;max-width:540px;margin:0 auto;">
       <!-- Top Bar: Cash Fisik & Masuk Kerja (khusus staf biasa) berdampingan di kiri & Nama Staf + Keluar di kanan -->
@@ -13188,8 +13289,7 @@ function renderFastCashier() {
         </div>
       ` : ''}
 
-      <!-- Banner PPOB di Kasir Cepat -->
-      ${fastCashierPpobBanner}
+      <!-- Banner PPOB dipindah ke menu bawah #nav-ppob -->
 
       <!-- Summary Strip: Omset Hari Ini (Gabung Total Trx) & Bonus Bulan Ini (2 Kolom Sejajar) -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
@@ -13663,7 +13763,7 @@ function getPpobCategoryTab(p) {
 }
 
 function renderPpob() {
-  if (state.user?.ppobAccess !== true && state.user?.fastCashierAccess !== true) {
+  if (!hasDigiflazzAccess()) {
     toast("Anda tidak memiliki izin transaksi PPOB dari Admin!");
     return go("home");
   }
@@ -13681,7 +13781,7 @@ function renderPpob() {
   page.innerHTML = `
     <div class="wrap ppob-wrap" style="padding-bottom:90px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-        <button class="btn" onclick="go('home')" style="background:var(--bg,#f8fafc);border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:8px 12px;display:flex;align-items:center;gap:6px;font-weight:700;">
+        <button class="btn" onclick="go('ppob_hub')" style="background:var(--bg,#f8fafc);border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:8px 12px;display:flex;align-items:center;gap:6px;font-weight:700;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg> Kembali
         </button>
         <div style="font-size:16px;font-weight:800;color:var(--text-main,#0f172a);display:flex;align-items:center;gap:6px;">
@@ -14365,5 +14465,799 @@ window.promptPpobPinAndPay = promptPpobPinAndPay;
 window.submitPpobPinConfirm = submitPpobPinConfirm;
 window.processPpobTransaction = processPpobTransaction;
 window.renderPpob = renderPpob;
+
+// === MODUL ZIDSTORE TERPISAH (PPOB & XL/AXIS AKRAB) ===
+let zidState = {
+  tab: "akrab", // 'akrab' | 'pulsa' | 'data' | 'emoney' | 'digital' | 'lainnya'
+  brand: "",
+  customerNo: "",
+  search: "",
+  products: [],
+  akrabPackages: [],
+  markup: 1500,
+  roundUpTo: 1000,
+  customPrices: {},
+  loading: false
+};
+
+function hasDigiflazzAccess() {
+  return Boolean(state.user && state.user.ppobAccess === true);
+}
+function hasZidStoreAccess() {
+  return Boolean(state.user && state.user.zidstoreAccess === true);
+}
+
+function renderPpobHub() {
+  const canDigi = hasDigiflazzAccess();
+  const canZid = hasZidStoreAccess();
+  if (!canDigi && !canZid) {
+    toast("Anda tidak memiliki izin transaksi PPOB dari Admin!");
+    return go("home");
+  }
+
+  const allToday = todayTx();
+  const digitalItems = allToday
+    .filter(t => isPpobTx(t) || isZidStoreTx(t))
+    .sort((a, b) => ms(b) - ms(a));
+  const digitalOmset = digitalItems.reduce((s, t) => s + Number(t.amount || 0), 0);
+  const akrabCount = (zidState.akrabPackages || []).filter(a => a.available !== false && Number(a.stock || 0) > 0).length;
+
+  page.innerHTML = `
+    <div class="wrap ppob-wrap" style="padding-top:12px;padding-bottom:105px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;">
+        <div>
+          <div style="font-size:18px;font-weight:900;color:var(--text-main,#0f172a);display:flex;align-items:center;gap:7px;">
+            <span style="width:28px;height:28px;border-radius:9px;background:#059669;color:#fff;display:inline-flex;align-items:center;justify-content:center;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 4 14 11 14 11 22 20 10 13 10 13 2"></polygon></svg>
+            </span>
+            Produk Digital (PPOB)
+          </div>
+          <div style="font-size:11.5px;color:var(--muted,#64748b);margin-top:2px;">Pilih layanan PPOB atau cek transaksi digital hari ini</div>
+        </div>
+        <div style="text-align:right;background:var(--card,#fff);border:1.5px solid var(--line,#e2e8f0);border-radius:12px;padding:6px 10px;flex-shrink:0;">
+          <div style="font-size:9.5px;font-weight:800;color:var(--muted);text-transform:uppercase;">Hari Ini</div>
+          <div style="font-size:12.5px;font-weight:900;color:#059669;">${digitalItems.length} trx &bull; Rp ${rp(digitalOmset)}</div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:18px;">
+        ${canDigi ? `
+          <div onclick="go('ppob')" style="cursor:pointer;background:linear-gradient(135deg,#ecfdf5 0%,#d1fae5 100%);border:1.5px solid #6ee7b7;border-radius:18px;padding:16px 15px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+            <div style="display:flex;align-items:center;gap:12px;min-width:0;flex:1;">
+              <div style="width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#059669 0%,#10b981 100%);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="5" y="2" width="14" height="20" rx="3" ry="3"></rect>
+                  <path d="M12 18h.01" stroke-width="2.5"></path>
+                  <polygon points="13 6 9 12 13 12 11 17 16 11 12 11 13 6" fill="#fde047" stroke="#fde047" stroke-width="0.8"></polygon>
+                </svg>
+              </div>
+              <div style="min-width:0;">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                  <span style="font-weight:900;font-size:15px;color:#065f46;">Digiflazz PPOB</span>
+                  <span class="chip" style="background:#059669;color:#fff;font-size:9px;padding:2px 7px;border:none;">UTAMA</span>
+                </div>
+                <div style="font-size:11.5px;color:#047857;margin-top:3px;">Pulsa, Paket Data, Token PLN, E-Money</div>
+              </div>
+            </div>
+            <button type="button" class="btn" style="background:#059669;color:#fff;font-weight:800;font-size:12px;padding:9px 14px;border-radius:12px;border:none;flex-shrink:0;">Buka &rarr;</button>
+          </div>
+        ` : ""}
+
+        ${canZid ? `
+          <div onclick="go('zidstore')" style="cursor:pointer;background:linear-gradient(135deg,#eef2ff 0%,#e0e7ff 100%);border:1.5px solid #a5b4fc;border-radius:18px;padding:16px 15px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+            <div style="display:flex;align-items:center;gap:12px;min-width:0;flex:1;">
+              <div style="width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#4f46e5 0%,#6366f1 100%);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+              </div>
+              <div style="min-width:0;">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                  <span style="font-weight:900;font-size:15px;color:#312e81;">ZidStore</span>
+                  <span class="chip" style="background:#ea580c;color:#fff;font-size:9px;padding:2px 7px;border:none;">AKRAB &amp; PPOB</span>
+                </div>
+                <div style="font-size:11.5px;color:#4338ca;margin-top:3px;">XL/AXIS Akrab${akrabCount ? ` (${akrabCount} paket ready)` : ""}, Pulsa, Data, E-Money, Game</div>
+              </div>
+            </div>
+            <button type="button" class="btn" style="background:#4f46e5;color:#fff;font-weight:800;font-size:12px;padding:9px 14px;border-radius:12px;border:none;flex-shrink:0;">Buka &rarr;</button>
+          </div>
+        ` : ""}
+      </div>
+
+      <div style="font-size:12px;font-weight:800;color:var(--muted,#64748b);margin-bottom:8px;letter-spacing:0.3px;text-transform:uppercase;">
+        Transaksi Digital Hari Ini (${digitalItems.length})
+      </div>
+      <div class="tx-table" style="display:flex;flex-direction:column;gap:8px;">
+        ${digitalItems.length
+          ? digitalItems.map(t => txItem(t)).join("")
+          : `<div class="card pad" style="text-align:center;color:var(--muted);padding:20px;font-size:12px;">Belum ada transaksi PPOB / ZidStore hari ini</div>`}
+      </div>
+    </div>
+  `;
+}
+
+const ZIDSTORE_TABS = [
+  { key: "akrab", label: "XL/AXIS Akrab" },
+  { key: "pulsa", label: "Pulsa" },
+  { key: "data", label: "Paket Data" },
+  { key: "emoney", label: "E-Money" },
+  { key: "digital", label: "Game & Digital" },
+  { key: "lainnya", label: "Lainnya" }
+];
+
+const ZIDSTORE_EMONEY_BRANDS = [
+  { key: "DANA", id: "ZID_DANA", label: "DANA", color: "#118EEA", bgSoft: "#eff8ff", borderSoft: "#bae6fd", shadow: "rgba(17,142,234,0.28)" },
+  { key: "GO PAY", id: "ZID_GOPAY", label: "GoPay", color: "#00AA13", bgSoft: "#f0fdf4", borderSoft: "#bbf7d0", shadow: "rgba(0,170,19,0.28)" },
+  { key: "OVO", id: "ZID_OVO", label: "OVO", color: "#4C3494", bgSoft: "#f5f3ff", borderSoft: "#ddd6fe", shadow: "rgba(76,52,148,0.28)" },
+  { key: "SHOPEE PAY", id: "ZID_SHOPEEPAY", label: "ShopeePay", color: "#EE4D2D", bgSoft: "#fff7ed", borderSoft: "#fed7aa", shadow: "rgba(238,77,45,0.28)" },
+  { key: "LINKAJA", id: "ZID_LINKAJA", label: "LinkAja", color: "#E82529", bgSoft: "#fef2f2", borderSoft: "#fecaca", shadow: "rgba(232,37,41,0.25)" }
+];
+
+function getZidStoreSellPrice(item, customOpenModal = 0) {
+  if (!item) return 0;
+  const code = String(item.package_code || item.code || item.sku || "");
+  if (customOpenModal > 0) {
+    const markup = Number(zidState.markup !== undefined ? zidState.markup : 1500);
+    let s = customOpenModal + markup;
+    const roundTo = Number(zidState.roundUpTo || 0);
+    if (roundTo > 0) s = Math.ceil(s / roundTo) * roundTo;
+    return s;
+  }
+  const custom = zidState.customPrices && Number(zidState.customPrices[code] || 0);
+  if (custom > 0) return custom;
+  const modalPrice = Number(item.price || 0);
+  const markup = Number(zidState.markup !== undefined ? zidState.markup : 1500);
+  let sell = modalPrice + markup;
+  const roundTo = Number(zidState.roundUpTo || 0);
+  if (roundTo > 0) sell = Math.ceil(sell / roundTo) * roundTo;
+  return sell;
+}
+
+function getZidStoreCategoryTab(p) {
+  const cat = String(p?.category || "").toLowerCase().trim();
+  if (cat === "akrab" || p?.package_code) return "akrab";
+  if (cat === "pulsa") return "pulsa";
+  if (cat === "data" || cat.includes("kuota")) return "data";
+  if (cat === "e-money" || cat === "emoney" || cat.includes("wallet")) return "emoney";
+  if (cat === "digital" || cat.includes("game")) return "digital";
+  return "lainnya";
+}
+
+async function callStaffZidStoreBackend(path, method = "GET", bodyObj = null) {
+  const hosts = [...buildStaffPpobProxyHosts(), "https://rocky-notif.pages.dev"];
+  const headers = { "X-Notify-Secret": ROCKY_ADMIN_NOTIFY_SECRET };
+  if (bodyObj !== null) headers["Content-Type"] = "application/json";
+  let lastRes = null;
+  for (const host of hosts) {
+    try {
+      const res = await fetch(`${host}${path}`, {
+        method,
+        headers,
+        body: bodyObj !== null ? JSON.stringify(bodyObj) : undefined,
+        signal: AbortSignal.timeout(path.includes("order") ? 24000 : 6000)
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && (json.ok || json.error_code || json.error)) return json;
+        lastRes = json;
+      }
+    } catch (e) {}
+  }
+  return lastRes;
+}
+
+async function loadZidStoreCatalogFromDb() {
+  zidState.loading = true;
+  try {
+    const [prodSnap, akrabSnap, setSnap] = await Promise.all([
+      getDocFromServer(doc(db, "closings", "__zidstore_products")).catch(() => null),
+      getDocFromServer(doc(db, "closings", "__zidstore_akrab")).catch(() => null),
+      getDocFromServer(doc(db, "closings", "__zidstore_settings")).catch(() => null)
+    ]);
+    if (prodSnap?.exists() && Array.isArray(prodSnap.data()?.products)) {
+      zidState.products = prodSnap.data().products;
+    }
+    if (akrabSnap?.exists() && Array.isArray(akrabSnap.data()?.packages)) {
+      zidState.akrabPackages = akrabSnap.data().packages;
+    }
+    if (setSnap?.exists()) {
+      const s = setSnap.data() || {};
+      if (s.markup !== undefined) zidState.markup = Number(s.markup);
+      if (s.roundUpTo !== undefined) zidState.roundUpTo = Number(s.roundUpTo);
+      if (s.customPrices && typeof s.customPrices === "object") {
+        zidState.customPrices = { ...s.customPrices };
+      }
+    }
+  } catch (e) {
+    console.warn("Gagal load katalog ZidStore:", e);
+  } finally {
+    zidState.loading = false;
+  }
+}
+
+async function refreshZidStoreAkrabStockLive() {
+  try {
+    const res = await callStaffZidStoreBackend("/zidstore-akrab-stock", "POST", {});
+    if (res && res.ok && Array.isArray(res.packages)) {
+      zidState.akrabPackages = res.packages;
+      if (state.page === "zidstore" && zidState.tab === "akrab") {
+        updateZidStoreList();
+      }
+    }
+  } catch (e) {}
+}
+
+function renderZidStore() {
+  if (!hasZidStoreAccess()) {
+    toast("Anda tidak memiliki izin transaksi ZidStore dari Admin!");
+    return go("home");
+  }
+
+  loadZidStoreCatalogFromDb().then(() => {
+    if (state.page === "zidstore") updateZidStoreList();
+    if (zidState.tab === "akrab") refreshZidStoreAkrabStockLive();
+  });
+
+  const isPhoneDetectTab = zidState.tab === "pulsa" || zidState.tab === "data";
+  const detectedBrand = isPhoneDetectTab ? detectPhoneBrand(zidState.customerNo) : "";
+  const inputLabel = zidState.tab === "akrab"
+    ? "NOMOR HP XL / AXIS / LIVEON"
+    : (zidState.tab === "emoney"
+      ? `NOMOR HP AKUN ${esc((ZIDSTORE_EMONEY_BRANDS.find(m => m.key === zidState.brand)?.label || zidState.brand || "E-MONEY").toUpperCase())}`
+      : (zidState.tab === "digital" ? "ID AKUN / NOMOR TUJUAN" : "NOMOR HP PELANGGAN"));
+  const showInputCard = zidState.tab !== "emoney" || Boolean(zidState.brand);
+  const showSearchBox = zidState.tab === "data" || zidState.tab === "digital" || zidState.tab === "lainnya" || zidState.tab === "pulsa";
+
+  page.innerHTML = `
+    <div class="wrap ppob-wrap" style="padding-bottom:90px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <button class="btn" onclick="go('ppob_hub')" style="background:var(--bg,#f8fafc);border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:8px 12px;display:flex;align-items:center;gap:6px;font-weight:700;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg> Kembali
+        </button>
+        <div style="font-size:15.5px;font-weight:800;color:#312e81;display:flex;align-items:center;gap:6px;">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#4f46e5;"></span> ZidStore (PPOB &amp; Akrab)
+        </div>
+        <div style="width:65px;"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px;">
+        ${ZIDSTORE_TABS.map(t => {
+          const active = zidState.tab === t.key;
+          return `
+            <button type="button" class="btn ${active ? "primary" : ""}" style="${active ? "background:#4f46e5;color:#fff;border:none;" : "background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);color:var(--text-main,#0f172a);"}font-weight:800;border-radius:12px;padding:10px 4px;font-size:11px;min-height:42px;" onclick="switchZidStoreTab('${t.key}')">
+              ${t.label}
+            </button>
+          `;
+        }).join("")}
+      </div>
+
+      ${zidState.tab === "emoney" ? `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          ${ZIDSTORE_EMONEY_BRANDS.map(meta => {
+            const active = zidState.brand === meta.key;
+            return `
+              <button type="button" onclick="selectZidStoreEmoneyBrand('${meta.key}')" style="${getPpobEmoneyBtnStyle(meta, active)}">
+                <span>${meta.label}</span>
+              </button>
+            `;
+          }).join("")}
+        </div>
+      ` : ""}
+
+      ${showInputCard ? `
+        <div class="card pad" style="border-radius:16px;border:1.5px solid var(--line,#e2e8f0);margin-bottom:14px;">
+          <div style="font-size:12px;font-weight:800;color:var(--muted,#64748b);margin-bottom:8px;">${inputLabel}</div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input id="zidCustomerInput" class="input" type="${zidState.tab === "digital" ? "text" : "tel"}" inputmode="${zidState.tab === "digital" ? "text" : "numeric"}" placeholder="" value="${esc(zidState.customerNo)}" oninput="handleZidCustomerInput(this.value)" style="width:100%;box-sizing:border-box;min-height:58px;padding:12px 16px;font-size:24px;font-weight:900;letter-spacing:1.5px;border-radius:14px;">
+            <button id="btnZidClearInput" class="btn" onclick="clearZidCustomerInput()" style="background:#f1f5f9;border-radius:14px;min-height:58px;padding:0 14px;display:${zidState.customerNo ? "inline-flex" : "none"};align-items:center;justify-content:center;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+          <div id="zidDetectedBadge" style="margin-top:8px;display:${detectedBrand ? "flex" : "none"};align-items:center;gap:6px;font-size:11.5px;font-weight:800;color:#4f46e5;">
+            Operator terdeteksi: <span class="chip" style="background:rgba(79,70,229,0.14);color:#4f46e5;padding:2px 8px;">${detectedBrand}</span>
+          </div>
+        </div>
+      ` : ""}
+
+      ${showSearchBox ? `
+        <div style="margin-bottom:12px;">
+          <input id="zidSearchInput" class="input" type="text" placeholder="Cari paket / game / nominal..." value="${esc(zidState.search)}" oninput="zidState.search=this.value; updateZidStoreList();" style="width:100%;box-sizing:border-box;min-height:44px;padding:10px 14px;font-size:13.5px;font-weight:700;border-radius:12px;">
+        </div>
+      ` : ""}
+
+      <div id="zidProductList" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="color:var(--muted);text-align:center;padding:24px 0;">Memuat katalog ZidStore...</div>
+      </div>
+    </div>
+  `;
+
+  updateZidStoreList();
+}
+
+function switchZidStoreTab(tabName) {
+  const prevTab = zidState.tab;
+  zidState.tab = tabName;
+  zidState.search = "";
+  if (tabName === "emoney") {
+    zidState.brand = "";
+    zidState.customerNo = "";
+  } else if (tabName === "akrab") {
+    zidState.brand = "XL / AXIS";
+    if (prevTab === "emoney" || prevTab === "digital") zidState.customerNo = "";
+  } else if (tabName === "digital" || tabName === "lainnya") {
+    zidState.brand = "";
+    if (prevTab !== tabName) zidState.customerNo = "";
+  } else {
+    if (prevTab === "emoney" || prevTab === "digital") zidState.customerNo = "";
+    zidState.brand = detectPhoneBrand(zidState.customerNo) || "";
+  }
+  renderZidStore();
+}
+
+function selectZidStoreEmoneyBrand(brandKey) {
+  zidState.brand = brandKey;
+  renderZidStore();
+  setTimeout(() => {
+    const el = document.getElementById("zidCustomerInput");
+    if (el) el.focus();
+  }, 40);
+}
+
+function handleZidCustomerInput(val) {
+  const clean = zidState.tab === "digital" ? String(val || "").trim() : String(val || "").replace(/[^0-9]/g, "");
+  zidState.customerNo = clean;
+  const inputEl = document.getElementById("zidCustomerInput");
+  if (inputEl && zidState.tab !== "digital" && inputEl.value !== clean) inputEl.value = clean;
+  const clearBtn = document.getElementById("btnZidClearInput");
+  if (clearBtn) clearBtn.style.display = clean ? "inline-flex" : "none";
+
+  if (zidState.tab === "pulsa" || zidState.tab === "data") {
+    const detected = detectPhoneBrand(clean);
+    zidState.brand = detected;
+    const badgeEl = document.getElementById("zidDetectedBadge");
+    if (badgeEl) {
+      if (detected) {
+        badgeEl.style.display = "flex";
+        badgeEl.innerHTML = `Operator terdeteksi: <span class="chip" style="background:rgba(79,70,229,0.14);color:#4f46e5;padding:2px 8px;">${detected}</span>`;
+      } else {
+        badgeEl.style.display = "none";
+      }
+    }
+  }
+  updateZidStoreList();
+}
+
+function clearZidCustomerInput() {
+  zidState.customerNo = "";
+  const inputEl = document.getElementById("zidCustomerInput");
+  if (inputEl) inputEl.value = "";
+  const clearBtn = document.getElementById("btnZidClearInput");
+  if (clearBtn) clearBtn.style.display = "none";
+  const badgeEl = document.getElementById("zidDetectedBadge");
+  if (badgeEl) badgeEl.style.display = "none";
+  if (zidState.tab === "pulsa" || zidState.tab === "data") zidState.brand = "";
+  updateZidStoreList();
+}
+
+function getFilteredZidStoreItems() {
+  const tab = zidState.tab;
+  const q = String(zidState.search || "").trim().toLowerCase();
+
+  if (tab === "akrab") {
+    let list = [...(zidState.akrabPackages || [])];
+    if (q) {
+      list = list.filter(a => String(a.name || "").toLowerCase().includes(q) || String(a.package_code || "").toLowerCase().includes(q));
+    }
+    return list.sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0) || Number(a.price || 0) - Number(b.price || 0));
+  }
+
+  let list = (zidState.products || []).filter(p => getZidStoreCategoryTab(p) === tab);
+
+  if (tab === "pulsa" || tab === "data") {
+    const detected = detectPhoneBrand(zidState.customerNo);
+    const prefix4 = String(zidState.customerNo || "").replace(/[^0-9]/g, "").slice(0, 4);
+    if (detected) {
+      list = list.filter(p => {
+        const pb = String(p.brand || "").toUpperCase();
+        if (prefix4 === "0851" && (pb === "BY.U" || pb === "TELKOMSEL")) return true;
+        return pb === detected;
+      });
+    }
+  } else if (tab === "emoney") {
+    const activeBrand = String(zidState.brand || "").toUpperCase();
+    if (!activeBrand || String(zidState.customerNo || "").length < 10) return [];
+    list = list.filter(p => {
+      const pb = String(p.brand || "").toUpperCase();
+      const nm = String(p.name || "").toUpperCase();
+      if (activeBrand === "GO PAY") return pb === "GO PAY" || nm.includes("GOPAY") || nm.includes("GO-PAY");
+      if (activeBrand === "SHOPEE PAY") return pb === "SHOPEE PAY" || nm.includes("SHOPEE");
+      return pb === activeBrand || nm.includes(activeBrand);
+    });
+  }
+
+  if (q) {
+    list = list.filter(p =>
+      String(p.name || "").toLowerCase().includes(q) ||
+      String(p.code || "").toLowerCase().includes(q) ||
+      String(p.sub_category || "").toLowerCase().includes(q)
+    );
+  }
+
+  return list.sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
+}
+
+function updateZidStoreList() {
+  const container = document.getElementById("zidProductList");
+  if (!container) return;
+
+  if (zidState.tab === "emoney") {
+    if (!zidState.brand) {
+      container.innerHTML = `
+        <div class="card pad" style="text-align:center;color:var(--muted);padding:22px 16px;">
+          <div style="font-weight:800;font-size:13.5px;color:var(--text-main,#0f172a);">Pilih E-Wallet terlebih dahulu</div>
+          <div style="font-size:11.5px;margin-top:4px;">Klik salah satu pilihan E-Wallet di atas</div>
+        </div>`;
+      return;
+    }
+    const len = String(zidState.customerNo || "").length;
+    if (len < 10) {
+      const brandLabel = ZIDSTORE_EMONEY_BRANDS.find(m => m.key === zidState.brand)?.label || zidState.brand;
+      container.innerHTML = `
+        <div class="card pad" style="text-align:center;color:var(--muted);padding:22px 16px;">
+          <div style="font-weight:800;font-size:13.5px;color:var(--text-main,#0f172a);">Masukkan nomor HP akun ${esc(brandLabel)}</div>
+          <div style="font-size:11.5px;margin-top:4px;">Produk ${esc(brandLabel)} akan muncul setelah nomor minimal 10 digit (${len}/10)</div>
+        </div>`;
+      return;
+    }
+  }
+
+  const items = getFilteredZidStoreItems();
+  if (!items.length) {
+    const emptyCatalog = zidState.tab === "akrab" ? !(zidState.akrabPackages || []).length : !(zidState.products || []).length;
+    container.innerHTML = `
+      <div class="card pad" style="text-align:center;color:var(--muted);padding:24px;">
+        <div style="font-weight:700;">${emptyCatalog ? "Katalog ZidStore belum ditarik Admin" : "Tidak ada produk yang sesuai"}</div>
+        <div style="font-size:11px;margin-top:4px;">${emptyCatalog ? "Minta Admin klik Tarik Produk di panel ZidStore Admin Only" : "Coba ubah kata kunci pencarian atau periksa nomor tujuan"}</div>
+      </div>`;
+    return;
+  }
+
+  const limited = items.slice(0, 80);
+  const moreBanner = items.length > 80
+    ? `<div style="font-size:11px;color:#4f46e5;font-weight:700;text-align:center;">Menampilkan 80 dari ${items.length} produk — ketik nama paket atau nomor HP untuk mempersempit</div>`
+    : "";
+
+  container.innerHTML = moreBanner + limited.map(item => {
+    const isAkrab = zidState.tab === "akrab" || Boolean(item.package_code);
+    const code = String(item.package_code || item.code || item.sku || "");
+    const sellPrice = item.is_open_denom ? 0 : getZidStoreSellPrice(item);
+    const stockNum = Number(item.stock || 0);
+    const avail = isAkrab ? (item.available !== false && stockNum > 0) : item.available !== false;
+    const stockBadge = isAkrab
+      ? `<span class="chip" style="background:${stockNum > 0 ? "#dcfce7" : "#fee2e2"};color:${stockNum > 0 ? "#166534" : "#991b1b"};font-size:10px;font-weight:800;padding:2px 7px;">Stok: ${stockNum}</span>`
+      : "";
+
+    return `
+      <div class="card pad" style="display:flex;align-items:center;justify-content:space-between;border-radius:14px;border:1.5px solid var(--line,#e2e8f0);padding:12px 14px;cursor:${avail ? "pointer" : "not-allowed"};opacity:${avail ? "1" : "0.58"};gap:10px;" onclick="${avail ? `confirmZidStoreOrder('${esc(code)}', '${isAkrab ? "akrab" : "ppob"}')` : `toast('${isAkrab ? "Stok paket Akrab habis" : "Produk sedang tidak tersedia"}')`}">
+        <div style="min-width:0;flex:1;">
+          <div style="font-size:13.5px;font-weight:800;color:var(--text-main,#0f172a);line-height:1.3;">${esc(item.name)}</div>
+          <div style="font-size:11px;color:var(--muted,#64748b);margin-top:3px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
+            <span>${esc(item.sub_category || item.brand || "ZidStore")} &bull; ${esc(code)}</span>
+            ${stockBadge}
+          </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:15px;font-weight:900;color:#4f46e5;">${item.is_open_denom ? "Open Denom" : `Rp ${rp(sellPrice)}`}</div>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+function confirmZidStoreOrder(code, kind = "ppob") {
+  const item = kind === "akrab"
+    ? (zidState.akrabPackages || []).find(a => String(a.package_code || a.sku) === String(code))
+    : (zidState.products || []).find(p => String(p.code || p.sku) === String(code));
+  if (!item) return toast("Produk ZidStore tidak ditemukan");
+
+  const target = String(zidState.customerNo || "").trim();
+  if (!target || target.length < 4) return toast("Nomor / ID tujuan belum diisi dengan benar!");
+
+  if (zidState.tab !== "digital") {
+    const cleanPhone = target.replace(/[^0-9]/g, "");
+    if (!(/^08\d{8,13}$/.test(cleanPhone) || /^62\d{8,13}$/.test(cleanPhone))) {
+      return toast("Format nomor HP harus diawali 08 atau 62 (10–15 digit)!");
+    }
+  }
+
+  const isOpen = Boolean(item.is_open_denom && kind === "ppob");
+  const baseSellPrice = isOpen ? 0 : getZidStoreSellPrice(item);
+  const descBox = kind === "akrab" && item.description
+    ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;max-height:140px;overflow-y:auto;font-size:11px;color:#475569;white-space:pre-line;line-height:1.4;">${esc(item.description)}</div>`
+    : "";
+  const openDenomBox = isOpen
+    ? `<div style="background:#eef2ff;border:1.5px solid #a5b4fc;border-radius:12px;padding:10px 12px;">
+         <label style="font-size:11px;font-weight:800;color:#312e81;display:block;margin-bottom:4px;">NOMINAL OPEN DENOM (Rp 10.000 - Rp 10.000.000)</label>
+         <input id="zidOpenDenomInput" class="input" type="number" inputmode="numeric" value="50000" min="10000" max="10000000" style="width:100%;box-sizing:border-box;font-size:18px;font-weight:900;">
+       </div>`
+    : "";
+
+  const body = `
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:12px 14px;">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Tujuan Transaksi</div>
+        <div style="font-size:18px;font-weight:900;color:#0f172a;letter-spacing:0.6px;margin-top:2px;">${esc(target)}</div>
+        <div style="font-size:11px;color:#4f46e5;font-weight:800;margin-top:2px;">ZidStore &bull; ${kind === "akrab" ? "XL/AXIS Akrab" : esc(item.category || "PPOB")}</div>
+      </div>
+
+      <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:12px 14px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+          <div style="font-size:13.5px;font-weight:800;color:#0f172a;">${esc(item.name)}</div>
+          ${!isOpen ? `<div style="font-size:16px;font-weight:900;color:#4f46e5;white-space:nowrap;">Rp ${rp(baseSellPrice)}</div>` : ""}
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+          Kode: <b>${esc(code)}</b>${kind === "akrab" ? ` &bull; Stok: <b>${Number(item.stock || 0)}</b>` : ""}
+        </div>
+      </div>
+
+      ${openDenomBox}
+      ${descBox}
+
+      <button type="button" class="btn" style="width:100%;background:#4f46e5;color:#fff;font-weight:800;border-radius:12px;padding:13px 14px;font-size:13.5px;display:flex;align-items:center;justify-content:center;gap:8px;" onclick="promptZidStorePinAndPay('${esc(code)}', '${kind}', ${baseSellPrice}, ${isOpen ? "true" : "false"})">
+        BAYAR ZIDSTORE
+      </button>
+    </div>
+  `;
+  modal(kind === "akrab" ? "Konfirmasi Paket Akrab" : "Konfirmasi ZidStore PPOB", body, "", "");
+}
+
+function promptZidStorePinAndPay(code, kind, sellPrice, isOpenDenom = false) {
+  let finalSell = Number(sellPrice || 0);
+  let openQty = 0;
+  if (isOpenDenom) {
+    openQty = Math.round(Number(document.getElementById("zidOpenDenomInput")?.value || 0));
+    if (!Number.isFinite(openQty) || openQty < 10000 || openQty > 10000000) {
+      return toast("Nominal Open Denom wajib antara Rp 10.000 sampai Rp 10.000.000!");
+    }
+    const item = (zidState.products || []).find(p => String(p.code || p.sku) === String(code));
+    finalSell = getZidStoreSellPrice(item, openQty);
+  }
+
+  const item = kind === "akrab"
+    ? (zidState.akrabPackages || []).find(a => String(a.package_code || a.sku) === String(code))
+    : (zidState.products || []).find(p => String(p.code || p.sku) === String(code));
+  if (!item) return toast("Produk tidak ditemukan");
+
+  const userName = state.user?.name || state.user?.username || "Kasir";
+  const body = `
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="background:#eef2ff;border:1.5px solid #a5b4fc;border-radius:12px;padding:11px 13px;">
+        <div style="font-size:11px;font-weight:800;color:#312e81;text-transform:uppercase;">Verifikasi Kasir: ${esc(userName)}</div>
+        <div style="font-size:13.5px;font-weight:800;color:#0f172a;margin-top:3px;">${esc(item.name)} &bull; ${esc(zidState.customerNo)}</div>
+        <div style="font-size:14px;font-weight:900;color:#4f46e5;margin-top:2px;">Total: Rp ${rp(finalSell)}</div>
+      </div>
+
+      <div>
+        <label style="font-size:11.5px;font-weight:800;color:var(--muted);display:block;margin-bottom:6px;text-transform:uppercase;">Masukkan PIN Akun Anda</label>
+        <input id="zidConfirmPinInput" class="input" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Masukkan PIN Anda" style="width:100%;box-sizing:border-box;font-size:18px;font-weight:900;text-align:center;letter-spacing:4px;border-radius:12px;padding:12px;" onkeydown="if(event.key==='Enter'){event.preventDefault();submitZidStorePinConfirm('${esc(code)}', '${kind}', ${finalSell}, ${openQty});}">
+        <div id="zidPinErrorMsg" style="display:none;margin-top:6px;font-size:11.5px;font-weight:800;color:#dc2626;text-align:center;"></div>
+      </div>
+
+      <button type="button" class="btn" style="width:100%;background:#4f46e5;color:#fff;font-weight:800;border-radius:12px;padding:13px 14px;font-size:13.5px;" onclick="submitZidStorePinConfirm('${esc(code)}', '${kind}', ${finalSell}, ${openQty})">
+        Konfirmasi &amp; Bayar ZidStore
+      </button>
+    </div>
+  `;
+  modal("Masukkan PIN Kasir", body, "", "");
+  setTimeout(() => document.getElementById("zidConfirmPinInput")?.focus(), 120);
+}
+
+function submitZidStorePinConfirm(code, kind, sellPrice, openQty = 0) {
+  const input = document.getElementById("zidConfirmPinInput");
+  const errEl = document.getElementById("zidPinErrorMsg");
+  const enteredPin = String(input?.value || "").trim();
+  const userPin = String(state.user?.pin || "").trim();
+
+  if (!enteredPin) {
+    if (errEl) { errEl.textContent = "PIN wajib diisi!"; errEl.style.display = "block"; }
+    input?.focus();
+    return;
+  }
+  if (!userPin || enteredPin !== userPin) {
+    if (errEl) { errEl.textContent = "PIN Anda salah! Silakan coba lagi."; errEl.style.display = "block"; }
+    if (input) { input.value = ""; input.focus(); }
+    return;
+  }
+  closeModal();
+  processZidStoreTransaction(code, kind, sellPrice, openQty);
+}
+
+async function processZidStoreTransaction(code, kind, sellPrice, openQty = 0) {
+  const item = kind === "akrab"
+    ? (zidState.akrabPackages || []).find(a => String(a.package_code || a.sku) === String(code))
+    : (zidState.products || []).find(p => String(p.code || p.sku) === String(code));
+  if (!item) return toast("Produk ZidStore tidak ditemukan");
+
+  showLoad(true);
+  try {
+    const u = key(state.user?.username || "kasir");
+    const refId = `ZID-${Date.now()}-${u}`;
+    const targetNo = String(zidState.customerNo || "").trim();
+    const modalPrice = openQty > 0 ? openQty : Number(item.price || 0);
+
+    const apiRes = await callStaffZidStoreBackend("/zidstore-order", "POST", {
+      kind,
+      code,
+      target: targetNo,
+      ref_id: refId,
+      qty: openQty > 0 ? openQty : undefined,
+      expected_price: openQty > 0 ? undefined : modalPrice
+    });
+
+    if (!apiRes) {
+      throw new Error("Server proxy / worker ZidStore tidak terjangkau. Pastikan proxy aktif atau koneksi internet stabil.");
+    }
+    if (!apiRes.ok) {
+      throw new Error(apiRes.error || "Transaksi ZidStore ditolak");
+    }
+
+    const d = apiRes.data || {};
+    const stLower = String(d.status || "pending").toLowerCase();
+    const mappedStatus = stLower === "success" ? "Sukses" : (stLower === "failed" ? "Gagal" : "Pending");
+    if (mappedStatus === "Gagal") {
+      throw new Error(d.message || "Pesanan gagal di ZidStore (saldo panel dikembalikan otomatis)");
+    }
+
+    const now = Date.now();
+    const kasirName = state.user?.name || state.user?.username || "Kasir";
+    const userRole = state.user?.role || "staff";
+    const actualModal = Number(d.price || modalPrice || 0);
+    const profit = Math.max(0, sellPrice - actualModal);
+
+    const txPayload = {
+      id: refId,
+      clientId: refId,
+      ref_id: refId,
+      zidstoreOrderId: String(d.id || ""),
+      zidstoreKind: kind,
+      provider: "zidstore",
+      isZidstore: true,
+      type: "zidstore",
+      bonusExempt: true,
+      category: kind === "akrab" ? "akrab" : "zidstore",
+      ppobCategory: kind === "akrab" ? "Akrab" : (item.category || "ZidStore"),
+      brand: item.brand || "ZidStore",
+      user: u,
+      name: kasirName,
+      cashier_name: kasirName,
+      amount: sellPrice,
+      note: `${kind === "akrab" ? "[AKRAB]" : "[ZIDSTORE]"} ${item.name} (${targetNo})`,
+      customer_no: targetNo,
+      buyer_sku_code: code,
+      product_name: item.name,
+      price_modal: actualModal,
+      price_sell: sellPrice,
+      profit,
+      status: mappedStatus,
+      sn: String(d.sn || ""),
+      message: String(d.message || ""),
+      paymentMethod: "cash",
+      paymentLabel: kind === "akrab" ? "Tunai (Akrab)" : "Tunai (ZidStore)",
+      paymentChannel: "cash",
+      paymentStatus: "success",
+      paymentConfirmed: true,
+      paymentConfirmedAtMs: now,
+      notifyAdmin: true,
+      notificationType: "staff_transaction",
+      notificationStatus: "pending",
+      dateKey: todayKey(),
+      monthKey: monthKey(),
+      userRole,
+      role: userRole,
+      bonusGroup: isDaily() ? "harian" : "staff",
+      bonusRate: 0,
+      bonusPercent: 0,
+      transactionBonusRate: 0,
+      transactionBonusPercent: 0,
+      source: "zidstore_transaction",
+      deleted: false,
+      createdAtMs: now,
+      updatedAtMs: now
+    };
+
+    await setDoc(doc(db, "transactions", refId), txPayload, { merge: true });
+    if (Array.isArray(state.data.tx)) {
+      state.data.tx = [txPayload, ...state.data.tx.filter(t => t.id !== refId)];
+    }
+    if (Array.isArray(state.data.targetTx)) {
+      state.data.targetTx = mergeRowsById(state.data.targetTx || [], [txPayload]);
+    }
+    syncDailyTargetState();
+    render();
+
+    if (!isTrialRecord(txPayload)) {
+      notifyAdminNewTransaction(txPayload);
+      if (typeof kirimNotifWaBos === "function") kirimNotifWaBos(sellPrice, txPayload.note, kasirName);
+    }
+    if (typeof playSuccessSound === "function") playSuccessSound();
+
+    const receiptText = receiptTextForPpob(txPayload);
+    window.__lastPpobReceipt = receiptText;
+
+    const successBody = `
+      <div style="text-align:center;padding:8px 0;">
+        <div style="width:60px;height:60px;border-radius:50%;background:#eef2ff;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;border:2.5px solid #a5b4fc;">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        </div>
+        <div style="font-size:17px;font-weight:900;color:#0f172a;">Order ZidStore Diterima!</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px;">Status: <b>${esc(mappedStatus)}</b></div>
+
+        <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:12px;text-align:left;margin:14px 0;">
+          <div style="font-size:11px;color:var(--muted);font-weight:700;">NOMOR SERIAL NUMBER (SN):</div>
+          <div id="zidSuccessSnText" style="font-size:16px;font-weight:900;color:#4f46e5;letter-spacing:0.8px;word-break:break-all;margin-top:3px;">${esc(txPayload.sn || "Sedang diproses (cek lagi beberapa detik)")}</div>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:8px;">Tujuan: <b style="color:#0f172a;">${esc(targetNo)}</b></div>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Produk: <b style="color:#0f172a;">${esc(item.name)}</b></div>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Total Bayar: <b style="color:#4f46e5;">Rp ${rp(sellPrice)}</b></div>
+        </div>
+
+        <div style="display:flex;gap:8px;">
+          ${mappedStatus !== "Sukses" ? `<button type="button" class="btn" style="flex:1;background:#eef2ff;color:#4f46e5;border:1.5px solid #a5b4fc;font-weight:800;border-radius:12px;padding:12px;" onclick="closeModal(); checkStaffZidStoreOrderStatus('${esc(refId)}')">Cek SN</button>` : ""}
+          <button type="button" class="btn primary" style="flex:1;background:#4f46e5;color:#fff;font-weight:800;border-radius:12px;padding:12px;" onclick="closeModal(); if (typeof openReceiptPreview === 'function' && window.__lastPpobReceipt) openReceiptPreview(window.__lastPpobReceipt, 'Struk ZidStore');">Cetak Struk</button>
+          <button type="button" class="btn" style="flex:1;background:#f1f5f9;border:1px solid #cbd5e1;font-weight:700;border-radius:12px;padding:12px;" onclick="closeModal(); go('home');">Selesai</button>
+        </div>
+      </div>`;
+    modal("Transaksi ZidStore", successBody, "", "");
+  } catch (err) {
+    toast("Gagal: " + (err.message || err), true);
+  } finally {
+    showLoad(false);
+  }
+}
+
+async function checkStaffZidStoreOrderStatus(txId) {
+  const t = findTxById(txId);
+  if (!t) return toast("Transaksi tidak ditemukan");
+  const identifier = String(t.zidstoreOrderId || t.ref_id || t.id || "").trim();
+  const kind = isZidStoreAkrabTx(t) ? "akrab" : "ppob";
+  showLoad(true);
+  try {
+    const res = await callStaffZidStoreBackend("/zidstore-order-status", "POST", { kind, identifier });
+    if (!res || !res.ok || !res.data) {
+      return toast(res?.error || "Gagal cek status ZidStore", true);
+    }
+    const d = res.data;
+    const stLower = String(d.status || "").toLowerCase();
+    const mapped = stLower === "success" ? "Sukses" : (stLower === "failed" ? "Gagal" : "Pending");
+    const patch = {
+      status: mapped,
+      sn: String(d.sn || t.sn || ""),
+      message: String(d.message || t.message || ""),
+      updatedAtMs: Date.now()
+    };
+    await setDoc(doc(db, "transactions", String(t.id)), patch, { merge: true });
+    if (Array.isArray(state.data.tx)) {
+      state.data.tx = state.data.tx.map(x => String(x.id) === String(t.id) ? { ...x, ...patch } : x);
+    }
+    if (Array.isArray(state.data.targetTx)) {
+      state.data.targetTx = state.data.targetTx.map(x => String(x.id) === String(t.id) ? { ...x, ...patch } : x);
+    }
+    render();
+    toast(`Status ZidStore: ${mapped}${patch.sn ? " • SN: " + patch.sn : ""}`);
+    openTxDetail(String(t.id));
+  } catch (e) {
+    toast("Gagal cek status: " + (e.message || e), true);
+  } finally {
+    showLoad(false);
+  }
+}
+
+window.renderZidStore = renderZidStore;
+window.switchZidStoreTab = switchZidStoreTab;
+window.selectZidStoreEmoneyBrand = selectZidStoreEmoneyBrand;
+window.handleZidCustomerInput = handleZidCustomerInput;
+window.clearZidCustomerInput = clearZidCustomerInput;
+window.confirmZidStoreOrder = confirmZidStoreOrder;
+window.promptZidStorePinAndPay = promptZidStorePinAndPay;
+window.submitZidStorePinConfirm = submitZidStorePinConfirm;
+window.processZidStoreTransaction = processZidStoreTransaction;
+window.checkStaffZidStoreOrderStatus = checkStaffZidStoreOrderStatus;
+window.updateZidStoreList = updateZidStoreList;
 
 
