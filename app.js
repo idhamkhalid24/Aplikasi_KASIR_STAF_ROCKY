@@ -5545,10 +5545,14 @@ function isTxAfterLatestWithdrawal(t) {
   if (latestMs === 0) return false;
   return ms(t) > latestMs;
 }
+function isPpobTx(t) {
+  return Boolean(t && (t.isPpob === true || t.type === "ppob" || t.category === "ppob" || t.source === "ppob_transaction"));
+}
 function txItem(t) {
   const pending = t.pending === true;
+  const isPpob = isPpobTx(t);
   const isMine = key(t.user) === key(state.user?.username);
-  const canDelete = txDate(t) === todayKey() && !pending && isMine;
+  const canDelete = txDate(t) === todayKey() && !pending && isMine && (!isPpob || isAdmin(state.user));
   const id = esc(t.id);
 
   const noteLines = String(t.note || "").split("\n").map(x => x.trim()).filter(Boolean);
@@ -5565,7 +5569,9 @@ function txItem(t) {
     }
   }
   const detailIconHtml = totalQty > 0 ? `<span style="font-weight:900;font-size:16px;color:var(--text-main);display:flex;align-items:center;justify-content:center">${totalQty}</span>` : txHistoryIcon("list");
-  const detailBtn = `<button class="btn sm tx-card-btn tx-card-detail" onclick="openTxDetail('${id}')" aria-label="Detail transaksi" title="Detail">${detailIconHtml}</button>`;
+  const detailBtn = !isPpob
+    ? `<button class="btn sm tx-card-btn tx-card-detail" onclick="openTxDetail('${id}')" aria-label="Detail transaksi" title="Detail">${detailIconHtml}</button>`
+    : "";
   const printBtn = (!pending && isMine)
     ? `<button class="btn sm tx-card-btn tx-card-print" onclick="printReceiptFromTx('${id}')" aria-label="Cetak struk" title="Cetak">${txHistoryIcon("print")}</button>`
     : "";
@@ -5576,7 +5582,6 @@ function txItem(t) {
     ? `<div class="tx-card-actions">${detailBtn}<span class="pill amber">Sync</span></div>`
     : `<div class="tx-card-actions">${detailBtn}${printBtn}${deleteBtn}</div>`;
 
-  const isPpob = t.isPpob === true || t.type === "ppob" || t.category === "ppob" || t.source === "ppob_transaction";
   const method = normalizeTxPaymentMethod(t.paymentMethod || t.paymentLabel);
   const label = isPpob ? "PPOB" : txPaymentLabel(method);
   const badgeCls = isPpob ? "ppob" : (method === "cash" ? "cash" : "qris");
@@ -5587,13 +5592,20 @@ function txItem(t) {
   const staffNameLabel = isRismaSpecialUser() ? `<span style="font-weight:700;color:var(--text);margin-right:4px;">${esc(rawStaffName)}</span><span style="color:var(--muted);margin-right:4px;">•</span>` : "";
   const timeLabel = timeID(ms(t));
   const infoPay = payBadge ? `<span style="color:var(--muted);margin:0 4px;">•</span>${payBadge}` : "";
-  
+  const ppobProductName = isPpob
+    ? String(t.product_name || t.note || "Produk PPOB").replace(/^\[PPOB\]\s*/i, "").trim()
+    : "";
+  const ppobProductLine = isPpob
+    ? `<div onclick="openTxDetail('${id}')" style="margin-top:4px;font-size:11.5px;font-weight:800;color:var(--text,#0f172a);line-height:1.25;white-space:normal;word-break:break-word;cursor:pointer;">${esc(ppobProductName)}${t.customer_no && !ppobProductName.includes(String(t.customer_no)) ? ` <span style="font-weight:600;color:var(--muted,#64748b);font-size:10.5px;">&bull; ${esc(t.customer_no)}</span>` : ""}</div>`
+    : "";
+
   const afterWithdrawal = typeof isTxAfterLatestWithdrawal==='function' && isTxAfterLatestWithdrawal(t);
   let shadowStyle = afterWithdrawal ? 'border: 1px solid #ff4d4d !important; box-shadow: 0 0 5px rgba(255, 77, 77, 0.2) !important; background-color: var(--card) !important;' : '';
 
   return `<div class="tx-row tx-row-card-mini" style="${shadowStyle}">
     <div class="tx-card-main">
       <div class="tx-card-info" style="white-space:normal!important; overflow:visible!important; display:flex; flex-wrap:wrap; align-items:center; gap:5px; padding-bottom:2px;">${staffNameLabel}${timeLabel}${infoPay}</div>
+      ${ppobProductLine}
     </div>
     <div class="tx-card-side">
       <div class="tx-card-amount">Rp ${rp(t.amount)}</div>
@@ -10199,6 +10211,8 @@ function home() {
   async function delTx(id) {
     const t = state.data.tx.find((x) => String(x.id) === String(id));
     if (!t) return toast("Transaksi tidak ditemukan");
+    if (isPpobTx(t) && !isAdmin(state.user))
+      return toast("Transaksi PPOB tidak dapat dihapus staf. Hanya Admin yang bisa menghapus.");
     if (key(t.user) !== key(state.user.username))
       return toast("Tidak bisa hapus transaksi orang lain");
     const p = await pinAsk(`Hapus transaksi Rp ${rp(t.amount)}?`);
@@ -13699,7 +13713,7 @@ function renderPpob() {
       </div>
 
       <!-- Input Nomor Tujuan -->
-      <div class="card pad mb" style="border-radius:16px;border:1.5px solid var(--line,#e2e8f0);box-shadow:0 4px 12px rgba(0,0,0,0.03);">
+      <div class="card pad" style="border-radius:16px;border:1.5px solid var(--line,#e2e8f0);box-shadow:0 4px 12px rgba(0,0,0,0.03);margin-bottom:14px;">
         <div style="font-size:12px;font-weight:800;color:var(--muted,#64748b);margin-bottom:6px;">
           ${ppobState.tab === 'pln' ? 'NOMOR METER / ID PELANGGAN PLN' : (ppobState.tab === 'emoney' ? 'NOMOR HP AKUN E-MONEY' : 'NOMOR HP PELANGGAN')}
         </div>
@@ -13716,11 +13730,11 @@ function renderPpob() {
 
       <!-- Brand Filter (Khusus E-Money) -->
       ${ppobState.tab === 'emoney' ? `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
           ${PPOB_EMONEY_BRANDS.map(meta => {
             const active = ppobState.brand === meta.key;
             return `
-              <button id="btnPpobBrand_${meta.id}" class="btn" onclick="selectPpobBrand('${meta.key}')" style="${getPpobEmoneyBtnStyle(meta, active)}">
+              <button type="button" id="btnPpobBrand_${meta.id}" onclick="selectPpobBrand('${meta.key}')" style="${getPpobEmoneyBtnStyle(meta, active)}">
                 <span>${meta.label}</span>
               </button>
             `;
@@ -13729,7 +13743,7 @@ function renderPpob() {
       ` : ''}
 
       <!-- List Produk -->
-      <div id="ppobProductList" style="display:flex;flex-direction:column;gap:8px;">
+      <div id="ppobProductList" style="display:flex;flex-direction:column;gap:10px;">
         <div style="color:var(--muted);text-align:center;padding:24px 0;">Memuat produk...</div>
       </div>
     </div>
@@ -13789,7 +13803,7 @@ const PPOB_EMONEY_BRANDS = [
 ];
 
 function getPpobEmoneyBtnStyle(meta, active) {
-  const base = 'display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;padding:10px 12px;border-radius:14px;font-size:14px;font-weight:800;letter-spacing:0.2px;transition:all 0.15s ease;';
+  const base = 'display:flex;align-items:center;justify-content:center;width:100%;box-sizing:border-box;min-height:60px;padding:16px 14px;border-radius:16px;font-size:15.5px;font-weight:800;letter-spacing:0.3px;line-height:1.2;cursor:pointer;font-family:inherit;transition:all 0.15s ease;';
   if (active) {
     return `${base}background:${meta.color};color:#fff;border:2px solid ${meta.color};box-shadow:0 4px 12px ${meta.shadow};`;
   }
