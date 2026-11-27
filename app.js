@@ -13813,6 +13813,7 @@ function renderPpob() {
       </div>
 
       <div id="ppobPageBalanceBar">${renderProviderBalanceBar("digiflazz")}</div>
+      ${typeof renderPpobTxLockBanner === "function" ? renderPpobTxLockBanner() : ""}
 
       <!-- Kategori Nav -->
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px;">
@@ -14087,6 +14088,7 @@ function receiptTextForPpob(tx) {
 }
 
 function confirmPpobOrder(sku) {
+  if (!canTx()) return toast(txBlockedMessage());
   const product = ppobState.products.find(p => p.sku === sku);
   if (!product) return toast("Produk tidak ditemukan");
   if (!ppobState.customerNo || ppobState.customerNo.length < 4) {
@@ -14127,6 +14129,10 @@ function confirmPpobOrder(sku) {
 }
 
 function promptPpobPinAndPay(sku, sellPrice) {
+  if (!canTx()) {
+    closeModal();
+    return toast(txBlockedMessage());
+  }
   const product = ppobState.products.find(p => p.sku === sku);
   if (!product) return toast("Produk tidak ditemukan");
 
@@ -14164,6 +14170,10 @@ function promptPpobPinAndPay(sku, sellPrice) {
 }
 
 async function submitPpobPinConfirm(sku, sellPrice) {
+  if (!canTx()) {
+    closeModal();
+    return toast(txBlockedMessage());
+  }
   const inp = document.getElementById("ppobConfirmPinInput");
   const errEl = document.getElementById("ppobPinErrorMsg");
   const btn = document.getElementById("btnSubmitPpobPin");
@@ -14196,7 +14206,17 @@ async function submitPpobPinConfirm(sku, sellPrice) {
     if (uname) {
       const uSnap = await getDocFromServer(doc(db, "users", uname)).catch(() => null);
       if (uSnap && uSnap.exists()) {
-        const srvPin = String(uSnap.data()?.pin || "").trim();
+        const uData = uSnap.data() || {};
+        if (uData.active === false || deleted(uData) || isAdmin(uData)) {
+          closeModal();
+          clearSessionAndRender("Akun sudah nonaktif / tidak valid");
+          return;
+        }
+        if (uData.ppobAccess !== true) {
+          closeModal();
+          return toast("Izin akses PPOB Kasir Anda telah dicabut Admin!");
+        }
+        const srvPin = String(uData.pin || "").trim();
         if (srvPin) expectedPin = srvPin;
       }
     }
@@ -14216,12 +14236,21 @@ async function submitPpobPinConfirm(sku, sellPrice) {
   await processPpobTransaction(sku, sellPrice, false);
 }
 
+let ppobTxSubmitting = false;
+
 async function processPpobTransaction(sku, sellPrice, isTesting = false) {
+  if (ppobTxSubmitting) return toast("Transaksi PPOB sedang diproses, tunggu sebentar...");
+  if (!canTx()) return toast(txBlockedMessage());
   const product = ppobState.products.find(p => p.sku === sku);
   if (!product) return toast("Produk tidak ditemukan");
 
+  ppobTxSubmitting = true;
   showLoad(true);
   try {
+    const verified = await verifyTransactionAllowedServer(todayKey());
+    if (!verified.ok) {
+      throw new Error(verified.msg || "Transaksi ditolak. Cek absen/closing ulang.");
+    }
     const refId = `PPOB-${Date.now()}-${cleanUser(state.user?.username || 'kasir')}`;
     const isPln = product.category === 'PLN';
 
@@ -14323,20 +14352,47 @@ async function processPpobTransaction(sku, sellPrice, isTesting = false) {
         throw new Error("Server PPOB tidak terjangkau. Pastikan menggunakan APK Kasir terbaru (V3) atau koneksi internet stabil.");
       }
 
-      const d = apiResult?.data?.data || apiResult?.data || {};
-      realStatus = d.status || "Pending";
-      realSn = d.sn || "";
-      realMessage = d.message || apiResult?.error || "";
-      if (String(realStatus).toLowerCase() === "gagal" || apiResult?.ok === false) {
-        if (String(d.rc || "") === "45" || String(realMessage).toLowerCase().includes("ip anda")) {
-          const ipMatch = String(realMessage).match(/(\d{1,3}(?:\.\d{1,3}){3})/);
+      let parsedRaw = null;
+      if (!apiResult.data && typeof apiResult.raw === "string" && apiResult.raw.trim()) {
+        try { parsedRaw = JSON.parse(apiResult.raw); } catch (eRaw) {}
+      }
+      const d = apiResult?.data?.data || apiResult?.data || parsedRaw?.data?.data || parsedRaw?.data || parsedRaw || {};
+      const httpCode = Number(apiResult?.status_code || apiResult?.status || apiResult?.statusCode || 200);
+      const rc = String(d.rc || "").trim();
+      const rawStatusLower = String(d.status || "").toLowerCase().trim();
+      realSn = String(d.sn || "").trim();
+      realMessage = String(d.message || apiResult?.error || parsedRaw?.message || "").trim();
+      const msgLower = realMessage.toLowerCase();
+
+      const isIpMismatch =
+        rc === "45" ||
+        msgLower.includes("ip anda") ||
+        msgLower.includes("tidak kami kenali") ||
+        msgLower.includes("whitelist");
+
+      const isExplicitFail =
+        apiResult?.ok === false ||
+        Boolean(apiResult?.error) ||
+        httpCode >= 400 ||
+        rawStatusLower === "gagal" ||
+        rawStatusLower === "failed" ||
+        rawStatusLower === "error" ||
+        (rc !== "" && rc !== "00" && rc !== "03") ||
+        isIpMismatch ||
+        (!d.status && !rc && !d.ref_id && !realSn);
+
+      if (isExplicitFail) {
+        if (isIpMismatch) {
+          const ipMatch = realMessage.match(/(\d{1,3}(?:\.\d{1,3}){3})/);
           if (ipMatch && ipMatch[1]) {
             syncStaffPublicIpToDb(true, ipMatch[1]);
           }
-          throw new Error(`IP WiFi Toko berubah (${realMessage}). IP terbaru sudah dikirim otomatis ke Admin Only untuk disamakan di Digiflazz!`);
+          throw new Error(`GAGAL: IP tidak cocok dengan Digiflazz (${realMessage || "RC 45"}). Transaksi dibatalkan & saldo Digiflazz tidak terpotong!`);
         }
-        throw new Error(realMessage || "Transaksi ditolak oleh provider Digiflazz");
+        throw new Error(realMessage || `Transaksi ditolak oleh Digiflazz (${rc ? "RC " + rc : "Gagal"}). Saldo Digiflazz tidak terpotong.`);
       }
+
+      realStatus = (rawStatusLower === "sukses" || rawStatusLower === "success" || rc === "00") ? "Sukses" : "Pending";
       const lastSaldo = typeof d.buyer_last_saldo === "number"
         ? d.buyer_last_saldo
         : (typeof d.deposit === "number" ? d.deposit : null);
@@ -14503,6 +14559,7 @@ async function processPpobTransaction(sku, sellPrice, isTesting = false) {
     console.error("Gagal transaksi PPOB:", err);
     toast("Gagal: " + (err.message || err), true);
   } finally {
+    ppobTxSubmitting = false;
     showLoad(false);
   }
 }
@@ -14657,6 +14714,18 @@ function updatePpobBalanceUi() {
   if (zidBar) zidBar.innerHTML = renderProviderBalanceBar("zidstore");
 }
 
+function renderPpobTxLockBanner() {
+  if (typeof canTx !== "function" || canTx()) return "";
+  const msg = typeof txBlockedMessage === "function" ? txBlockedMessage() : "Transaksi terkunci";
+  return `<div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:14px;padding:10px 13px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+    <div style="min-width:0;">
+      <div style="font-size:11.5px;font-weight:900;color:#991b1b;">Transaksi PPOB Terkunci</div>
+      <div style="font-size:11px;font-weight:700;color:#b91c1c;margin-top:2px;">${esc(msg)}</div>
+    </div>
+    <span class="chip" style="background:#dc2626;color:#fff;border:none;font-size:10px;font-weight:800;padding:4px 8px;flex-shrink:0;">TERKUNCI</span>
+  </div>`;
+}
+
 function hasDigiflazzAccess() {
   return Boolean(state.user && state.user.ppobAccess === true);
 }
@@ -14700,6 +14769,7 @@ function renderPpobHub() {
       </div>
 
       <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:18px;">
+        ${renderPpobTxLockBanner()}
         ${canDigi ? `
           <div onclick="go('ppob')" style="cursor:pointer;background:linear-gradient(135deg,#ecfdf5 0%,#d1fae5 100%);border:1.5px solid #6ee7b7;border-radius:18px;padding:16px 15px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
             <div style="display:flex;align-items:center;gap:12px;min-width:0;flex:1;">
@@ -14901,6 +14971,7 @@ function renderZidStore() {
       </div>
 
       <div id="zidPageBalanceBar">${renderProviderBalanceBar("zidstore")}</div>
+      ${renderPpobTxLockBanner()}
 
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px;">
         ${ZIDSTORE_TABS.map(t => {
@@ -15127,6 +15198,7 @@ function updateZidStoreList() {
 }
 
 function confirmZidStoreOrder(code, kind = "ppob") {
+  if (!canTx()) return toast(txBlockedMessage());
   const item = kind === "akrab"
     ? (zidState.akrabPackages || []).find(a => String(a.package_code || a.sku) === String(code))
     : (zidState.products || []).find(p => String(p.code || p.sku) === String(code));
@@ -15184,6 +15256,10 @@ function confirmZidStoreOrder(code, kind = "ppob") {
 }
 
 function promptZidStorePinAndPay(code, kind, sellPrice, isOpenDenom = false) {
+  if (!canTx()) {
+    closeModal();
+    return toast(txBlockedMessage());
+  }
   let finalSell = Number(sellPrice || 0);
   let openQty = 0;
   if (isOpenDenom) {
@@ -15215,7 +15291,7 @@ function promptZidStorePinAndPay(code, kind, sellPrice, isOpenDenom = false) {
         <div id="zidPinErrorMsg" style="display:none;margin-top:6px;font-size:11.5px;font-weight:800;color:#dc2626;text-align:center;"></div>
       </div>
 
-      <button type="button" class="btn" style="width:100%;background:#4f46e5;color:#fff;font-weight:800;border-radius:12px;padding:13px 14px;font-size:13.5px;" onclick="submitZidStorePinConfirm('${esc(code)}', '${kind}', ${finalSell}, ${openQty})">
+      <button id="btnSubmitZidPin" type="button" class="btn" style="width:100%;background:#4f46e5;color:#fff;font-weight:800;border-radius:12px;padding:13px 14px;font-size:13.5px;" onclick="submitZidStorePinConfirm('${esc(code)}', '${kind}', ${finalSell}, ${openQty})">
         Konfirmasi &amp; Bayar ZidStore
       </button>
     </div>
@@ -15224,34 +15300,80 @@ function promptZidStorePinAndPay(code, kind, sellPrice, isOpenDenom = false) {
   setTimeout(() => document.getElementById("zidConfirmPinInput")?.focus(), 120);
 }
 
-function submitZidStorePinConfirm(code, kind, sellPrice, openQty = 0) {
+async function submitZidStorePinConfirm(code, kind, sellPrice, openQty = 0) {
+  if (!canTx()) {
+    closeModal();
+    return toast(txBlockedMessage());
+  }
   const input = document.getElementById("zidConfirmPinInput");
   const errEl = document.getElementById("zidPinErrorMsg");
+  const btn = document.getElementById("btnSubmitZidPin");
   const enteredPin = String(input?.value || "").trim();
-  const userPin = String(state.user?.pin || "").trim();
 
   if (!enteredPin) {
     if (errEl) { errEl.textContent = "PIN wajib diisi!"; errEl.style.display = "block"; }
     input?.focus();
     return;
   }
+
+  let userPin = String(state.user?.pin || "").trim();
+  const uname = cleanUser(state.user?.username || "");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Memeriksa PIN...";
+  }
+  try {
+    if (uname) {
+      const uSnap = await getDocFromServer(doc(db, "users", uname)).catch(() => null);
+      if (uSnap && uSnap.exists()) {
+        const uData = uSnap.data() || {};
+        if (uData.active === false || deleted(uData) || isAdmin(uData)) {
+          closeModal();
+          clearSessionAndRender("Akun sudah nonaktif / tidak valid");
+          return;
+        }
+        if (uData.zidstoreAccess !== true) {
+          closeModal();
+          return toast("Izin akses ZidStore Anda telah dicabut Admin!");
+        }
+        const srvPin = String(uData.pin || "").trim();
+        if (srvPin) userPin = srvPin;
+      }
+    }
+  } catch (e) {}
+  finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Konfirmasi & Bayar ZidStore";
+    }
+  }
+
   if (!userPin || enteredPin !== userPin) {
     if (errEl) { errEl.textContent = "PIN Anda salah! Silakan coba lagi."; errEl.style.display = "block"; }
     if (input) { input.value = ""; input.focus(); }
     return;
   }
   closeModal();
-  processZidStoreTransaction(code, kind, sellPrice, openQty);
+  await processZidStoreTransaction(code, kind, sellPrice, openQty);
 }
 
+let zidTxSubmitting = false;
+
 async function processZidStoreTransaction(code, kind, sellPrice, openQty = 0) {
+  if (zidTxSubmitting) return toast("Transaksi ZidStore sedang diproses, tunggu sebentar...");
+  if (!canTx()) return toast(txBlockedMessage());
   const item = kind === "akrab"
     ? (zidState.akrabPackages || []).find(a => String(a.package_code || a.sku) === String(code))
     : (zidState.products || []).find(p => String(p.code || p.sku) === String(code));
   if (!item) return toast("Produk ZidStore tidak ditemukan");
 
+  zidTxSubmitting = true;
   showLoad(true);
   try {
+    const verified = await verifyTransactionAllowedServer(todayKey());
+    if (!verified.ok) {
+      throw new Error(verified.msg || "Transaksi ditolak. Cek absen/closing ulang.");
+    }
     const u = key(state.user?.username || "kasir");
     const refId = `ZID-${Date.now()}-${u}`;
     const targetNo = String(zidState.customerNo || "").trim();
@@ -15331,8 +15453,12 @@ async function processZidStoreTransaction(code, kind, sellPrice, openQty = 0) {
       bonusPercent: 0,
       transactionBonusRate: 0,
       transactionBonusPercent: 0,
+      closingBonusPerMinuteSnapshot: 0,
+      bonusLogicVersion: 3,
+      ...trialRecordFlags(state.user || {}),
       source: "zidstore_transaction",
       deleted: false,
+      createdBy: u,
       createdAtMs: now,
       updatedAtMs: now
     };
@@ -15385,6 +15511,7 @@ async function processZidStoreTransaction(code, kind, sellPrice, openQty = 0) {
   } catch (err) {
     toast("Gagal: " + (err.message || err), true);
   } finally {
+    zidTxSubmitting = false;
     showLoad(false);
   }
 }
