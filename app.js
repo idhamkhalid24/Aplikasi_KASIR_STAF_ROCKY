@@ -5605,16 +5605,22 @@ function getDigitalTxStatus(t) {
   if (raw === "gagal" || raw === "failed" || raw === "error" || (rc !== "" && rc !== "00" && rc !== "03")) return "Gagal";
   return "Pending";
 }
+function isDigitalAwaitingBuyerPay(t) {
+  if (!t) return false;
+  if (!isPpobTx(t) && !isZidStoreTx(t)) return false;
+  return getDigitalTxStatus(t) === "Sukses" && Boolean(t.paymentStatus && t.paymentStatus !== "success");
+}
 function isDigitalTxUnsettled(t) {
   if (!t) return false;
   if (!isPpobTx(t) && !isZidStoreTx(t)) return false;
-  return getDigitalTxStatus(t) !== "Sukses";
+  return getDigitalTxStatus(t) !== "Sukses" || isDigitalAwaitingBuyerPay(t);
 }
 function settledTxAmount(t) {
   return isDigitalTxUnsettled(t) ? 0 : Number(t?.amount || 0);
 }
 function digitalStatusBadge(t) {
   if (!isPpobTx(t) && !isZidStoreTx(t)) return "";
+  if (isDigitalAwaitingBuyerPay(t)) return `<span class="chip" style="background:#ffedd5;color:#c2410c;border:1px solid #fdba74;padding:2px 6px;font-size:9px;font-weight:800;">BELUM BAYAR</span>`;
   const st = getDigitalTxStatus(t);
   if (st === "Sukses") return `<span class="chip" style="background:#dcfce7;color:#166534;border:1px solid #86efac;padding:2px 6px;font-size:9px;font-weight:800;">SUKSES</span>`;
   if (st === "Gagal") return `<span class="chip" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;padding:2px 6px;font-size:9px;font-weight:800;">GAGAL</span>`;
@@ -5627,6 +5633,7 @@ function txItem(t) {
   const isPpob = isPpobTx(t);
   const isDigital = isPpob || isZid;
   const stDigital = isDigital ? getDigitalTxStatus(t) : "";
+  const awaitingPay = isDigitalAwaitingBuyerPay(t);
   const unsettled = isDigitalTxUnsettled(t);
   const isMine = key(t.user) === key(state.user?.username);
   const canDelete = txDate(t) === todayKey() && !pending && isMine && (!isDigital || isAdmin(state.user));
@@ -5646,10 +5653,13 @@ function txItem(t) {
     }
   }
   const detailIconHtml = totalQty > 0 ? `<span style="font-weight:900;font-size:16px;color:var(--text-main);display:flex;align-items:center;justify-content:center">${totalQty}</span>` : txHistoryIcon("list");
+  const isQrisPay = String(t.paymentChannel || "").toLowerCase() === "qris_barcode" || String(t.paymentMethod || "") === "qris_transfer";
   const detailBtn = isDigital
-    ? (stDigital === "Pending" ? `<button class="btn sm" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;font-weight:800;font-size:11px;padding:0 8px;" onclick="checkStaffDigitalOrderStatus('${id}')" title="Cek Status / SN">&#8635; Cek</button>` : "")
+    ? (awaitingPay
+      ? `<button class="btn sm" style="background:${isQrisPay ? "#0284c7" : "#ea580c"};color:#fff;border:none;font-weight:800;font-size:11px;padding:0 9px;" onclick="openPostSuccessBuyerPayment('${id}')" title="Tagih Pembayaran">${isQrisPay ? "QRIS" : "EDC"}</button>`
+      : (stDigital === "Pending" ? `<button class="btn sm" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;font-weight:800;font-size:11px;padding:0 8px;" onclick="checkStaffDigitalOrderStatus('${id}')" title="Cek Status / SN">&#8635; Cek</button>` : ""))
     : `<button class="btn sm tx-card-btn tx-card-detail" onclick="openTxDetail('${id}')" aria-label="Detail transaksi" title="Detail">${detailIconHtml}</button>`;
-  const printBtn = (!pending && isMine && (!isDigital || stDigital === "Sukses"))
+  const printBtn = (!pending && isMine && (!isDigital || (stDigital === "Sukses" && !awaitingPay)))
     ? `<button class="btn sm tx-card-btn tx-card-print" onclick="printReceiptFromTx('${id}')" aria-label="Cetak struk" title="Cetak">${txHistoryIcon("print")}</button>`
     : "";
   const deleteBtn = canDelete
@@ -5663,8 +5673,18 @@ function txItem(t) {
   const label = isAkrab ? "AKRAB" : (isZid ? "ZIDSTORE" : (isPpob ? "PPOB" : txPaymentLabel(method)));
   const badgeCls = isDigital ? "ppob" : (method === "cash" ? "cash" : "qris");
   const digitalBadgeBg = isAkrab ? "#ea580c" : (isZid ? "#4f46e5" : "#2563eb");
+  const digPayPill = isDigital
+    ? (() => {
+        const ch = String(t.paymentChannel || "").toLowerCase();
+        const pm = String(t.paymentMethod || "").toLowerCase();
+        const lb = String(t.paymentLabel || "").toLowerCase();
+        if (ch === "qris_barcode" || t.qrisOrderId || lb.includes("qris")) return `<span class="chip" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;padding:2px 6px;font-size:9px;font-weight:800;">QRIS</span>`;
+        if (ch === "edc" || pm === "transfer" || lb.includes("edc")) return `<span class="chip" style="background:#ffedd5;color:#c2410c;border:1px solid #fed7aa;padding:2px 6px;font-size:9px;font-weight:800;">EDC</span>`;
+        return `<span class="chip" style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;padding:2px 6px;font-size:9px;font-weight:800;">TUNAI</span>`;
+      })()
+    : "";
   const payBadge = label
-    ? `<span class="tx-pay-badge ${badgeCls}"${isDigital ? ` style="background:${digitalBadgeBg}!important;color:#fff!important;border:none!important;"` : ""}>${esc(label)}</span>${digitalStatusBadge(t)}`
+    ? `<span class="tx-pay-badge ${badgeCls}"${isDigital ? ` style="background:${digitalBadgeBg}!important;color:#fff!important;border:none!important;"` : ""}>${esc(label)}</span>${digPayPill}${digitalStatusBadge(t)}`
     : "";
   const rawStaffName = String(t.name || t.user || "-").trim();
   const staffNameLabel = isRismaSpecialUser() ? `<span style="font-weight:700;color:var(--text);margin-right:4px;">${esc(rawStaffName)}</span><span style="color:var(--muted);margin-right:4px;">•</span>` : "";
@@ -5673,9 +5693,11 @@ function txItem(t) {
   const ppobProductName = isDigital
     ? String(t.product_name || t.note || "Produk Digital").replace(/^\[(PPOB|ZIDSTORE|AKRAB)\]\s*/i, "").trim()
     : "";
-  const ppobStatusHint = unsettled
-    ? `<div style="margin-top:2px;font-size:10px;font-weight:800;color:${stDigital === "Gagal" ? "#dc2626" : "#b45309"};">${stDigital === "Gagal" ? "❌ Gagal / saldo pusat kembali — tidak masuk omset" : "⏳ Menunggu status Sukses dari pusat (ditahan)"}</div>`
-    : "";
+  const ppobStatusHint = awaitingPay
+    ? `<div style="margin-top:2px;font-size:10px;font-weight:800;color:#c2410c;">💳 Produk Sukses! Klik ${isQrisPay ? "QRIS" : "EDC"} untuk tagih pembayaran pembeli</div>`
+    : (unsettled
+      ? `<div style="margin-top:2px;font-size:10px;font-weight:800;color:${stDigital === "Gagal" ? "#dc2626" : "#b45309"};">${stDigital === "Gagal" ? "❌ Gagal / saldo pusat kembali — tidak masuk omset" : "⏳ Menunggu status Sukses dari pusat (ditahan)"}</div>`
+      : "");
   const ppobProductLine = isDigital
     ? `<div onclick="openTxDetail('${id}')" style="margin-top:4px;font-size:11.5px;font-weight:800;color:var(--text,#0f172a);line-height:1.25;white-space:normal;word-break:break-word;cursor:pointer;">${esc(ppobProductName)}${t.customer_no && !ppobProductName.includes(String(t.customer_no)) ? ` <span style="font-weight:600;color:var(--muted,#64748b);font-size:10.5px;">&bull; ${esc(t.customer_no)}</span>` : ""}</div>${ppobStatusHint}`
     : "";
@@ -5712,6 +5734,8 @@ function openTxDetail(id) {
   const isDigital = isPpob || isZid;
   const prodTitle = isAkrab ? "XL/AXIS AKRAB (ZIDSTORE)" : (isZid ? "ZIDSTORE (PPOB)" : "PRODUK DIGITAL (PPOB)");
   const stDigital = isDigital ? getDigitalTxStatus(t) : "";
+  const awaitingPay = isDigital && isDigitalAwaitingBuyerPay(t);
+  const isQrisPay = String(t.paymentChannel || "").toLowerCase() === "qris_barcode" || String(t.paymentMethod || "") === "qris_transfer";
   const stColor = stDigital === "Sukses" ? "#059669" : (stDigital === "Gagal" ? "#dc2626" : "#d97706");
   const productHtml = isDigital
     ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;">
@@ -5721,10 +5745,14 @@ function openTxDetail(id) {
         </div>
         <div style="font-size:13.5px;font-weight:800;color:var(--text-main);margin-top:4px;">${esc(String(t.product_name || t.note || "").replace(/^\[(PPOB|ZIDSTORE|AKRAB)\]\s*/i, ""))}</div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">No Tujuan: <b style="color:var(--text-main);">${esc(t.customer_no || '-')}</b></div>
-        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Status Pusat: <b style="color:${stColor};">${esc(stDigital)}</b>${stDigital !== "Sukses" ? ` <span style="font-size:10px;color:#b45309;">(Belum masuk omset/laci)</span>` : ""}</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Status Pusat: <b style="color:${stColor};">${esc(stDigital)}</b>${stDigital !== "Sukses" ? ` <span style="font-size:10px;color:#b45309;">(Belum masuk omset/laci)</span>` : (awaitingPay ? ` <span style="font-size:10px;color:#c2410c;font-weight:800;">(Menunggu bayar pembeli)</span>` : "")}</div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">SN / Token: <b style="color:#059669;word-break:break-all;">${esc(t.sn || '-')}</b></div>
         ${t.message ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">Info Server: <b>${esc(t.message)}</b></div>` : ""}
         ${stDigital !== "Sukses" ? `<button type="button" class="btn" style="margin-top:8px;width:100%;background:${isZid ? "#4f46e5" : "#059669"};color:#fff;font-weight:800;border-radius:10px;padding:9px;font-size:12px;" onclick="checkStaffDigitalOrderStatus('${esc(t.id)}')">↻ Cek Status / SN ${isZid ? "ZidStore" : "Digiflazz"}</button>` : ""}
+        ${awaitingPay ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
+          <button type="button" class="btn" style="background:${isQrisPay ? "#0284c7" : "#ea580c"};color:#fff;font-weight:800;border-radius:10px;padding:9px;font-size:11.5px;" onclick="closeModal(); openPostSuccessBuyerPayment('${esc(t.id)}')">${isQrisPay ? "📱 Scan QRIS" : "💳 Konfirmasi EDC"}</button>
+          <button type="button" class="btn" style="background:#059669;color:#fff;font-weight:800;border-radius:10px;padding:9px;font-size:11.5px;" onclick="switchDigitalPayToCash('${esc(t.id)}')">💵 Ganti Tunai</button>
+        </div>` : ""}
       </div>`
     : txProductDetailHtml(t.note || "Transaksi");
   const body = `<div class="tx-admin-detail">
@@ -8506,7 +8534,7 @@ function home() {
 
   function history() {
     const items = sortDesc(historyTx());
-    const totalHistoryAmount = items.reduce((s, t) => s + Number(t.amount || 0), 0);
+    const totalHistoryAmount = items.reduce((s, t) => s + settledTxAmount(t), 0);
     const drawerCard = drawerWithdrawalCard();
     const reserveCard = staffChangeReserveCard();
     const printAllCard = items.length
@@ -8627,7 +8655,7 @@ function home() {
       body = `<div class="tx-table"><div class="tx-head"><span>Nama / Jam</span><span>Nominal</span><span style="text-align:right">Aksi</span></div><div class="tx-list">${items.map(txItem).join("")}</div></div>`;
     }
 
-    const ppobHistoryItems = items.filter(t => isPpobTx(t));
+    const ppobHistoryItems = items.filter(t => isPpobTx(t) && !isDigitalTxUnsettled(t));
     const ppobTotalAmount = ppobHistoryItems.reduce((s, t) => s + Number(t.amount || 0), 0);
     const ppobCard = ppobHistoryItems.length ? `
       <div class="card" style="margin-bottom:8px;background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:14px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;">
@@ -8644,7 +8672,7 @@ function home() {
           <div style="font-size:14px;font-weight:900;color:#15803d;">Rp ${rp(ppobTotalAmount)}</div>
         </div>
       </div>` : "";
-    const zidHistoryItems = items.filter(t => isZidStoreTx(t));
+    const zidHistoryItems = items.filter(t => isZidStoreTx(t) && !isDigitalTxUnsettled(t));
     const zidTotalAmount = zidHistoryItems.reduce((s, t) => s + Number(t.amount || 0), 0);
     const zidCard = zidHistoryItems.length ? `
       <div class="card" style="margin-bottom:8px;background:#eef2ff;border:1.5px solid #c7d2fe;border-radius:14px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;">
@@ -12328,6 +12356,8 @@ function stopQrisPolling() {
 }
 
 function cancelStaffQris() {
+  const wasPostQrisTxId = pendingDigitalQrisJob?.txId || getActiveQrisSession()?.digitalJob?.txId || "";
+  pendingDigitalQrisJob = null;
   clearActiveQrisSession();
   stopQrisPolling();
   stopQrisCountdown();
@@ -12335,7 +12365,11 @@ function cancelStaffQris() {
   currentQrisAmount = 0;
   currentQrisNote = "";
   closeModal(true);
-  toast("Pembayaran QRIS dibatalkan.");
+  if (wasPostQrisTxId) {
+    toast("QRIS ditutup. Produk sudah terkirim — tagih QRIS atau Ganti Tunai lewat riwayat transaksi!");
+  } else {
+    toast("Pembayaran QRIS dibatalkan.");
+  }
 }
 
 async function checkStaffQrisManual() {
@@ -12494,8 +12528,14 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
   if (!orderId || processedQrisOrders.has(orderId)) return;
   processedQrisOrders.add(orderId);
 
+  const activeSessionSnap = getActiveQrisSession();
+  const digitalJob = (pendingDigitalQrisJob && pendingDigitalQrisJob.orderId === orderId)
+    ? { ...pendingDigitalQrisJob }
+    : ((activeSessionSnap?.digitalJob && activeSessionSnap.digitalJob.orderId === orderId) ? { ...activeSessionSnap.digitalJob } : null);
+  if (digitalJob) pendingDigitalQrisJob = null;
+
   const wasFromFastCashier = Boolean(
-    currentQrisFromFastCashier || (note && note.includes("Penjualan Cepat")),
+    !digitalJob && (currentQrisFromFastCashier || (note && note.includes("Penjualan Cepat"))),
   );
   clearActiveQrisSession();
   stopQrisPolling();
@@ -12508,34 +12548,36 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
 
   const kasirUsername = String(state.user?.username || "staff").toLowerCase();
 
-  // Jika pembayaran dari Kasir Cepat, simpan otomatis ke transactions; jika Mode Staff biasa, kunci ke antrean catat (+)
-  if (wasFromFastCashier) {
-    fastCashierNominal = 0;
-    try { updateFastCashierDisplay(); } catch (e) {}
-    try {
-      await saveTx(false, "qris_transfer", {
+  // Jika pembayaran dari PPOB / ZidStore: jangan buat pending QRIS/saveTx biasa (diproses langsung ke PPOB/ZidStore di bawah)
+  if (!digitalJob) {
+    if (wasFromFastCashier) {
+      fastCashierNominal = 0;
+      try { updateFastCashierDisplay(); } catch (e) {}
+      try {
+        await saveTx(false, "qris_transfer", {
+          amount: Number(amount || 0),
+          note: "Transaksi",
+          paymentMethod: "qris_transfer",
+          paymentChannel: "qris_barcode",
+          paymentLabel: "QRIS Barcode",
+          qrisOrderId: orderId,
+          fromFastCashierQris: true,
+          skipPendingQrisCheck: true,
+        });
+      } catch (errTx) {
+        console.warn("Gagal simpan transaksi utama QRIS:", errTx);
+      }
+    } else {
+      await addPendingStaffQris({
+        orderId,
         amount: Number(amount || 0),
-        note: "Transaksi",
-        paymentMethod: "qris_transfer",
-        paymentChannel: "qris_barcode",
-        paymentLabel: "QRIS Barcode",
-        qrisOrderId: orderId,
-        fromFastCashierQris: true,
-        skipPendingQrisCheck: true,
+        note: note || "",
+        kasirUsername,
+        kasirName: kasirName || state.user?.name || kasirUsername,
+        createdAtMs: Date.now(),
+        dateKey: todayKey(),
       });
-    } catch (errTx) {
-      console.warn("Gagal simpan transaksi utama QRIS:", errTx);
     }
-  } else {
-    await addPendingStaffQris({
-      orderId,
-      amount: Number(amount || 0),
-      note: note || "",
-      kasirUsername,
-      kasirName: kasirName || state.user?.name || kasirUsername,
-      createdAtMs: Date.now(),
-      dateKey: todayKey(),
-    });
   }
   try {
     await supabase.from("qris_payments").upsert({
@@ -12585,6 +12627,36 @@ async function onQrisPaymentSuccess(orderId, amount, note, kasirName) {
     cashierName: kasirName || state.user?.name || "Kasir",
     timeStr
   });
+
+  if (digitalJob) {
+    if (digitalJob.txId) {
+      await settlePostSuccessDigitalPayment(digitalJob.txId, {
+        qrisOrderId: orderId,
+        paymentMethod: "qris_transfer",
+        paymentChannel: "qris_barcode",
+        paymentLabel: "QRIS Barcode",
+        isNonCashPayment: true,
+        paymentCashOutType: "qris",
+        skipWaNotif: true,
+      });
+      return;
+    }
+    toast("✓ QRIS Lunas! Memproses order ke server...");
+    const qrisPayOpt = {
+      paymentMethod: "qris_transfer",
+      paymentChannel: "qris_barcode",
+      paymentLabel: "QRIS Barcode",
+      isNonCashPayment: true,
+      qrisOrderId: orderId,
+      paymentCashOutType: "qris",
+    };
+    if (digitalJob.provider === "zidstore") {
+      await processZidStoreTransaction(digitalJob.code, digitalJob.kind, digitalJob.sellPrice, digitalJob.openQty || 0, qrisPayOpt);
+    } else {
+      await processPpobTransaction(digitalJob.sku, digitalJob.sellPrice, false, qrisPayOpt);
+    }
+    return;
+  }
 
   // Otomatis cetak ke printer bluetooth (hanya jika auto-print aktif & bluetooth terdeteksi aktif/siap)
   try {
@@ -13849,6 +13921,11 @@ function getPpobCategoryTab(p) {
   return "other";
 }
 
+function renderDigitalHeaderHistoryBtn(accent = "#059669") {
+  const cnt = todayTx().filter(t => isPpobTx(t) || isZidStoreTx(t)).length;
+  return `<button type="button" class="btn" onclick="go('ppob_hub')" style="background:#fff;border:1.5px solid ${accent};color:${accent};border-radius:12px;padding:7px 11px;font-size:11.5px;font-weight:800;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;">Riwayat${cnt ? ` (${cnt})` : ""}</button>`;
+}
+
 function renderPpob() {
   if (!hasDigiflazzAccess()) {
     toast("Anda tidak memiliki izin transaksi PPOB dari Admin!");
@@ -13868,14 +13945,14 @@ function renderPpob() {
 
   page.innerHTML = `
     <div class="wrap ppob-wrap" style="padding-bottom:90px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:6px;">
         <button class="btn" onclick="go('ppob_hub')" style="background:var(--bg,#f8fafc);border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:8px 12px;display:flex;align-items:center;gap:6px;font-weight:700;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg> Kembali
         </button>
-        <div style="font-size:16px;font-weight:800;color:var(--text-main,#0f172a);display:flex;align-items:center;gap:6px;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="#059669"><polygon points="13 2 4 14 11 14 11 22 20 10 13 10 13 2"></polygon></svg> Produk Digital (PPOB)
+        <div style="font-size:15.5px;font-weight:800;color:var(--text-main,#0f172a);display:flex;align-items:center;gap:6px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#059669"><polygon points="13 2 4 14 11 14 11 22 20 10 13 10 13 2"></polygon></svg> Produk Digital
         </div>
-        <div style="width:70px;"></div>
+        ${renderDigitalHeaderHistoryBtn("#059669")}
       </div>
 
       <div id="ppobPageBalanceBar">${renderProviderBalanceBar("digiflazz")}</div>
@@ -14136,6 +14213,12 @@ function receiptTextForPpob(tx) {
   const sep = receiptLine();
   const isPln = String(tx.buyer_sku_code || "").toLowerCase().startsWith("pln");
 
+  const payStr = String(
+    tx?.paymentChannel === "qris_barcode"
+      ? "QRIS BARCODE"
+      : (tx?.paymentChannel === "edc" || tx?.paymentMethod === "transfer" ? "TRANSFER VIA EDC" : (tx?.paymentLabel || "TUNAI"))
+  ).toUpperCase();
+
   return `${storeName}\n${sep}\n` +
     `Tanggal : ${dateStr}\n` +
     `Kasir   : ${cashier}\n` +
@@ -14147,10 +14230,353 @@ function receiptTextForPpob(tx) {
     `Status  : ${getDigitalTxStatus(tx) === "Sukses" ? "LUNAS / SUKSES" : (getDigitalTxStatus(tx) === "Gagal" ? "GAGAL / BATAL" : "PROSES PENDING")}\n` +
     `${sep}\n` +
     `${receiptSummaryLine("TOTAL", rp(tx.price_sell))}\n` +
-    `${receiptSummaryLine("BAYAR", "TUNAI")}\n` +
+    `${receiptSummaryLine("BAYAR", payStr)}\n` +
     `${sep}\n` +
     (isPln ? `Masukkan 20 digit token di meteran\n` : `Simpan struk sebagai bukti transaksi\n`) +
     `Terima kasih telah berbelanja\ndi Rocky Hijab\n\n\n`;
+}
+
+let selectedDigitalPayMethod = "cash";
+let pendingDigitalQrisJob = null;
+let pendingDigitalEdcJob = null;
+
+function getDigitalPayMeta(method, tunaiFallbackLabel = "Tunai (PPOB)") {
+  const m = String(method || "cash").toLowerCase();
+  if (m === "qris" || m === "qris_transfer" || m === "qris_barcode") {
+    return {
+      paymentMethod: "qris_transfer",
+      paymentChannel: "qris_barcode",
+      paymentLabel: "QRIS Barcode",
+      isNonCashPayment: true,
+      paymentCashOutType: "qris",
+    };
+  }
+  if (m === "edc" || m === "transfer" || m === "bank_transfer") {
+    return {
+      paymentMethod: "transfer",
+      paymentChannel: "edc",
+      paymentLabel: "Transfer via EDC",
+      isNonCashPayment: true,
+      paymentCashOutType: "",
+    };
+  }
+  return {
+    paymentMethod: "cash",
+    paymentChannel: "cash",
+    paymentLabel: tunaiFallbackLabel,
+    isNonCashPayment: false,
+    paymentCashOutType: "",
+  };
+}
+
+function renderDigitalPaymentPickerHtml(accent = "#059669") {
+  selectedDigitalPayMethod = "cash";
+  const hasQris = state.user?.qrisAccess === true;
+  const opts = [
+    { key: "cash", icon: "💵", label: "Tunai", sub: "Bayar cash" },
+    { key: "qris_transfer", icon: "📱", label: "QRIS Barcode", sub: hasQris ? "Scan Midtrans" : "Perlu izin Admin" },
+    { key: "transfer", icon: "💳", label: "Via EDC", sub: "Transfer / Kartu" },
+  ];
+  return `
+    <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:10px 12px;" data-dig-accent="${esc(accent)}">
+      <div style="font-size:10.5px;font-weight:800;color:var(--muted);text-transform:uppercase;margin-bottom:7px;">Metode Pembayaran Pembeli</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">
+        ${opts.map((o, idx) => `
+          <button type="button" class="dig-pay-choice" data-dig-pay="${o.key}" onclick="selectDigitalPayMethod('${o.key}', '${esc(accent)}')" style="border-radius:11px;padding:8px 5px;cursor:pointer;text-align:center;border:1.5px solid ${idx === 0 ? accent : "#cbd5e1"};background:${idx === 0 ? (accent === "#4f46e5" ? "#eef2ff" : "#ecfdf5") : "#fff"};color:#0f172a;">
+            <div style="font-size:15px;line-height:1.1;">${o.icon}</div>
+            <div style="font-size:11px;font-weight:900;margin-top:3px;">${o.label}</div>
+            <div style="font-size:9.5px;color:#64748b;margin-top:1px;">${o.sub}</div>
+          </button>
+        `).join("")}
+      </div>
+    </div>`;
+}
+
+function selectDigitalPayMethod(method, accent = "#059669") {
+  if (method === "qris_transfer" && state.user?.qrisAccess !== true) {
+    return toast("Anda tidak memiliki izin pembayaran QRIS dari Admin!", true);
+  }
+  selectedDigitalPayMethod = method || "cash";
+  document.querySelectorAll(".dig-pay-choice").forEach(btn => {
+    const active = btn.getAttribute("data-dig-pay") === selectedDigitalPayMethod;
+    btn.style.borderColor = active ? accent : "#cbd5e1";
+    btn.style.background = active ? (accent === "#4f46e5" ? "#eef2ff" : "#ecfdf5") : "#fff";
+  });
+}
+
+function showPostSuccessEdcModal(tx) {
+  if (!tx) return;
+  const sell = Number(tx.price_sell || tx.amount || 0);
+  const prodName = String(tx.product_name || tx.note || "").replace(/^\[(PPOB|ZIDSTORE|AKRAB)\]\s*/i, "");
+  pendingDigitalEdcJob = { txId: String(tx.id) };
+  const body = `
+    <div style="text-align:center;padding:8px 4px;">
+      <div style="display:inline-flex;align-items:center;gap:6px;background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:999px;padding:4px 12px;font-size:11px;font-weight:800;margin-bottom:10px;">
+        ✅ Produk Berhasil Terkirim (SN: ${esc(tx.sn || "-")})
+      </div>
+      <div style="font-size:16px;font-weight:900;color:#0f172a;margin-bottom:4px;">Silakan Pembeli Transfer / Gesek Mesin EDC</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${esc(prodName)} &bull; ${esc(tx.customer_no || "")}</div>
+      <div style="background:#fff7ed;border:1.5px solid #fed7aa;border-radius:12px;padding:10px 14px;display:inline-block;min-width:190px;">
+        <div style="font-size:10.5px;font-weight:800;color:#9a3412;text-transform:uppercase;">Tagihan EDC</div>
+        <div style="font-size:23px;font-weight:950;color:#ea580c;margin-top:2px;">Rp ${rp(sell)}</div>
+      </div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:8px;">Pastikan struk EDC berhasil. Jika EDC bermasalah, bisa ganti ke <b>Tunai</b>.</div>
+    </div>`;
+  const actions = `
+    <button type="button" class="btn" onclick="cancelDigitalEdcPaid()" style="height:44px;font-size:12.5px;font-weight:800;border-radius:12px;background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;">Nanti / Tutup</button>
+    <button type="button" class="btn" onclick="switchDigitalPayToCash('${esc(tx.id)}')" style="height:44px;font-size:12.5px;font-weight:800;border-radius:12px;background:#ecfdf5;border:1.5px solid #86efac;color:#047857;">💵 Ganti Tunai</button>
+    <button type="button" class="btn primary" onclick="confirmDigitalEdcPaid()" style="grid-column:1 / -1;height:46px;font-size:14px;font-weight:900;border-radius:12px;background:linear-gradient(135deg,#10b981 0%,#059669 100%);border:none;color:#fff;">Sudah Berhasil di EDC</button>`;
+  modal("Tagih Pembayaran EDC", body, actions, "tx-modal");
+}
+
+function cancelDigitalEdcPaid() {
+  pendingDigitalEdcJob = null;
+  closeModal(true);
+  toast("Ditutup. Tagih EDC / Ganti Tunai tersedia di riwayat transaksi.");
+}
+
+async function confirmDigitalEdcPaid() {
+  const job = pendingDigitalEdcJob ? { ...pendingDigitalEdcJob } : null;
+  pendingDigitalEdcJob = null;
+  closeModal(true);
+  if (!job || !job.txId) return toast("Data transaksi EDC tidak ditemukan");
+  await settlePostSuccessDigitalPayment(job.txId, {
+    paymentMethod: "transfer",
+    paymentChannel: "edc",
+    paymentLabel: "Transfer via EDC",
+    isNonCashPayment: true,
+    paymentCashOutType: "",
+  });
+}
+
+async function startPostSuccessQrisPayment(tx) {
+  if (!tx) return;
+  if (state.user?.qrisAccess !== true) {
+    return toast("Anda tidak memiliki izin pembayaran QRIS dari Admin! Silakan klik Ganti Tunai di detail transaksi.", true);
+  }
+  const sell = Number(tx.price_sell || tx.amount || 0);
+  if (!sell || sell <= 0) return toast("Nominal tagihan tidak valid");
+  const isZid = isZidStoreTx(tx);
+  const kasirUsername = String(state.user?.username || "staff").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const kasirName = state.user?.name || kasirUsername;
+  const orderId = `${isZid ? "QRZ" : "QRP"}-${kasirUsername}-${Date.now()}`;
+  const prodName = String(tx.product_name || tx.note || "").replace(/^\[(PPOB|ZIDSTORE|AKRAB)\]\s*/i, "");
+  const qrisNote = `[${isZid ? "ZIDSTORE" : "PPOB"}] ${prodName} (${tx.customer_no || ""})`.trim();
+
+  currentQrisOrderId = orderId;
+  currentQrisAmount = sell;
+  currentQrisNote = qrisNote;
+  currentQrisFromFastCashier = false;
+  pendingDigitalQrisJob = { mode: "post_success_qris", txId: String(tx.id), orderId, amount: sell, productName: prodName, targetNo: tx.customer_no || "" };
+
+  modal("Produk Sukses! Siapkan QRIS", `
+    <div style="text-align:center;padding:24px 10px;">
+      <div style="display:inline-flex;align-items:center;gap:6px;background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:999px;padding:4px 12px;font-size:11px;font-weight:800;margin-bottom:14px;">
+        ✅ Produk Terkirim &bull; SN: ${esc(tx.sn || "-")}
+      </div>
+      <div class="spin" style="margin:0 auto 14px;width:38px;height:38px;border-width:4px;"></div>
+      <div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:6px;">Membuat Barcode QRIS...</div>
+      <div style="font-size:12px;color:var(--muted);">Tagihan: <b>Rp ${rp(sell)}</b> &bull; ${esc(prodName)}</div>
+    </div>`, "", "tx-modal qris-modal");
+
+  try {
+    const backendUrl = "https://myxrvipyodadnldtomzs.supabase.co/functions/v1/clever-responder";
+    const res = await fetch(backendUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "create_qris", amount: sell, cashier: kasirUsername, order_id: orderId })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Gagal membuat barcode QRIS");
+
+    const now = Date.now();
+    const expiresAtMs = now + 5 * 60 * 1000;
+    const sessionData = {
+      orderId,
+      amount: sell,
+      note: qrisNote,
+      qrImgOrString: data.qr_image_url || data.qr_string,
+      kasirUsername,
+      kasirName,
+      fromFastCashier: false,
+      digitalJob: { mode: "post_success_qris", txId: String(tx.id), orderId },
+      createdAtMs: now,
+      expiresAtMs,
+    };
+    saveActiveQrisSession(sessionData);
+    renderStaffQrisBarcodeScreen(sessionData.qrImgOrString, orderId, sell, qrisNote, expiresAtMs);
+    startQrisPolling(orderId, sell, qrisNote, kasirName);
+  } catch (err) {
+    pendingDigitalQrisJob = null;
+    closeModal();
+    toast("Gagal buat QRIS: " + (err.message || err) + ". Bisa coba QRIS lagi atau Ganti Tunai di riwayat!", true);
+  }
+}
+
+async function openPostSuccessBuyerPayment(txId) {
+  const tx = findTxById(txId);
+  if (!tx) return toast("Transaksi tidak ditemukan");
+  const ch = String(tx.paymentChannel || "").toLowerCase();
+  const pm = String(tx.paymentMethod || "").toLowerCase();
+  if (ch === "qris_barcode" || pm === "qris_transfer") {
+    return startPostSuccessQrisPayment(tx);
+  }
+  return showPostSuccessEdcModal(tx);
+}
+
+async function switchDigitalPayToCash(txId) {
+  const tx = findTxById(txId);
+  if (!tx) return toast("Transaksi tidak ditemukan");
+  const isZid = isZidStoreTx(tx);
+  const label = isZid ? (isZidStoreAkrabTx(tx) ? "Tunai (Akrab)" : "Tunai (ZidStore)") : "Tunai (PPOB)";
+  closeModal(true);
+  await settlePostSuccessDigitalPayment(txId, {
+    paymentMethod: "cash",
+    paymentChannel: "cash",
+    paymentLabel: label,
+    isNonCashPayment: false,
+    paymentCashOutType: "",
+    qrisOrderId: "",
+  });
+}
+
+async function settlePostSuccessDigitalPayment(txId, extraPatch = {}) {
+  const t = findTxById(txId);
+  if (!t) return toast("Transaksi tidak ditemukan");
+  const now = Date.now();
+  const sell = Number(t.price_sell || t.amount || 0);
+  const { skipWaNotif, ...dbFields } = extraPatch || {};
+  const patch = {
+    ...dbFields,
+    paymentStatus: "success",
+    paymentConfirmed: true,
+    paymentConfirmedAtMs: now,
+    notifyAdmin: true,
+    notificationStatus: "pending",
+    settledAtMs: Number(t.settledAtMs || now),
+    updatedAtMs: now,
+  };
+  await setDoc(doc(db, "transactions", String(t.id)), patch, { merge: true });
+  supabase.from("ppob_transactions").update({
+    payment_method: patch.paymentMethod || t.paymentMethod || "cash",
+    payment_status: "success",
+  }).eq("ref_id", String(t.ref_id || t.id)).then(() => {}).catch(() => {});
+
+  const updatedTx = { ...t, ...patch };
+  if (Array.isArray(state.data.tx)) {
+    state.data.tx = state.data.tx.map(x => String(x.id) === String(t.id) ? updatedTx : x);
+  }
+  if (Array.isArray(state.data.targetTx)) {
+    state.data.targetTx = state.data.targetTx.map(x => String(x.id) === String(t.id) ? updatedTx : x);
+  }
+  syncDailyTargetState();
+  render();
+
+  if (!isTrialRecord(updatedTx)) {
+    notifyAdminNewTransaction(updatedTx);
+    if (!skipWaNotif && typeof kirimNotifWaBos === "function") {
+      kirimNotifWaBos(sell, `${updatedTx.note} (${updatedTx.paymentLabel || "Non-Cash"})`, updatedTx.cashier_name || state.user?.name || "Kasir");
+    }
+  }
+  if (typeof playSuccessSound === "function") playSuccessSound();
+
+  window.__lastPpobReceipt = receiptTextForPpob(updatedTx);
+  const provLabel = isZidStoreTx(updatedTx) ? "ZidStore" : "PPOB";
+  modal(`Pembayaran ${provLabel} Lunas!`, `<div id="digitalOrderResultWrap" data-ref-id="${esc(updatedTx.id)}">${renderDigitalOrderResultModalBody(updatedTx)}</div>`, "", "");
+}
+
+async function persistAndPresentDigitalOrder(txPayload, { isCashPay = true, isTesting = false, isPln = false, isZid = false } = {}) {
+  const refId = String(txPayload.ref_id || txPayload.id || "");
+  const st = String(txPayload.status || "Pending");
+  const now = Number(txPayload.createdAtMs || Date.now());
+  const sellPrice = Number(txPayload.price_sell || txPayload.amount || 0);
+  const kasirName = txPayload.cashier_name || state.user?.name || state.user?.username || "Kasir";
+  const provLabel = isZid ? "ZidStore" : "PPOB";
+
+  // 1. Simpan ke Supabase tabel transactions
+  await setDoc(doc(db, "transactions", refId), {
+    ...txPayload,
+    createdAt: serverTimestamp(),
+    syncedAt: serverTimestamp(),
+    syncedAtMs: now
+  }, { merge: false });
+
+  // 2. Simpan juga ke tabel khusus ppob_transactions di Supabase (Digiflazz & ZidStore)
+  try {
+    await supabase.from("ppob_transactions").upsert({
+      id: refId,
+      ref_id: refId,
+      date_key: txPayload.dateKey || todayKey(),
+      month_key: txPayload.monthKey || monthKey(),
+      user_id: txPayload.user || key(state.user?.username || "kasir"),
+      cashier_name: kasirName,
+      customer_no: txPayload.customer_no || "",
+      buyer_sku_code: txPayload.buyer_sku_code || "",
+      product_name: txPayload.product_name || "",
+      category: txPayload.ppobCategory || txPayload.category || "",
+      brand: txPayload.brand || "",
+      price_modal: Number(txPayload.price_modal || 0),
+      price_sell: sellPrice,
+      profit: Number(txPayload.profit || 0),
+      payment_method: txPayload.paymentMethod || "cash",
+      payment_status: txPayload.paymentStatus || (isCashPay ? "success" : "awaiting_payment"),
+      sn: txPayload.sn || "",
+      status: st,
+      is_testing: Boolean(isTesting),
+      message: txPayload.message || "",
+      created_at: new Date(now).toISOString()
+    }, { onConflict: "id" });
+  } catch (eTable) {
+    console.warn("Tabel ppob_transactions upsert error:", eTable);
+  }
+
+  // 3. Update state lokal kasir & target harian
+  if (Array.isArray(state.data.tx)) {
+    state.data.tx = [txPayload, ...state.data.tx.filter(t => String(t.id) !== refId)];
+  }
+  if (Array.isArray(state.data.targetTx)) {
+    state.data.targetTx = mergeRowsById(state.data.targetTx || [], [txPayload]);
+  }
+  syncDailyTargetState();
+  render();
+
+  if (st === "Sukses" && isCashPay) {
+    if (!isTrialRecord(txPayload)) {
+      notifyAdminNewTransaction(txPayload);
+      if (typeof kirimNotifWaBos === "function") kirimNotifWaBos(sellPrice, txPayload.note, kasirName);
+    }
+    if (typeof playSuccessSound === "function") playSuccessSound();
+  }
+  if (typeof loadPpobAndZidBalancesFromDb === "function") {
+    setTimeout(() => loadPpobAndZidBalancesFromDb(true), 1500);
+  }
+
+  window.__lastPpobReceipt = receiptTextForPpob(txPayload);
+
+  if (st === "Sukses" && !isCashPay) {
+    await openPostSuccessBuyerPayment(refId);
+    return;
+  }
+
+  const modalTitle = st === "Sukses"
+    ? `Transaksi ${provLabel} Selesai`
+    : (st === "Gagal" ? `Order ${provLabel} GAGAL` : `Order ${provLabel} Sedang Diproses`);
+  modal(modalTitle, `<div id="digitalOrderResultWrap" data-ref-id="${esc(refId)}">${renderDigitalOrderResultModalBody(txPayload, { isTesting, isPln })}</div>`, "", "");
+  if (st === "Pending" && !isTesting) {
+    startDigitalPendingPolling(refId);
+  }
+}
+
+async function executeDigitalOrderAfterPin(job) {
+  const m = String(job.paymentMethod || "cash").toLowerCase();
+  const payOpt = getDigitalPayMeta(
+    m,
+    job.provider === "zidstore" ? (job.kind === "akrab" ? "Tunai (Akrab)" : "Tunai (ZidStore)") : "Tunai (PPOB)"
+  );
+  if (job.provider === "zidstore") {
+    return processZidStoreTransaction(job.code, job.kind, job.sellPrice, job.openQty || 0, payOpt);
+  }
+  return processPpobTransaction(job.sku, job.sellPrice, false, payOpt);
 }
 
 function confirmPpobOrder(sku) {
@@ -14191,6 +14617,7 @@ function confirmPpobOrder(sku) {
       </div>
 
       ${ppobDescBox}
+      ${renderDigitalPaymentPickerHtml("#059669")}
 
       <div style="margin-top:4px;">
         <button type="button" class="btn" style="width:100%;background:#059669;color:#fff;font-weight:800;border-radius:12px;padding:13px 14px;font-size:13.5px;display:flex;align-items:center;justify-content:center;gap:8px;letter-spacing:0.3px;" onclick="promptPpobPinAndPay('${esc(sku)}', ${sellPrice})">
@@ -14212,12 +14639,13 @@ function promptPpobPinAndPay(sku, sellPrice) {
   if (!product) return toast("Produk tidak ditemukan");
 
   const userName = state.user?.name || state.user?.username || "Kasir";
+  const payLabel = getDigitalPayMeta(selectedDigitalPayMethod, "Tunai").paymentLabel;
   const body = `
     <div style="display:flex;flex-direction:column;gap:12px;">
       <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:11px 13px;">
         <div style="font-size:11px;font-weight:800;color:#065f46;text-transform:uppercase;">Verifikasi Kasir: ${esc(userName)}</div>
         <div style="font-size:13.5px;font-weight:800;color:#0f172a;margin-top:3px;">${esc(product.name)} &bull; ${esc(ppobState.customerNo)}</div>
-        <div style="font-size:14px;font-weight:900;color:#059669;margin-top:2px;">Total: Rp ${rp(sellPrice)}</div>
+        <div style="font-size:14px;font-weight:900;color:#059669;margin-top:2px;">Total: Rp ${rp(sellPrice)} <span style="font-size:11px;font-weight:800;color:#065f46;">&bull; ${esc(payLabel)}</span></div>
       </div>
 
       <div>
@@ -14307,13 +14735,21 @@ async function submitPpobPinConfirm(sku, sellPrice) {
     return showPinError("PIN salah! Gunakan PIN akun Anda sendiri.");
   }
 
+  const product = (ppobState.products || []).find(p => p.sku === sku);
   closeModal();
-  await processPpobTransaction(sku, sellPrice, false);
+  await executeDigitalOrderAfterPin({
+    provider: "ppob",
+    sku,
+    sellPrice,
+    targetNo: ppobState.customerNo,
+    productName: product?.name || sku,
+    paymentMethod: selectedDigitalPayMethod,
+  });
 }
 
 let ppobTxSubmitting = false;
 
-async function processPpobTransaction(sku, sellPrice, isTesting = false) {
+async function processPpobTransaction(sku, sellPrice, isTesting = false, payOpt = null) {
   if (ppobTxSubmitting) return toast("Transaksi PPOB sedang diproses, tunggu sebentar...");
   if (!canTx()) return toast(txBlockedMessage());
   const product = ppobState.products.find(p => p.sku === sku);
@@ -14471,13 +14907,13 @@ async function processPpobTransaction(sku, sellPrice, isTesting = false) {
 
       const isExplicitFail =
         apiResult?.ok === false ||
-        Boolean(apiResult?.error) ||
         httpCode >= 400 ||
         rawStatusLower === "gagal" ||
         rawStatusLower === "failed" ||
         rawStatusLower === "error" ||
         (rc !== "" && rc !== "00" && rc !== "03") ||
         isIpMismatch ||
+        (Boolean(apiResult?.error) && rawStatusLower !== "pending" && rawStatusLower !== "sukses" && rawStatusLower !== "success" && rc !== "00" && rc !== "03") ||
         (!d.status && !rc && !d.ref_id && !realSn);
 
       if (isExplicitFail) {
@@ -14486,12 +14922,14 @@ async function processPpobTransaction(sku, sellPrice, isTesting = false) {
           if (ipMatch && ipMatch[1]) {
             syncStaffPublicIpToDb(true, ipMatch[1]);
           }
-          throw new Error(`GAGAL: IP tidak cocok dengan Digiflazz (${realMessage || "RC 45"}). Transaksi dibatalkan & saldo Digiflazz tidak terpotong!`);
+          realMessage = `IP tidak cocok dengan Digiflazz (${realMessage || "RC 45"}). Saldo Digiflazz tidak terpotong.`;
+        } else {
+          realMessage = realMessage || `Transaksi ditolak oleh Digiflazz (${rc ? "RC " + rc : "Gagal"}). Saldo Digiflazz tidak terpotong.`;
         }
-        throw new Error(realMessage || `Transaksi ditolak oleh Digiflazz (${rc ? "RC " + rc : "Gagal"}). Saldo Digiflazz tidak terpotong.`);
+        realStatus = "Gagal";
+      } else {
+        realStatus = (rawStatusLower === "sukses" || rawStatusLower === "success" || rc === "00") ? "Sukses" : "Pending";
       }
-
-      realStatus = (rawStatusLower === "sukses" || rawStatusLower === "success" || rc === "00") ? "Sukses" : "Pending";
       const lastSaldo = typeof d.buyer_last_saldo === "number"
         ? d.buyer_last_saldo
         : (typeof d.deposit === "number" ? d.deposit : null);
@@ -14509,6 +14947,10 @@ async function processPpobTransaction(sku, sellPrice, isTesting = false) {
     const modalPrice = Number(product.price || 0);
     const profit = Math.max(0, sellPrice - modalPrice);
     const userRole = state.user?.role || "staff";
+
+    const payMeta = getDigitalPayMeta(payOpt?.paymentMethod || "cash", "Tunai (PPOB)");
+    const isCashPay = payMeta.paymentMethod === "cash";
+    const qrisOid = String(payOpt?.qrisOrderId || "").trim();
 
     const txPayload = {
       id: refId,
@@ -14530,21 +14972,26 @@ async function processPpobTransaction(sku, sellPrice, isTesting = false) {
       product_name: product.name,
       price_modal: modalPrice,
       price_sell: sellPrice,
-      profit: profit,
+      profit: realStatus === "Gagal" ? 0 : profit,
       status: realStatus,
       is_testing: isTesting,
       sn: realSn,
       message: realMessage,
-      paymentMethod: "cash",
-      paymentLabel: "Tunai (PPOB)",
-      paymentChannel: "cash",
-      paymentStatus: "success",
-      paymentConfirmed: true,
-      paymentConfirmedAtMs: now,
-      notifyAdmin: realStatus === "Sukses",
+      paymentMethod: payMeta.paymentMethod,
+      paymentLabel: payMeta.paymentLabel,
+      paymentChannel: payMeta.paymentChannel,
+      isNonCashPayment: payMeta.isNonCashPayment,
+      qrisOrderId: qrisOid,
+      paymentCashOutType: payMeta.paymentCashOutType,
+      paymentStatus: isCashPay ? "success" : (realStatus === "Gagal" ? "failed" : "awaiting_payment"),
+      paymentConfirmed: isCashPay && realStatus !== "Gagal",
+      paymentConfirmedAtMs: (isCashPay && realStatus !== "Gagal") ? now : null,
+      notifyAdmin: realStatus === "Sukses" && isCashPay,
       notificationType: "staff_transaction",
-      notificationStatus: realStatus === "Sukses" ? "pending" : "waiting_ppob",
-      settledAtMs: realStatus === "Sukses" ? now : null,
+      notificationStatus: realStatus === "Gagal"
+        ? "failed"
+        : ((realStatus === "Sukses" && isCashPay) ? "pending" : (isCashPay ? "waiting_ppob" : "waiting_payment")),
+      settledAtMs: (realStatus === "Sukses" && isCashPay) ? now : null,
       dateKey: todayKey(),
       monthKey: monthKey(),
       userRole: userRole,
@@ -14563,77 +15010,14 @@ async function processPpobTransaction(sku, sellPrice, isTesting = false) {
       source: "ppob_transaction"
     };
 
-    // 1. Simpan pencatatan transaksi ke Supabase tabel transactions
-    await setDoc(doc(db, "transactions", refId), {
-      ...txPayload,
-      createdAt: serverTimestamp(),
-      syncedAt: serverTimestamp(),
-      syncedAtMs: now
-    }, { merge: false });
-
-    // 2. Simpan juga ke tabel khusus ppob_transactions di Supabase
-    try {
-      await supabase.from("ppob_transactions").upsert({
-        id: refId,
-        ref_id: refId,
-        date_key: todayKey(),
-        month_key: monthKey(),
-        user_id: u,
-        cashier_name: kasirName,
-        customer_no: ppobState.customerNo,
-        buyer_sku_code: product.sku,
-        product_name: product.name,
-        category: product.category || "",
-        brand: product.brand || "",
-        price_modal: modalPrice,
-        price_sell: sellPrice,
-        profit: profit,
-        payment_method: "cash",
-        payment_status: "success",
-        sn: realSn,
-        status: realStatus,
-        is_testing: isTesting,
-        message: realMessage,
-        created_at: new Date(now).toISOString()
-      }, { onConflict: "id" });
-    } catch (eTable) {
-      console.warn("Tabel ppob_transactions belum dibuat di Supabase / upsert error:", eTable);
-    }
-
-    // 3. Masukkan ke local memory kasir agar langsung menambah omzet & laci
-    if (Array.isArray(state.data.tx)) {
-      state.data.tx = [txPayload, ...state.data.tx.filter(t => t.id !== refId)];
-    }
-    if (Array.isArray(state.data.targetTx)) {
-      state.data.targetTx = mergeRowsById(state.data.targetTx || [], [txPayload]);
-    }
-    syncDailyTargetState();
-    render();
-
-    // 4. Kirim notifikasi & suara HANYA jika sudah benar-benar Sukses (Opsi B: Pending tunggu Sukses dulu)
-    if (realStatus === "Sukses") {
-      if (!isTrialRecord(txPayload)) {
-        notifyAdminNewTransaction(txPayload);
-        if (typeof kirimNotifWaBos === "function") kirimNotifWaBos(sellPrice, txPayload.note, kasirName);
-      }
-      if (typeof playSuccessSound === "function") playSuccessSound();
-    }
-    if (typeof loadPpobAndZidBalancesFromDb === "function") {
-      setTimeout(() => loadPpobAndZidBalancesFromDb(true), 1500);
-    }
-
-    // 5. Format teks struk & tampilkan modal jujur sesuai status (Sukses vs Pending)
-    const receiptText = receiptTextForPpob(txPayload);
-    window.__lastPpobReceipt = receiptText;
-
-    const modalTitle = realStatus === "Sukses" ? "Transaksi PPOB Selesai" : "Order PPOB Sedang Diproses";
-    modal(modalTitle, `<div id="digitalOrderResultWrap" data-ref-id="${esc(refId)}">${renderDigitalOrderResultModalBody(txPayload, { isTesting, isPln })}</div>`, "", "");
-    if (realStatus === "Pending" && !isTesting) {
-      startDigitalPendingPolling(refId);
-    }
+    await persistAndPresentDigitalOrder(txPayload, { isCashPay, isTesting, isPln, isZid: false });
   } catch (err) {
     console.error("Gagal transaksi PPOB:", err);
-    toast("Gagal: " + (err.message || err), true);
+    if (payOpt?.qrisOrderId) {
+      toast(`⚠️ QRIS sudah dibayar (${payOpt.qrisOrderId}), tapi order pusat gagal: ${err.message || err}. Ulangi/refund manual!`, true);
+    } else {
+      toast("Gagal: " + (err.message || err), true);
+    }
   } finally {
     ppobTxSubmitting = false;
     showLoad(false);
@@ -15086,14 +15470,14 @@ function renderZidStore() {
 
   page.innerHTML = `
     <div class="wrap ppob-wrap" style="padding-bottom:90px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:6px;">
         <button class="btn" onclick="go('ppob_hub')" style="background:var(--bg,#f8fafc);border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:8px 12px;display:flex;align-items:center;gap:6px;font-weight:700;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg> Kembali
         </button>
-        <div style="font-size:15.5px;font-weight:800;color:#312e81;display:flex;align-items:center;gap:6px;">
-          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#4f46e5;"></span> ZidStore (PPOB &amp; Akrab)
+        <div style="font-size:15px;font-weight:800;color:#312e81;display:flex;align-items:center;gap:6px;">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#4f46e5;"></span> ZidStore
         </div>
-        <div style="width:65px;"></div>
+        ${renderDigitalHeaderHistoryBtn("#4f46e5")}
       </div>
 
       <div id="zidPageBalanceBar">${renderProviderBalanceBar("zidstore")}</div>
@@ -15388,6 +15772,7 @@ function confirmZidStoreOrder(code, kind = "ppob") {
 
       ${openDenomBox}
       ${descBox}
+      ${renderDigitalPaymentPickerHtml("#4f46e5")}
 
       <button type="button" class="btn" style="width:100%;background:#4f46e5;color:#fff;font-weight:800;border-radius:12px;padding:13px 14px;font-size:13.5px;display:flex;align-items:center;justify-content:center;gap:8px;" onclick="promptZidStorePinAndPay('${esc(code)}', '${kind}', ${baseSellPrice}, ${isOpen ? "true" : "false"})">
         BAYAR ZIDSTORE
@@ -15419,12 +15804,13 @@ function promptZidStorePinAndPay(code, kind, sellPrice, isOpenDenom = false) {
   if (!item) return toast("Produk tidak ditemukan");
 
   const userName = state.user?.name || state.user?.username || "Kasir";
+  const payLabel = getDigitalPayMeta(selectedDigitalPayMethod, "Tunai").paymentLabel;
   const body = `
     <div style="display:flex;flex-direction:column;gap:12px;">
       <div style="background:#eef2ff;border:1.5px solid #a5b4fc;border-radius:12px;padding:11px 13px;">
         <div style="font-size:11px;font-weight:800;color:#312e81;text-transform:uppercase;">Verifikasi Kasir: ${esc(userName)}</div>
         <div style="font-size:13.5px;font-weight:800;color:#0f172a;margin-top:3px;">${esc(getZidStoreDisplayName(item))} &bull; ${esc(zidState.customerNo)}</div>
-        <div style="font-size:14px;font-weight:900;color:#4f46e5;margin-top:2px;">Total: Rp ${rp(finalSell)}</div>
+        <div style="font-size:14px;font-weight:900;color:#4f46e5;margin-top:2px;">Total: Rp ${rp(finalSell)} <span style="font-size:11px;font-weight:800;color:#312e81;">&bull; ${esc(payLabel)}</span></div>
       </div>
 
       <div>
@@ -15496,12 +15882,24 @@ async function submitZidStorePinConfirm(code, kind, sellPrice, openQty = 0) {
     return;
   }
   closeModal();
-  await processZidStoreTransaction(code, kind, sellPrice, openQty);
+  const itemFinal = kind === "akrab"
+    ? (zidState.akrabPackages || []).find(a => String(a.package_code || a.sku) === String(code))
+    : (zidState.products || []).find(p => String(p.code || p.sku) === String(code));
+  await executeDigitalOrderAfterPin({
+    provider: "zidstore",
+    code,
+    kind,
+    sellPrice,
+    openQty,
+    targetNo: zidState.customerNo,
+    productName: itemFinal ? getZidStoreDisplayName(itemFinal) : code,
+    paymentMethod: selectedDigitalPayMethod,
+  });
 }
 
 let zidTxSubmitting = false;
 
-async function processZidStoreTransaction(code, kind, sellPrice, openQty = 0) {
+async function processZidStoreTransaction(code, kind, sellPrice, openQty = 0, payOpt = null) {
   if (zidTxSubmitting) return toast("Transaksi ZidStore sedang diproses, tunggu sebentar...");
   if (!canTx()) return toast(txBlockedMessage());
   const item = kind === "akrab"
@@ -15533,23 +15931,26 @@ async function processZidStoreTransaction(code, kind, sellPrice, openQty = 0) {
     if (!apiRes) {
       throw new Error("Server proxy / worker ZidStore tidak terjangkau. Pastikan proxy aktif atau koneksi internet stabil.");
     }
-    if (!apiRes.ok) {
-      throw new Error(apiRes.error || "Transaksi ZidStore ditolak");
-    }
 
     const d = apiRes.data || {};
-    const stLower = String(d.status || "pending").toLowerCase();
-    const mappedStatus = stLower === "success" ? "Sukses" : (stLower === "failed" ? "Gagal" : "Pending");
-    if (mappedStatus === "Gagal") {
-      throw new Error(d.message || "Pesanan gagal di ZidStore (saldo panel dikembalikan otomatis)");
-    }
+    const stLower = String(d.status || (apiRes.ok ? "pending" : "failed")).toLowerCase();
+    const mappedStatus = (!apiRes.ok || stLower === "failed")
+      ? "Gagal"
+      : (stLower === "success" ? "Sukses" : "Pending");
+    const zidMsg = mappedStatus === "Gagal"
+      ? String(d.message || apiRes.error || "Pesanan gagal di ZidStore (saldo panel dikembalikan otomatis)")
+      : String(d.message || "");
 
     const now = Date.now();
     const kasirName = state.user?.name || state.user?.username || "Kasir";
     const userRole = state.user?.role || "staff";
     const actualModal = Number(d.price || modalPrice || 0);
-    const profit = Math.max(0, sellPrice - actualModal);
+    const profit = mappedStatus === "Gagal" ? 0 : Math.max(0, sellPrice - actualModal);
     const displayName = getZidStoreDisplayName(item);
+
+    const payMeta = getDigitalPayMeta(payOpt?.paymentMethod || "cash", kind === "akrab" ? "Tunai (Akrab)" : "Tunai (ZidStore)");
+    const isCashPay = payMeta.paymentMethod === "cash";
+    const qrisOid = String(payOpt?.qrisOrderId || "").trim();
 
     const txPayload = {
       id: refId,
@@ -15577,17 +15978,22 @@ async function processZidStoreTransaction(code, kind, sellPrice, openQty = 0) {
       profit,
       status: mappedStatus,
       sn: String(d.sn || ""),
-      message: String(d.message || ""),
-      paymentMethod: "cash",
-      paymentLabel: kind === "akrab" ? "Tunai (Akrab)" : "Tunai (ZidStore)",
-      paymentChannel: "cash",
-      paymentStatus: "success",
-      paymentConfirmed: true,
-      paymentConfirmedAtMs: now,
-      notifyAdmin: mappedStatus === "Sukses",
+      message: zidMsg,
+      paymentMethod: payMeta.paymentMethod,
+      paymentLabel: payMeta.paymentLabel,
+      paymentChannel: payMeta.paymentChannel,
+      isNonCashPayment: payMeta.isNonCashPayment,
+      qrisOrderId: qrisOid,
+      paymentCashOutType: payMeta.paymentCashOutType,
+      paymentStatus: isCashPay ? "success" : (mappedStatus === "Gagal" ? "failed" : "awaiting_payment"),
+      paymentConfirmed: isCashPay && mappedStatus !== "Gagal",
+      paymentConfirmedAtMs: (isCashPay && mappedStatus !== "Gagal") ? now : null,
+      notifyAdmin: mappedStatus === "Sukses" && isCashPay,
       notificationType: "staff_transaction",
-      notificationStatus: mappedStatus === "Sukses" ? "pending" : "waiting_ppob",
-      settledAtMs: mappedStatus === "Sukses" ? now : null,
+      notificationStatus: mappedStatus === "Gagal"
+        ? "failed"
+        : ((mappedStatus === "Sukses" && isCashPay) ? "pending" : (isCashPay ? "waiting_ppob" : "waiting_payment")),
+      settledAtMs: (mappedStatus === "Sukses" && isCashPay) ? now : null,
       dateKey: todayKey(),
       monthKey: monthKey(),
       userRole,
@@ -15607,37 +16013,13 @@ async function processZidStoreTransaction(code, kind, sellPrice, openQty = 0) {
       updatedAtMs: now
     };
 
-    await setDoc(doc(db, "transactions", refId), txPayload, { merge: true });
-    if (Array.isArray(state.data.tx)) {
-      state.data.tx = [txPayload, ...state.data.tx.filter(t => t.id !== refId)];
-    }
-    if (Array.isArray(state.data.targetTx)) {
-      state.data.targetTx = mergeRowsById(state.data.targetTx || [], [txPayload]);
-    }
-    syncDailyTargetState();
-    render();
-
-    if (mappedStatus === "Sukses") {
-      if (!isTrialRecord(txPayload)) {
-        notifyAdminNewTransaction(txPayload);
-        if (typeof kirimNotifWaBos === "function") kirimNotifWaBos(sellPrice, txPayload.note, kasirName);
-      }
-      if (typeof playSuccessSound === "function") playSuccessSound();
-    }
-    if (typeof loadPpobAndZidBalancesFromDb === "function") {
-      setTimeout(() => loadPpobAndZidBalancesFromDb(true), 1500);
-    }
-
-    const receiptText = receiptTextForPpob(txPayload);
-    window.__lastPpobReceipt = receiptText;
-
-    const modalTitle = mappedStatus === "Sukses" ? "Transaksi ZidStore Selesai" : "Order ZidStore Sedang Diproses";
-    modal(modalTitle, `<div id="digitalOrderResultWrap" data-ref-id="${esc(refId)}">${renderDigitalOrderResultModalBody(txPayload)}</div>`, "", "");
-    if (mappedStatus === "Pending") {
-      startDigitalPendingPolling(refId);
-    }
+    await persistAndPresentDigitalOrder(txPayload, { isCashPay, isTesting: false, isPln: false, isZid: true });
   } catch (err) {
-    toast("Gagal: " + (err.message || err), true);
+    if (payOpt?.qrisOrderId) {
+      toast(`⚠️ QRIS sudah dibayar (${payOpt.qrisOrderId}), tapi order ZidStore gagal: ${err.message || err}. Ulangi/refund manual!`, true);
+    } else {
+      toast("Gagal: " + (err.message || err), true);
+    }
   } finally {
     zidTxSubmitting = false;
     showLoad(false);
@@ -15646,6 +16028,8 @@ async function processZidStoreTransaction(code, kind, sellPrice, openQty = 0) {
 
 function renderDigitalOrderResultModalBody(tx, { isTesting = false, isPln = false, pollStep = 0 } = {}) {
   const st = getDigitalTxStatus(tx);
+  const awaitingPay = isDigitalAwaitingBuyerPay(tx);
+  const isQrisPay = String(tx?.paymentChannel || "").toLowerCase() === "qris_barcode" || String(tx?.paymentMethod || "") === "qris_transfer";
   const isZid = isZidStoreTx(tx);
   const isPlnItem = isPln || String(tx?.buyer_sku_code || tx?.note || "").toLowerCase().includes("pln");
   const sell = Number(tx?.price_sell || tx?.amount || 0);
@@ -15657,26 +16041,33 @@ function renderDigitalOrderResultModalBody(tx, { isTesting = false, isPln = fals
   let strokeColor = "#16a34a";
   let iconSvg = `<polyline points="20 6 9 17 4 12"></polyline>`;
   let titleText = isZid ? "Transaksi ZidStore Sukses!" : "Transaksi Berhasil!";
-  let subText = isTesting ? "Mode Simulasi Sandbox (Saldo Aman)" : "Produk sudah diproses &amp; masuk ke omset";
+  let subText = isTesting ? "Mode Simulasi Sandbox (Saldo Aman)" : "Produk terkirim &amp; pembayaran lunas masuk omset";
 
-  if (st === "Pending") {
+  if (awaitingPay) {
+    circleBg = "#ffedd5";
+    circleBorder = "#fdba74";
+    strokeColor = "#ea580c";
+    titleText = `Produk ${provLabel} Terkirim!`;
+    subText = `Sekarang silakan tagih <b>${isQrisPay ? "QRIS Barcode" : "Transfer / Gesek EDC"}</b> ke pembeli`;
+  } else if (st === "Pending") {
     circleBg = "#fef3c7";
     circleBorder = "#fcd34d";
     strokeColor = "#d97706";
     iconSvg = `<circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15 14"></polyline>`;
     titleText = `Order ${provLabel} PENDING`;
-    subText = `Sedang dicek otomatis${pollStep ? ` (${pollStep}/8)` : ""} &bull; Belum masuk omset s.d. Sukses`;
+    subText = `Sedang dicek otomatis${pollStep ? ` (${pollStep}/8)` : ""} &bull; Belum masuk omset / belum tagih pembeli`;
   } else if (st === "Gagal") {
     circleBg = "#fee2e2";
     circleBorder = "#fca5a5";
     strokeColor = "#dc2626";
     iconSvg = `<line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>`;
     titleText = `Order ${provLabel} GAGAL`;
-    subText = "Saldo pusat otomatis kembali &bull; Tidak masuk omset/laci (kembalikan uang pembeli)";
+    subText = "Saldo pusat kembali &bull; Aman (pembeli belum bayar jika QRIS/EDC)";
   }
 
   const refId = String(tx?.ref_id || tx?.id || "");
   const prodName = String(tx?.product_name || tx?.note || "").replace(/^\[(PPOB|ZIDSTORE|AKRAB)\]\s*/i, "");
+  const unsettledAmt = st !== "Sukses" || awaitingPay;
 
   return `
     <div style="text-align:center;padding:8px 0;">
@@ -15684,19 +16075,20 @@ function renderDigitalOrderResultModalBody(tx, { isTesting = false, isPln = fals
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">${iconSvg}</svg>
       </div>
       <div style="font-size:17px;font-weight:900;color:#0f172a;">${titleText}</div>
-      <div style="font-size:11.5px;color:${st === "Gagal" ? "#b91c1c" : (st === "Pending" ? "#b45309" : "var(--muted)")};font-weight:700;margin-top:3px;">${subText}</div>
+      <div style="font-size:11.5px;color:${st === "Gagal" ? "#b91c1c" : (awaitingPay ? "#c2410c" : (st === "Pending" ? "#b45309" : "var(--muted)"))};font-weight:700;margin-top:3px;">${subText}</div>
 
       <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:12px;text-align:left;margin:14px 0;">
         <div style="font-size:11px;color:var(--muted);font-weight:700;">${isPlnItem ? "NOMOR TOKEN PLN:" : "NOMOR SERIAL NUMBER (SN):"}</div>
         <div id="zidSuccessSnText" style="font-size:15.5px;font-weight:900;color:${st === "Gagal" ? "#dc2626" : accent};letter-spacing:0.6px;word-break:break-all;margin-top:3px;">${esc(tx?.sn || (st === "Gagal" ? (tx?.message || "Transaksi Gagal") : "Sedang diproses (otomatis dicek tiap 5 detik)"))}</div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:8px;">Tujuan: <b style="color:#0f172a;">${esc(tx?.customer_no || "-")}</b></div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Produk: <b style="color:#0f172a;">${esc(prodName)}</b></div>
-        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Harga Jual: <b style="color:${accent};${st !== "Sukses" ? "text-decoration:line-through;opacity:0.65;" : ""}">Rp ${rp(sell)}</b>${st !== "Sukses" ? ` <span style="font-size:10px;font-weight:800;color:#b45309;">(${st === "Gagal" ? "Batal" : "Ditahan"})</span>` : ""}</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Harga Jual: <b style="color:${accent};${unsettledAmt ? "text-decoration:line-through;opacity:0.65;" : ""}">Rp ${rp(sell)}</b>${unsettledAmt ? ` <span style="font-size:10px;font-weight:800;color:${awaitingPay ? "#c2410c" : "#b45309"};">(${awaitingPay ? "Belum dibayar pembeli" : (st === "Gagal" ? "Batal" : "Ditahan")})</span>` : ""}</div>
       </div>
 
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         ${st !== "Sukses" ? `<button type="button" class="btn" style="flex:1;background:${st === "Pending" ? "#fef3c7" : "#f1f5f9"};color:${st === "Pending" ? "#92400e" : "#475569"};border:1.5px solid ${st === "Pending" ? "#fcd34d" : "#cbd5e1"};font-weight:800;border-radius:12px;padding:12px;" onclick="checkStaffDigitalOrderStatus('${esc(refId)}', { fromResultModal: true })">&#8635; Cek Status Sekarang</button>` : ""}
-        ${st === "Sukses" ? `<button type="button" class="btn primary" style="flex:1;background:${accent};color:#fff;font-weight:800;border-radius:12px;padding:12px;" onclick="closeModal(); if (typeof openReceiptPreview === 'function' && window.__lastPpobReceipt) openReceiptPreview(window.__lastPpobReceipt, 'Struk ${provLabel}');">Cetak Struk</button>` : ""}
+        ${awaitingPay ? `<button type="button" class="btn primary" style="flex:1;background:${isQrisPay ? "#0284c7" : "#ea580c"};color:#fff;font-weight:900;border-radius:12px;padding:12px;" onclick="openPostSuccessBuyerPayment('${esc(refId)}')">${isQrisPay ? "📱 Tampilkan QRIS" : "💳 Konfirmasi EDC"}</button><button type="button" class="btn" style="flex:1;background:#ecfdf5;color:#047857;border:1.5px solid #86efac;font-weight:800;border-radius:12px;padding:12px;" onclick="switchDigitalPayToCash('${esc(refId)}')">💵 Ganti Tunai</button>` : ""}
+        ${st === "Sukses" && !awaitingPay ? `<button type="button" class="btn primary" style="flex:1;background:${accent};color:#fff;font-weight:800;border-radius:12px;padding:12px;" onclick="closeModal(); if (typeof openReceiptPreview === 'function' && window.__lastPpobReceipt) openReceiptPreview(window.__lastPpobReceipt, 'Struk ${provLabel}');">Cetak Struk</button>` : ""}
         <button type="button" class="btn" style="flex:1;background:#f1f5f9;border:1px solid #cbd5e1;font-weight:700;border-radius:12px;padding:12px;" onclick="closeModal(); go('ppob_hub');">Selesai</button>
       </div>
     </div>`;
@@ -15718,6 +16110,10 @@ function startDigitalPendingPolling(refId) {
     const wrap = document.getElementById("digitalOrderResultWrap");
     if (wrap && wrap.getAttribute("data-ref-id") === String(refId)) {
       const updatedTx = findTxById(refId) || tx;
+      if (res && res.mapped === "Sukses" && isDigitalAwaitingBuyerPay(updatedTx)) {
+        openPostSuccessBuyerPayment(refId);
+        return;
+      }
       wrap.innerHTML = renderDigitalOrderResultModalBody(updatedTx, { pollStep: attempt });
     }
     if (res && res.mapped === "Pending" && attempt < maxAttempts) {
@@ -15809,14 +16205,15 @@ async function checkStaffDigitalOrderStatus(txId, { silent = false, fromResultMo
 
     const sell = Number(t.price_sell || t.amount || 0);
     const nextProfit = nextModal > 0 && sell > 0 ? Math.max(0, sell - nextModal) : Number(t.profit || 0);
-    const shouldNotifySettled = wasPending && mapped === "Sukses" && t.notificationStatus === "waiting_ppob";
+    const isPayDone = !t.paymentStatus || t.paymentStatus === "success";
+    const shouldNotifySettled = wasPending && mapped === "Sukses" && t.notificationStatus === "waiting_ppob" && isPayDone;
     const patch = {
       status: mapped,
       sn: nextSn,
       message: nextMsg,
       price_modal: nextModal || Number(t.price_modal || 0),
       profit: nextProfit,
-      settledAtMs: mapped === "Sukses" ? Number(t.settledAtMs || Date.now()) : (t.settledAtMs || null),
+      settledAtMs: (mapped === "Sukses" && isPayDone) ? Number(t.settledAtMs || Date.now()) : (t.settledAtMs || null),
       updatedAtMs: Date.now()
     };
     if (shouldNotifySettled) {
@@ -15911,6 +16308,11 @@ window.processZidStoreTransaction = processZidStoreTransaction;
 window.checkStaffZidStoreOrderStatus = checkStaffZidStoreOrderStatus;
 window.checkStaffDigitalOrderStatus = checkStaffDigitalOrderStatus;
 window.checkAllStaffPendingDigitalOrders = checkAllStaffPendingDigitalOrders;
+window.selectDigitalPayMethod = selectDigitalPayMethod;
+window.openPostSuccessBuyerPayment = openPostSuccessBuyerPayment;
+window.switchDigitalPayToCash = switchDigitalPayToCash;
+window.confirmDigitalEdcPaid = confirmDigitalEdcPaid;
+window.cancelDigitalEdcPaid = cancelDigitalEdcPaid;
 window.updateZidStoreList = updateZidStoreList;
 
 
