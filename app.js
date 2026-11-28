@@ -13543,7 +13543,7 @@ let ppobState = {
   roundUpTo: 1000,
   customPrices: {},
   balance: null,
-  ppobPublicIp: "157.85.208.5",
+  ppobPublicIp: "https://140-245-121-95.sslip.io,140.245.121.95,157.85.208.5",
   ppobLocalIp: "192.168.1.100",
   ppobPort: 3001
 };
@@ -14265,8 +14265,43 @@ async function processPpobTransaction(sku, sellPrice, isTesting = false) {
     if (!isTesting) {
       let apiResult = null;
 
-      // PRIORITAS 1: Jembatan Langsung APK Android (trx_V3.apk) -> Murni pakai IP WiFi Toko tanpa butuh PC hidup!
-      if (hasNativeAndroidDigiflazzBridge()) {
+      try {
+        const latestSetSnap = await getDocFromServer(doc(db, "closings", "__ppob_settings")).catch(() => null);
+        if (latestSetSnap && latestSetSnap.exists()) {
+          const ls = latestSetSnap.data() || {};
+          if (ls.ppobPublicIp) ppobState.ppobPublicIp = String(ls.ppobPublicIp).trim();
+          if (ls.ppobLocalIp !== undefined) ppobState.ppobLocalIp = String(ls.ppobLocalIp).trim();
+          if (ls.ppobPort) ppobState.ppobPort = Number(ls.ppobPort) || 3001;
+        }
+      } catch (eSyncIp) {}
+
+      const proxyHosts = buildStaffPpobProxyHosts();
+      const httpsProxyHosts = proxyHosts.filter(h => h.startsWith("https://"));
+      const httpProxyHosts = proxyHosts.filter(h => !h.startsWith("https://"));
+
+      // PRIORITAS 1: Server VPS HTTPS (bekerja 24 jam dari HP data seluler / Wi-Fi / APK maupun PC!)
+      for (const host of httpsProxyHosts) {
+        if (apiResult) break;
+        try {
+          const vpsRes = await fetch(`${host}/charge`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              buyer_sku_code: product.sku,
+              customer_no: ppobState.customerNo,
+              ref_id: refId,
+              testing: false
+            }),
+            signal: AbortSignal.timeout(18000)
+          });
+          if (vpsRes.ok) {
+            apiResult = await vpsRes.json();
+          }
+        } catch (errVps) {}
+      }
+
+      // PRIORITAS 2: Jembatan Langsung APK Android (trx_V3.apk) jika VPS HTTPS tidak terjangkau
+      if (!apiResult && hasNativeAndroidDigiflazzBridge()) {
         const nativeRes = await invokeNativeAndroidBridge(
           "digiflazzChargeAsync",
           product.sku,
@@ -14287,20 +14322,9 @@ async function processPpobTransaction(sku, sellPrice, isTesting = false) {
         }
       }
 
-      // PRIORITAS 2: Proxy Lokal / LAN / IP Server jika dibuka lewat Browser PC / belum pakai APK V3
+      // PRIORITAS 3: Proxy Lokal / LAN / IP Server HTTP jika dibuka lewat Browser PC / Wi-Fi toko
       if (!apiResult) {
-        try {
-          const latestSetSnap = await getDocFromServer(doc(db, "closings", "__ppob_settings")).catch(() => null);
-          if (latestSetSnap && latestSetSnap.exists()) {
-            const ls = latestSetSnap.data() || {};
-            if (ls.ppobPublicIp) ppobState.ppobPublicIp = String(ls.ppobPublicIp).trim();
-            if (ls.ppobLocalIp !== undefined) ppobState.ppobLocalIp = String(ls.ppobLocalIp).trim();
-            if (ls.ppobPort) ppobState.ppobPort = Number(ls.ppobPort) || 3001;
-          }
-        } catch (eSyncIp) {}
-
-        const proxyHosts = buildStaffPpobProxyHosts();
-        for (const host of proxyHosts) {
+        for (const host of httpProxyHosts) {
           if (apiResult) break;
           try {
             const localRes = await fetch(`${host}/charge`, {
