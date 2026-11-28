@@ -5654,9 +5654,11 @@ function txItem(t) {
   }
   const detailIconHtml = totalQty > 0 ? `<span style="font-weight:900;font-size:16px;color:var(--text-main);display:flex;align-items:center;justify-content:center">${totalQty}</span>` : txHistoryIcon("list");
   const isQrisPay = String(t.paymentChannel || "").toLowerCase() === "qris_barcode" || String(t.paymentMethod || "") === "qris_transfer";
+  const isEdcPay = String(t.paymentChannel || "").toLowerCase() === "edc" || String(t.paymentMethod || "").toLowerCase() === "transfer" || String(t.paymentLabel || "").toLowerCase().includes("edc");
+  const isDigitalNonCash = isDigital && (isQrisPay || isEdcPay || Boolean(t.qrisOrderId) || String(t.paymentLabel || "").toLowerCase().includes("qris"));
   const detailBtn = isDigital
     ? (awaitingPay
-      ? `<button class="btn sm" style="background:${isQrisPay ? "#0284c7" : "#ea580c"};color:#fff;border:none;font-weight:800;font-size:11px;padding:0 9px;" onclick="openPostSuccessBuyerPayment('${id}')" title="Tagih Pembayaran">${isQrisPay ? "QRIS" : "EDC"}</button>`
+      ? `<button class="btn sm" style="background:${isDigitalNonCash ? "#fff" : (isQrisPay ? "#0284c7" : "#ea580c")};color:${isDigitalNonCash ? "#ff5400" : "#fff"};border:none;font-weight:900;font-size:11px;padding:0 9px;" onclick="openPostSuccessBuyerPayment('${id}')" title="Tagih Pembayaran">${isQrisPay ? "QRIS" : "EDC"}</button>`
       : (stDigital === "Pending" ? `<button class="btn sm" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;font-weight:800;font-size:11px;padding:0 8px;" onclick="checkStaffDigitalOrderStatus('${id}')" title="Cek Status / SN">&#8635; Cek</button>` : ""))
     : `<button class="btn sm tx-card-btn tx-card-detail" onclick="openTxDetail('${id}')" aria-label="Detail transaksi" title="Detail">${detailIconHtml}</button>`;
   const printBtn = (!pending && isMine && (!isDigital || (stDigital === "Sukses" && !awaitingPay)))
@@ -5689,23 +5691,32 @@ function txItem(t) {
   const rawStaffName = String(t.name || t.user || "-").trim();
   const staffNameLabel = isRismaSpecialUser() ? `<span style="font-weight:700;color:var(--text);margin-right:4px;">${esc(rawStaffName)}</span><span style="color:var(--muted);margin-right:4px;">•</span>` : "";
   const timeLabel = timeID(ms(t));
-  const infoPay = payBadge ? `<span style="color:var(--muted);margin:0 4px;">•</span>${payBadge}` : "";
+  const infoPay = payBadge ? `<span style="color:${isDigitalNonCash ? "rgba(255,255,255,0.8)" : "var(--muted)"};margin:0 4px;">•</span>${payBadge}` : "";
   const ppobProductName = isDigital
     ? String(t.product_name || t.note || "Produk Digital").replace(/^\[(PPOB|ZIDSTORE|AKRAB)\]\s*/i, "").trim()
     : "";
+  const hintColor = isDigitalNonCash
+    ? "#fef08a"
+    : (awaitingPay ? "#c2410c" : (stDigital === "Gagal" ? "#dc2626" : "#b45309"));
   const ppobStatusHint = awaitingPay
-    ? `<div style="margin-top:2px;font-size:10px;font-weight:800;color:#c2410c;">💳 Produk Sukses! Klik ${isQrisPay ? "QRIS" : "EDC"} untuk tagih pembayaran pembeli</div>`
+    ? `<div style="margin-top:2px;font-size:10px;font-weight:800;color:${hintColor};">💳 Produk Sukses! Klik ${isQrisPay ? "QRIS" : "EDC"} untuk tagih pembayaran pembeli</div>`
     : (unsettled
-      ? `<div style="margin-top:2px;font-size:10px;font-weight:800;color:${stDigital === "Gagal" ? "#dc2626" : "#b45309"};">${stDigital === "Gagal" ? "❌ Gagal / saldo pusat kembali — tidak masuk omset" : "⏳ Menunggu status Sukses dari pusat (ditahan)"}</div>`
+      ? `<div style="margin-top:2px;font-size:10px;font-weight:800;color:${hintColor};">${stDigital === "Gagal" ? "❌ Gagal / saldo pusat kembali — tidak masuk omset" : "⏳ Menunggu status Sukses dari pusat (ditahan)"}</div>`
       : "");
+  const prodColor = isDigitalNonCash ? "#fff" : "var(--text,#0f172a)";
+  const targetNoColor = isDigitalNonCash ? "rgba(255,255,255,0.85)" : "var(--muted,#64748b)";
   const ppobProductLine = isDigital
-    ? `<div onclick="openTxDetail('${id}')" style="margin-top:4px;font-size:11.5px;font-weight:800;color:var(--text,#0f172a);line-height:1.25;white-space:normal;word-break:break-word;cursor:pointer;">${esc(ppobProductName)}${t.customer_no && !ppobProductName.includes(String(t.customer_no)) ? ` <span style="font-weight:600;color:var(--muted,#64748b);font-size:10.5px;">&bull; ${esc(t.customer_no)}</span>` : ""}</div>${ppobStatusHint}`
+    ? `<div onclick="openTxDetail('${id}')" style="margin-top:4px;font-size:11.5px;font-weight:800;color:${prodColor};line-height:1.25;white-space:normal;word-break:break-word;cursor:pointer;">${esc(ppobProductName)}${t.customer_no && !ppobProductName.includes(String(t.customer_no)) ? ` <span style="font-weight:600;color:${targetNoColor};font-size:10.5px;">&bull; ${esc(t.customer_no)}</span>` : ""}</div>${ppobStatusHint}`
     : "";
 
   const afterWithdrawal = typeof isTxAfterLatestWithdrawal==='function' && isTxAfterLatestWithdrawal(t);
-  let shadowStyle = afterWithdrawal ? 'border: 1px solid #ff4d4d !important; box-shadow: 0 0 5px rgba(255, 77, 77, 0.2) !important; background-color: var(--card) !important;' : '';
+  let shadowStyle = afterWithdrawal
+    ? (isDigitalNonCash
+      ? 'border: 2px solid #ffe066 !important; box-shadow: 0 0 5px rgba(255, 77, 77, 0.2) !important;'
+      : 'border: 1px solid #ff4d4d !important; box-shadow: 0 0 5px rgba(255, 77, 77, 0.2) !important; background-color: var(--card) !important;')
+    : '';
 
-  return `<div class="tx-row tx-row-card-mini" style="${shadowStyle}">
+  return `<div class="tx-row tx-row-card-mini${isDigitalNonCash ? " tx-row-ppob-orange" : ""}" style="${shadowStyle}">
     <div class="tx-card-main">
       <div class="tx-card-info" style="white-space:normal!important; overflow:visible!important; display:flex; flex-wrap:wrap; align-items:center; gap:5px; padding-bottom:2px;">${staffNameLabel}${timeLabel}${infoPay}</div>
       ${ppobProductLine}
@@ -6167,10 +6178,10 @@ function printReceiptFromTx(id) {
 
 function receiptTextForTodayTransactions() {
   const s = receiptSettings();
-  const items = [...historyTx()].sort((a, b) => ms(a) - ms(b));
+  const items = [...historyTx()].filter(t => !isDigitalTxUnsettled(t)).sort((a, b) => ms(a) - ms(b));
   const tanggal = dateID(todayKey());
   const kasir = state.user?.name || state.user?.username || "-";
-  const total = items.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  const total = items.reduce((sum, t) => sum + settledTxAmount(t), 0);
   const rows = items
     .map((t, i) => {
       const no = String(i + 1).padStart(2, "0");
@@ -7933,6 +7944,7 @@ function home() {
     : "";
 
   const tx = todayTx(),
+    settledTx = tx.filter(t => !isDigitalTxUnsettled(t)),
     a = todayAtt(),
     c = todayClosing(),
     emptyStockCard = ""; // HIDDEN sementara (belum butuh) - fitur & fungsi stockEmptyQuickCard() tetap ada, tinggal balikin ke: stockEmptyQuickCard();
@@ -7942,9 +7954,9 @@ function home() {
   
   let warningIcon = "";
   if (!isExcluded) {
-    if (tx.length === 0) {
+    if (settledTx.length === 0) {
       warningIcon = `<style>@keyframes zzzFloat { 0%, 100% { transform: translateY(0) scale(1) rotate(-5deg); } 50% { transform: translateY(-4px) scale(1.05) rotate(5deg); } }</style><div style="position:absolute; bottom:12px; right:15px; font-size:32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: zzzFloat 3s ease-in-out infinite;" title="Masih Molor (Belum Penglaris)">😴</div>`;
-    } else if (tx.length === 1) {
+    } else if (settledTx.length === 1) {
       warningIcon = `<style>@keyframes bangunGirang { 0%, 100% { transform: translateY(0) scale(1); } 20% { transform: translateY(-6px) scale(1.15) rotate(-10deg); } 40% { transform: translateY(0) scale(1.1) rotate(10deg); } 60% { transform: translateY(-3px) scale(1.1) rotate(-5deg); } 80% { transform: translateY(0) scale(1.05) rotate(5deg); } }</style><div style="position:absolute; bottom:12px; right:15px; font-size:32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: bangunGirang 1.5s ease-in-out infinite;" title="Alhamdulillah Penglaris!">🤑</div>`;
     } else if (isLowestStaffToday()) {
       warningIcon = `<svg viewBox="0 0 24 24" width="45" height="45" fill="none" stroke="#ff4d4d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="position:absolute; bottom:12px; right:15px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15)); animation: pulse 2s infinite;"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline><polyline points="17 18 23 18 23 12"></polyline></svg>`;
@@ -7952,12 +7964,12 @@ function home() {
   }
 
   if (isDaily()) {
-    const todayTxBonus = txBonusSum(tx),
+    const todayTxBonus = txBonusSum(settledTx),
       manualToday = manualBonusToday(),
       todayBonus = todayTxBonus + manualToday;
     const syncBtnDaily = `<button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi" style="position:absolute!important; top:16px!important; right:16px!important; z-index:10; background:rgba(255,255,255,0.2); border-color:rgba(255,255,255,0.4); color:#fff;"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring" style="border-color:#fff"></span></button>`;
     const manualCard = "";
-    page.innerHTML = `${top("Mode Harian", state.user?.name || "Karyawan Harian")}${trialModeCard()}${fastCashierBanner}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}<div class="hero daily-income-hero" style="position:relative">${syncBtnDaily}<div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} • ${tx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat" style="position:relative"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard("daily")}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
+    page.innerHTML = `${top("Mode Harian", state.user?.name || "Karyawan Harian")}${trialModeCard()}${fastCashierBanner}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}<div class="hero daily-income-hero" style="position:relative">${syncBtnDaily}<div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} • ${settledTx.length} trx</div>${syncHeroLine()}</div>${emptyStockCard}<div class="grid2" style="margin-top:8px"><div class="stat" style="position:relative"><div class="stat-label">Transaksi Hari Ini</div><div class="stat-val">${settledTx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Gaji Hari Ini</div><div class="stat-val">Rp ${rp(todayBonus)}</div><div class="stat-foot">hari ini</div></div></div>${prayerStatCard("daily")}${manualCard}${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
     return;
   }
 
@@ -7969,7 +7981,7 @@ function home() {
     takenBonus = bonusWithdrawn(),
     sisaBonus = remainingBonus();
   const { cashFisik } = getTodayCashFisik();
-  page.innerHTML = `${top("Mode Staff", state.user?.name || "Karyawan Staff")}${trialModeCard()}${fastCashierBanner}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero" style="position:relative"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${tx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><!-- <div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()} --><div class="stat" style="position:relative"><div class="stat-label">Transaksi</div><div class="stat-val">${tx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-row"><div class="bonus-plus-info"><div class="label">Bonus Bulan Ini</div><div class="big" style="color:var(--blue);line-height:1.2;margin-top:2px;">Rp ${rp(sisaBonus)}</div><div class="bonus-note" style="margin-top:3px;">Bonus terhitung ${rp(earnedBonus)} · sudah diambil ${rp(takenBonus)}</div></div><button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring"></span></button></div>${bonusWithdrawalDetailList()}${todayClosingBonusInline()}${staffBonusWithdrawalAction(cashFisik, sisaBonus)}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
+  page.innerHTML = `${top("Mode Staff", state.user?.name || "Karyawan Staff")}${trialModeCard()}${fastCashierBanner}${targetReachedNoticeCard()}${manualBonusNoticeCard()}${bonusWithdrawalNoticeCard()}${cashDrawerStatusCard()}${opsAccessCard()}${averageAttendanceCard()}${closingNotice()}<div class="hero" style="position:relative"><div class="kicker">Pendapatan Hari Ini</div><div class="big">Rp ${rp(todayTotal())}</div><div class="sub hero-meta-line">${dateID(todayKey()).slice(0, 5)} · ${settledTx.length} trx</div>${syncHeroLine()}</div>${dailyTargetCard()}${emptyStockCard}<div class="grid2 staff-stat-grid" style="margin-top:8px"><!-- <div class="stat att-status ${mainClass}"><div class="stat-label">${mainLabel}</div><div class="stat-val">${mainValue}</div><div class="stat-foot">${mainFoot}</div></div>${prayerStatCard()} --><div class="stat" style="position:relative"><div class="stat-label">Transaksi</div><div class="stat-val">${settledTx.length}</div><div class="stat-foot">hari ini</div>${warningIcon}</div><div class="stat"><div class="stat-label">Total Masuk Kerja</div><div class="stat-val">${monthAttendDays()} <span style="font-size:13px;font-weight:850;color:var(--muted);letter-spacing:0">Hari</span></div><div class="stat-foot">${monthID(monthKey())}</div></div></div><div class="card bonus-plus-card" style="margin-top:8px"><div class="bonus-plus-row"><div class="bonus-plus-info"><div class="label">Bonus Bulan Ini</div><div class="big" style="color:var(--blue);line-height:1.2;margin-top:2px;">Rp ${rp(sisaBonus)}</div><div class="bonus-note" style="margin-top:3px;">Bonus terhitung ${rp(earnedBonus)} · sudah diambil ${rp(takenBonus)}</div></div><button class="refresh-icon-btn sync-header-btn" aria-label="Sync data" title="Tahan untuk Pusat Sinkronisasi"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.2 6.5"/><path d="M3 12A9 9 0 0 1 18.2 5.5"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg><span class="longpress-ring"></span></button></div>${bonusWithdrawalDetailList()}${todayClosingBonusInline()}${staffBonusWithdrawalAction(cashFisik, sisaBonus)}</div>${staffDailyNoteCard()}<div class="bonus-refresh-note"><span class="note-alert-icon">!</span><span><b>Perhatian:</b> klik ikon refresh saat aplikasi error atau saat Transaksi gagal di lakukan.<br><span style="display:block;margin-top:2px">Copyright © 2026 Program by Alfajri – Rocky Hijab.</span></span></div>${headerIconGuide()}`;
 }
   // ===== ESTIMASI UANG LACI KEMARIN =====
   // State untuk data tarikan laci kemarin
@@ -8534,11 +8546,12 @@ function home() {
 
   function history() {
     const items = sortDesc(historyTx());
-    const totalHistoryAmount = items.reduce((s, t) => s + settledTxAmount(t), 0);
+    const settledItems = items.filter(t => !isDigitalTxUnsettled(t));
+    const totalHistoryAmount = settledItems.reduce((s, t) => s + settledTxAmount(t), 0);
     const drawerCard = drawerWithdrawalCard();
     const reserveCard = staffChangeReserveCard();
-    const printAllCard = items.length
-      ? `<div class="card" style="margin-bottom:8px"><button class="btn primary block tx-print-all-btn" onclick="printTodayTransactions()">${txHistoryIcon("print")} Cetak Semua Transaksi Hari Ini</button><div class="hint" style="margin-top:6px">Cetak ${items.length} transaksi hari ini dalam 1 struk.</div></div>`
+    const printAllCard = settledItems.length
+      ? `<div class="card" style="margin-bottom:8px"><button class="btn primary block tx-print-all-btn" onclick="printTodayTransactions()">${txHistoryIcon("print")} Cetak Semua Transaksi Hari Ini</button><div class="hint" style="margin-top:6px">Cetak ${settledItems.length} transaksi lunas/sukses hari ini dalam 1 struk.</div></div>`
       : "";
     
     let body = "";
@@ -8690,7 +8703,10 @@ function home() {
         </div>
       </div>` : "";
 
-    page.innerHTML = `${top("Riwayat Hari Ini", `${items.length} transaksi • Rp ${rp(totalHistoryAmount)}`)}${syncBar()}${ppobCard}${zidCard}${drawerCard}${reserveCard}${printAllCard}${body}`;
+    const historySubLabel = settledItems.length === items.length
+      ? `${items.length} transaksi`
+      : `${settledItems.length} sukses / ${items.length} data`;
+    page.innerHTML = `${top("Riwayat Hari Ini", `${historySubLabel} • Rp ${rp(totalHistoryAmount)}`)}${syncBar()}${ppobCard}${zidCard}${drawerCard}${reserveCard}${printAllCard}${body}`;
 
     // Jika belum load data async, load dan re-render
     if (!state.staffDrawerYesterday.loaded || state.staffChangeReserve === undefined) {
@@ -13230,7 +13246,7 @@ function renderFastCashier() {
   const attendDays = monthAttendDays();
   const currentMonthLabel = monthID(monthKey());
   const tx = todayTx();
-  const txCount = tx.length;
+  const txCount = tx.filter(t => !isDigitalTxUnsettled(t)).length;
   const todayOmset = todayTotal();
   const displayVal = fastCashierNominal > 0
     ? `Rp ${rp(fastCashierNominal)}`

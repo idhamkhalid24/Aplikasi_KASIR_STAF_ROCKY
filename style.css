@@ -4090,3 +4090,19 @@
 
 /* Override Hilangkan Semua Shadow di Card */
 .card, .stat, .item, .daily-target-line, .cash-drawer-staff-card, .role-card, .leave-row, [class*="-card"], .hero, .fast-cashier-wrap [style*="border-radius"] { box-shadow: none !important; }
+
+/* Highlight Oranye Kartu PPOB / ZidStore Non-Tunai (QRIS & EDC) */
+.tx-row.tx-row-card-mini.tx-row-ppob-orange {
+  background: #ff5400 !important;
+  border-color: #ff5400 !important;
+  color: #ffffff !important;
+}
+.tx-row.tx-row-card-mini.tx-row-ppob-orange .tx-card-info,
+.tx-row.tx-row-card-mini.tx-row-ppob-orange .tx-card-amount {
+  color: #ffffff !important;
+  font-weight: 900 !important;
+}
+.tx-row.tx-row-card-mini.tx-row-ppob-orange .tx-card-print,
+.tx-row.tx-row-card-mini.tx-row-ppob-orange .tx-card-delete {
+  background: #ffffff !important;
+}
