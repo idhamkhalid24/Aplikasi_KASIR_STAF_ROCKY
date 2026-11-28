@@ -1862,7 +1862,7 @@ function dailyTargetTransactions(dateKey = todayKey()) {
     activeSet = new Set(active.map((u) => u.username));
   return sortDesc(
     (state.data.targetTx || []).filter((t) => {
-      if (!t || deleted(t) || txDate(t) !== d) return false;
+      if (!t || deleted(t) || isDigitalTxUnsettled(t) || txDate(t) !== d) return false;
       const user = key(t.user);
       if (isTrialUser())
         return isTrialRecord(t) && user === key(state.user?.username);
@@ -4449,10 +4449,10 @@ function monthTx() {
   return liveTx().filter((t) => txMonth(t) === m);
 }
 function todayTotal() {
-  return todayTx().reduce((s, t) => s + Number(t.amount || 0), 0);
+  return todayTx().reduce((s, t) => s + settledTxAmount(t), 0);
 }
 function monthTotal() {
-  return monthTx().reduce((s, t) => s + Number(t.amount || 0), 0);
+  return monthTx().reduce((s, t) => s + settledTxAmount(t), 0);
 }
 function todayAtt() {
   const d = todayKey(),
@@ -5598,12 +5598,36 @@ function isZidStoreAkrabTx(t) {
 function isPpobTx(t) {
   return Boolean(!isZidStoreTx(t) && t && (t.isPpob === true || t.type === "ppob" || t.category === "ppob" || t.source === "ppob_transaction"));
 }
+function getDigitalTxStatus(t) {
+  const raw = String(t?.status || "").toLowerCase().trim();
+  const rc = String(t?.rc || "").trim();
+  if (raw === "sukses" || raw === "success" || rc === "00") return "Sukses";
+  if (raw === "gagal" || raw === "failed" || raw === "error" || (rc !== "" && rc !== "00" && rc !== "03")) return "Gagal";
+  return "Pending";
+}
+function isDigitalTxUnsettled(t) {
+  if (!t) return false;
+  if (!isPpobTx(t) && !isZidStoreTx(t)) return false;
+  return getDigitalTxStatus(t) !== "Sukses";
+}
+function settledTxAmount(t) {
+  return isDigitalTxUnsettled(t) ? 0 : Number(t?.amount || 0);
+}
+function digitalStatusBadge(t) {
+  if (!isPpobTx(t) && !isZidStoreTx(t)) return "";
+  const st = getDigitalTxStatus(t);
+  if (st === "Sukses") return `<span class="chip" style="background:#dcfce7;color:#166534;border:1px solid #86efac;padding:2px 6px;font-size:9px;font-weight:800;">SUKSES</span>`;
+  if (st === "Gagal") return `<span class="chip" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;padding:2px 6px;font-size:9px;font-weight:800;">GAGAL</span>`;
+  return `<span class="chip" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;padding:2px 6px;font-size:9px;font-weight:800;">PENDING</span>`;
+}
 function txItem(t) {
   const pending = t.pending === true;
   const isZid = isZidStoreTx(t);
   const isAkrab = isZidStoreAkrabTx(t);
   const isPpob = isPpobTx(t);
   const isDigital = isPpob || isZid;
+  const stDigital = isDigital ? getDigitalTxStatus(t) : "";
+  const unsettled = isDigitalTxUnsettled(t);
   const isMine = key(t.user) === key(state.user?.username);
   const canDelete = txDate(t) === todayKey() && !pending && isMine && (!isDigital || isAdmin(state.user));
   const id = esc(t.id);
@@ -5622,10 +5646,10 @@ function txItem(t) {
     }
   }
   const detailIconHtml = totalQty > 0 ? `<span style="font-weight:900;font-size:16px;color:var(--text-main);display:flex;align-items:center;justify-content:center">${totalQty}</span>` : txHistoryIcon("list");
-  const detailBtn = !isDigital
-    ? `<button class="btn sm tx-card-btn tx-card-detail" onclick="openTxDetail('${id}')" aria-label="Detail transaksi" title="Detail">${detailIconHtml}</button>`
-    : "";
-  const printBtn = (!pending && isMine)
+  const detailBtn = isDigital
+    ? (stDigital === "Pending" ? `<button class="btn sm" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;font-weight:800;font-size:11px;padding:0 8px;" onclick="checkStaffDigitalOrderStatus('${id}')" title="Cek Status / SN">&#8635; Cek</button>` : "")
+    : `<button class="btn sm tx-card-btn tx-card-detail" onclick="openTxDetail('${id}')" aria-label="Detail transaksi" title="Detail">${detailIconHtml}</button>`;
+  const printBtn = (!pending && isMine && (!isDigital || stDigital === "Sukses"))
     ? `<button class="btn sm tx-card-btn tx-card-print" onclick="printReceiptFromTx('${id}')" aria-label="Cetak struk" title="Cetak">${txHistoryIcon("print")}</button>`
     : "";
   const deleteBtn = canDelete
@@ -5640,7 +5664,7 @@ function txItem(t) {
   const badgeCls = isDigital ? "ppob" : (method === "cash" ? "cash" : "qris");
   const digitalBadgeBg = isAkrab ? "#ea580c" : (isZid ? "#4f46e5" : "#2563eb");
   const payBadge = label
-    ? `<span class="tx-pay-badge ${badgeCls}"${isDigital ? ` style="background:${digitalBadgeBg}!important;color:#fff!important;border:none!important;"` : ""}>${esc(label)}</span>`
+    ? `<span class="tx-pay-badge ${badgeCls}"${isDigital ? ` style="background:${digitalBadgeBg}!important;color:#fff!important;border:none!important;"` : ""}>${esc(label)}</span>${digitalStatusBadge(t)}`
     : "";
   const rawStaffName = String(t.name || t.user || "-").trim();
   const staffNameLabel = isRismaSpecialUser() ? `<span style="font-weight:700;color:var(--text);margin-right:4px;">${esc(rawStaffName)}</span><span style="color:var(--muted);margin-right:4px;">•</span>` : "";
@@ -5649,8 +5673,11 @@ function txItem(t) {
   const ppobProductName = isDigital
     ? String(t.product_name || t.note || "Produk Digital").replace(/^\[(PPOB|ZIDSTORE|AKRAB)\]\s*/i, "").trim()
     : "";
+  const ppobStatusHint = unsettled
+    ? `<div style="margin-top:2px;font-size:10px;font-weight:800;color:${stDigital === "Gagal" ? "#dc2626" : "#b45309"};">${stDigital === "Gagal" ? "❌ Gagal / saldo pusat kembali — tidak masuk omset" : "⏳ Menunggu status Sukses dari pusat (ditahan)"}</div>`
+    : "";
   const ppobProductLine = isDigital
-    ? `<div onclick="openTxDetail('${id}')" style="margin-top:4px;font-size:11.5px;font-weight:800;color:var(--text,#0f172a);line-height:1.25;white-space:normal;word-break:break-word;cursor:pointer;">${esc(ppobProductName)}${t.customer_no && !ppobProductName.includes(String(t.customer_no)) ? ` <span style="font-weight:600;color:var(--muted,#64748b);font-size:10.5px;">&bull; ${esc(t.customer_no)}</span>` : ""}</div>`
+    ? `<div onclick="openTxDetail('${id}')" style="margin-top:4px;font-size:11.5px;font-weight:800;color:var(--text,#0f172a);line-height:1.25;white-space:normal;word-break:break-word;cursor:pointer;">${esc(ppobProductName)}${t.customer_no && !ppobProductName.includes(String(t.customer_no)) ? ` <span style="font-weight:600;color:var(--muted,#64748b);font-size:10.5px;">&bull; ${esc(t.customer_no)}</span>` : ""}</div>${ppobStatusHint}`
     : "";
 
   const afterWithdrawal = typeof isTxAfterLatestWithdrawal==='function' && isTxAfterLatestWithdrawal(t);
@@ -5662,7 +5689,7 @@ function txItem(t) {
       ${ppobProductLine}
     </div>
     <div class="tx-card-side">
-      <div class="tx-card-amount">Rp ${rp(t.amount)}</div>
+      <div class="tx-card-amount" style="${unsettled ? "text-decoration:line-through;opacity:0.55;" : ""}">Rp ${rp(t.amount)}</div>
       <div class="tx-action tx-action-card-mini">${action}</div>
     </div>
   </div>`;
@@ -5684,14 +5711,20 @@ function openTxDetail(id) {
   const isPpob = isPpobTx(t);
   const isDigital = isPpob || isZid;
   const prodTitle = isAkrab ? "XL/AXIS AKRAB (ZIDSTORE)" : (isZid ? "ZIDSTORE (PPOB)" : "PRODUK DIGITAL (PPOB)");
+  const stDigital = isDigital ? getDigitalTxStatus(t) : "";
+  const stColor = stDigital === "Sukses" ? "#059669" : (stDigital === "Gagal" ? "#dc2626" : "#d97706");
   const productHtml = isDigital
     ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;">
-        <div style="font-size:11px;color:var(--muted);font-weight:700;">${prodTitle}</div>
-        <div style="font-size:13.5px;font-weight:800;color:var(--text-main);margin-top:2px;">${esc(String(t.product_name || t.note || "").replace(/^\[(PPOB|ZIDSTORE|AKRAB)\]\s*/i, ""))}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="font-size:11px;color:var(--muted);font-weight:700;">${prodTitle}</div>
+          ${digitalStatusBadge(t)}
+        </div>
+        <div style="font-size:13.5px;font-weight:800;color:var(--text-main);margin-top:4px;">${esc(String(t.product_name || t.note || "").replace(/^\[(PPOB|ZIDSTORE|AKRAB)\]\s*/i, ""))}</div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">No Tujuan: <b style="color:var(--text-main);">${esc(t.customer_no || '-')}</b></div>
-        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Status: <b style="color:#0f172a;">${esc(t.status || 'Pending')}</b></div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Status Pusat: <b style="color:${stColor};">${esc(stDigital)}</b>${stDigital !== "Sukses" ? ` <span style="font-size:10px;color:#b45309;">(Belum masuk omset/laci)</span>` : ""}</div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">SN / Token: <b style="color:#059669;word-break:break-all;">${esc(t.sn || '-')}</b></div>
-        ${isZid && String(t.status || "").toLowerCase() !== "sukses" ? `<button type="button" class="btn" style="margin-top:8px;width:100%;background:#4f46e5;color:#fff;font-weight:800;border-radius:10px;padding:9px;font-size:12px;" onclick="checkStaffZidStoreOrderStatus('${esc(t.id)}')">↻ Cek Status / SN ZidStore</button>` : ""}
+        ${t.message ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">Info Server: <b>${esc(t.message)}</b></div>` : ""}
+        ${stDigital !== "Sukses" ? `<button type="button" class="btn" style="margin-top:8px;width:100%;background:${isZid ? "#4f46e5" : "#059669"};color:#fff;font-weight:800;border-radius:10px;padding:9px;font-size:12px;" onclick="checkStaffDigitalOrderStatus('${esc(t.id)}')">↻ Cek Status / SN ${isZid ? "ZidStore" : "Digiflazz"}</button>` : ""}
       </div>`
     : txProductDetailHtml(t.note || "Transaksi");
   const body = `<div class="tx-admin-detail">
@@ -6946,7 +6979,7 @@ function getTodayCashFisik() {
 
   const allFirebaseTx = state.data.targetTx || [];
   
-  const todayFbTxs = allFirebaseTx.filter(t => !deleted(t) && (t.dateKey || t.date) === todayKey());
+  const todayFbTxs = allFirebaseTx.filter(t => !deleted(t) && !isDigitalTxUnsettled(t) && (t.dateKey || t.date) === todayKey());
   const globalFbTotal = todayFbTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
   const globalFbQrisTotal = todayFbTxs
     .filter(t => {
@@ -8325,10 +8358,10 @@ function home() {
         
         const map = new Map();
         for (const t of (state.data.targetTx || [])) {
-          if (!deleted(t) && txDate(t) === todayKey()) map.set(t.id, t);
+          if (!deleted(t) && !isDigitalTxUnsettled(t) && txDate(t) === todayKey()) map.set(t.id, t);
         }
         for (const t of todayTx()) {
-          if (!deleted(t)) map.set(t.id, t);
+          if (!deleted(t) && !isDigitalTxUnsettled(t)) map.set(t.id, t);
         }
         const globalToday = Array.from(map.values());
         const txAfter = globalToday.filter(t => {
@@ -8376,10 +8409,10 @@ function home() {
       // Hitung transaksi cash BARU setelah kembalian diset (sama persis logika admin)
       const map = new Map();
       for (const t of (state.data.targetTx || [])) {
-        if (!deleted(t) && txDate(t) === todayKey()) map.set(t.id, t);
+        if (!deleted(t) && !isDigitalTxUnsettled(t) && txDate(t) === todayKey()) map.set(t.id, t);
       }
       for (const t of todayTx()) {
-        if (!deleted(t)) map.set(t.id, t);
+        if (!deleted(t) && !isDigitalTxUnsettled(t)) map.set(t.id, t);
       }
       const globalToday = Array.from(map.values());
       const txAfter = globalToday.filter(t => {
@@ -14111,7 +14144,7 @@ function receiptTextForPpob(tx) {
     `Produk  : ${tx.product_name}\n` +
     `Tujuan  : ${tx.customer_no}\n` +
     (isPln ? `TOKEN   : ${tx.sn || "SEDANG DIPROSES"}\n` : `SN      : ${tx.sn || "SEDANG DIPROSES"}\n`) +
-    `Status  : ${tx.status === "Sukses" ? "LUNAS / SUKSES" : "PROSES PENDING"}\n` +
+    `Status  : ${getDigitalTxStatus(tx) === "Sukses" ? "LUNAS / SUKSES" : (getDigitalTxStatus(tx) === "Gagal" ? "GAGAL / BATAL" : "PROSES PENDING")}\n` +
     `${sep}\n` +
     `${receiptSummaryLine("TOTAL", rp(tx.price_sell))}\n` +
     `${receiptSummaryLine("BAYAR", "TUNAI")}\n` +
@@ -14132,6 +14165,13 @@ function confirmPpobOrder(sku) {
   const isPln = product.category === 'PLN';
   const labelTujuan = isPln ? 'No. Meter / ID Pelanggan' : 'Nomor HP Pelanggan';
 
+  const ppobDescBox = product.desc
+    ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;max-height:150px;overflow-y:auto;">
+         <div style="font-size:10.5px;font-weight:800;color:#059669;text-transform:uppercase;margin-bottom:4px;">Keterangan Paket</div>
+         <div style="font-size:11.5px;color:#334155;white-space:pre-line;line-height:1.45;">${esc(product.desc)}</div>
+       </div>`
+    : "";
+
   const body = `
     <div style="display:flex;flex-direction:column;gap:12px;">
       <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:12px 14px;">
@@ -14146,9 +14186,11 @@ function confirmPpobOrder(sku) {
           <div style="font-size:16px;font-weight:900;color:#059669;">Rp ${rp(sellPrice)}</div>
         </div>
         <div style="font-size:11px;color:var(--muted);margin-top:4px;">
-          Kategori: <b>${esc(product.category)}</b> &bull; ${esc(product.desc || product.brand)}
+          Kategori: <b>${esc(product.category)}</b> &bull; Kode: <b>${esc(product.sku)}</b>
         </div>
       </div>
+
+      ${ppobDescBox}
 
       <div style="margin-top:4px;">
         <button type="button" class="btn" style="width:100%;background:#059669;color:#fff;font-weight:800;border-radius:12px;padding:13px 14px;font-size:13.5px;display:flex;align-items:center;justify-content:center;gap:8px;letter-spacing:0.3px;" onclick="promptPpobPinAndPay('${esc(sku)}', ${sellPrice})">
@@ -14499,9 +14541,10 @@ async function processPpobTransaction(sku, sellPrice, isTesting = false) {
       paymentStatus: "success",
       paymentConfirmed: true,
       paymentConfirmedAtMs: now,
-      notifyAdmin: true,
+      notifyAdmin: realStatus === "Sukses",
       notificationType: "staff_transaction",
-      notificationStatus: "pending",
+      notificationStatus: realStatus === "Sukses" ? "pending" : "waiting_ppob",
+      settledAtMs: realStatus === "Sukses" ? now : null,
       dateKey: todayKey(),
       monthKey: monthKey(),
       userRole: userRole,
@@ -14567,51 +14610,27 @@ async function processPpobTransaction(sku, sellPrice, isTesting = false) {
     syncDailyTargetState();
     render();
 
-    // 4. Kirim notifikasi transaksi baru ke bos / admin
-    if (!isTrialRecord(txPayload)) {
-      notifyAdminNewTransaction(txPayload);
-      if (typeof kirimNotifWaBos === "function") kirimNotifWaBos(sellPrice, txPayload.note, kasirName);
+    // 4. Kirim notifikasi & suara HANYA jika sudah benar-benar Sukses (Opsi B: Pending tunggu Sukses dulu)
+    if (realStatus === "Sukses") {
+      if (!isTrialRecord(txPayload)) {
+        notifyAdminNewTransaction(txPayload);
+        if (typeof kirimNotifWaBos === "function") kirimNotifWaBos(sellPrice, txPayload.note, kasirName);
+      }
+      if (typeof playSuccessSound === "function") playSuccessSound();
     }
     if (typeof loadPpobAndZidBalancesFromDb === "function") {
       setTimeout(() => loadPpobAndZidBalancesFromDb(true), 1500);
     }
-    if (typeof playSuccessSound === "function") playSuccessSound();
 
-    // 5. Format teks struk
+    // 5. Format teks struk & tampilkan modal jujur sesuai status (Sukses vs Pending)
     const receiptText = receiptTextForPpob(txPayload);
     window.__lastPpobReceipt = receiptText;
 
-    // 3. Tampilkan modal hasil transaksi
-    const successBody = `
-      <div style="text-align:center;padding:8px 0;">
-        <div style="width:60px;height:60px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;box-shadow:0 4px 14px rgba(22,163,74,0.22);border:2.5px solid #86efac;">
-          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-        </div>
-        <div style="font-size:17px;font-weight:900;color:#0f172a;">Transaksi Berhasil!</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px;">${isTesting ? 'Mode Simulasi Sandbox (Saldo Aman)' : 'Transaksi Diproses'}</div>
-
-        <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:12px;text-align:left;margin:14px 0;">
-          <div style="font-size:11px;color:var(--muted);font-weight:700;">${isPln ? 'NOMOR TOKEN PLN:' : 'NOMOR SERIAL NUMBER (SN):'}</div>
-          <div style="font-size:16px;font-weight:900;color:#059669;letter-spacing:1px;word-break:break-all;margin-top:3px;">${esc(txPayload.sn || 'Sedang diproses')}</div>
-          <div style="font-size:11.5px;color:var(--muted);margin-top:8px;">Tujuan: <b style="color:#0f172a;">${esc(txPayload.customer_no)}</b></div>
-          <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Produk: <b style="color:#0f172a;">${esc(txPayload.product_name)}</b></div>
-          <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Total Bayar: <b style="color:#059669;">Rp ${rp(sellPrice)}</b></div>
-        </div>
-
-        <div style="display:flex;gap:8px;">
-          <button type="button" class="btn primary" style="flex:1;background:#059669;color:#fff;font-weight:800;border-radius:12px;padding:12px;display:flex;align-items:center;justify-content:center;gap:6px;" onclick="closeModal(); if (typeof openReceiptPreview === 'function' && window.__lastPpobReceipt) openReceiptPreview(window.__lastPpobReceipt, 'Struk PPOB');">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg> Cetak Struk
-          </button>
-          <button type="button" class="btn" style="flex:1;background:#f1f5f9;border:1px solid #cbd5e1;font-weight:700;border-radius:12px;padding:12px;" onclick="closeModal(); go('home');">
-            Selesai
-          </button>
-        </div>
-      </div>
-    `;
-
-    modal("Transaksi PPOB Selesai", successBody, "", "");
+    const modalTitle = realStatus === "Sukses" ? "Transaksi PPOB Selesai" : "Order PPOB Sedang Diproses";
+    modal(modalTitle, `<div id="digitalOrderResultWrap" data-ref-id="${esc(refId)}">${renderDigitalOrderResultModalBody(txPayload, { isTesting, isPln })}</div>`, "", "");
+    if (realStatus === "Pending" && !isTesting) {
+      startDigitalPendingPolling(refId);
+    }
   } catch (err) {
     console.error("Gagal transaksi PPOB:", err);
     toast("Gagal: " + (err.message || err), true);
@@ -14642,10 +14661,33 @@ let zidState = {
   markup: 1500,
   roundUpTo: 1000,
   priceBaseMode: "nominal",
+  kasirFilterMode: "all",
+  hiddenCodes: {},
+  selectedCodes: {},
+  customNames: {},
   customPrices: {},
   balance: null,
   loading: false
 };
+
+function getZidStoreItemCode(item) {
+  return String(item?.package_code || item?.code || item?.sku || "").trim();
+}
+
+function getZidStoreDisplayName(item) {
+  const code = getZidStoreItemCode(item);
+  const custom = code && zidState.customNames ? String(zidState.customNames[code] || "").trim() : "";
+  return custom || String(item?.name || code || "");
+}
+
+function isZidStoreItemVisibleInKasir(item) {
+  const code = getZidStoreItemCode(item);
+  if (!code) return false;
+  if (zidState.kasirFilterMode === "selected") {
+    return Boolean(zidState.selectedCodes && zidState.selectedCodes[code]);
+  }
+  return !(zidState.hiddenCodes && zidState.hiddenCodes[code]);
+}
 
 let lastPpobBalanceFetchAtMs = 0;
 
@@ -14805,8 +14847,24 @@ function renderPpobHub() {
   const digitalItems = allToday
     .filter(t => isPpobTx(t) || isZidStoreTx(t))
     .sort((a, b) => ms(b) - ms(a));
-  const digitalOmset = digitalItems.reduce((s, t) => s + Number(t.amount || 0), 0);
-  const akrabCount = (zidState.akrabPackages || []).filter(a => a.available !== false && Number(a.stock || 0) > 0).length;
+  const settledDigitalItems = digitalItems.filter(t => !isDigitalTxUnsettled(t));
+  const pendingDigitalItems = digitalItems.filter(t => getDigitalTxStatus(t) === "Pending");
+  const digitalOmset = settledDigitalItems.reduce((s, t) => s + Number(t.amount || 0), 0);
+  const akrabCount = (zidState.akrabPackages || []).filter(a => a.available !== false && Number(a.stock || 0) > 0 && isZidStoreItemVisibleInKasir(a)).length;
+
+  if (pendingDigitalItems.length && typeof checkAllStaffPendingDigitalOrders === "function") {
+    setTimeout(() => checkAllStaffPendingDigitalOrders(true), 250);
+  }
+
+  const pendingDigitalBanner = pendingDigitalItems.length
+    ? `<div style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:14px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+         <div style="min-width:0;">
+           <div style="font-size:12px;font-weight:900;color:#92400e;">⏳ ${pendingDigitalItems.length} Transaksi Masih Pending</div>
+           <div style="font-size:11px;color:#b45309;margin-top:2px;">Belum masuk omset &amp; laci sebelum status Sukses.</div>
+         </div>
+         <button type="button" class="btn" style="background:#d97706;color:#fff;font-weight:800;font-size:11px;padding:8px 10px;border-radius:10px;border:none;white-space:nowrap;" onclick="checkAllStaffPendingDigitalOrders(false)">↻ Cek Semua</button>
+       </div>`
+    : "";
 
   page.innerHTML = `
     <div class="wrap ppob-wrap" style="padding-top:12px;padding-bottom:105px;">
@@ -14821,10 +14879,12 @@ function renderPpobHub() {
           <div style="font-size:11.5px;color:var(--muted,#64748b);margin-top:2px;">Pilih layanan PPOB atau cek transaksi digital hari ini</div>
         </div>
         <div style="text-align:right;background:var(--card,#fff);border:1.5px solid var(--line,#e2e8f0);border-radius:12px;padding:6px 10px;flex-shrink:0;">
-          <div style="font-size:9.5px;font-weight:800;color:var(--muted);text-transform:uppercase;">Hari Ini</div>
-          <div style="font-size:12.5px;font-weight:900;color:#059669;">${digitalItems.length} trx &bull; Rp ${rp(digitalOmset)}</div>
+          <div style="font-size:9.5px;font-weight:800;color:var(--muted);text-transform:uppercase;">Sukses Hari Ini</div>
+          <div style="font-size:12.5px;font-weight:900;color:#059669;">${settledDigitalItems.length} trx &bull; Rp ${rp(digitalOmset)}</div>
         </div>
       </div>
+
+      ${pendingDigitalBanner}
 
       <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:18px;">
         ${renderPpobTxLockBanner()}
@@ -14975,6 +15035,10 @@ async function loadZidStoreCatalogFromDb() {
       if (s.markup !== undefined) zidState.markup = Number(s.markup);
       if (s.roundUpTo !== undefined) zidState.roundUpTo = Number(s.roundUpTo);
       zidState.priceBaseMode = s.priceBaseMode === "modal" ? "modal" : "nominal";
+      zidState.kasirFilterMode = s.kasirFilterMode === "selected" ? "selected" : "all";
+      zidState.hiddenCodes = s.hiddenCodes && typeof s.hiddenCodes === "object" ? { ...s.hiddenCodes } : {};
+      zidState.selectedCodes = s.selectedCodes && typeof s.selectedCodes === "object" ? { ...s.selectedCodes } : {};
+      zidState.customNames = s.customNames && typeof s.customNames === "object" ? { ...s.customNames } : {};
       if (s.customPrices && typeof s.customPrices === "object") {
         zidState.customPrices = { ...s.customPrices };
       }
@@ -15150,14 +15214,19 @@ function getFilteredZidStoreItems() {
   const q = String(zidState.search || "").trim().toLowerCase();
 
   if (tab === "akrab") {
-    let list = [...(zidState.akrabPackages || [])];
+    let list = (zidState.akrabPackages || []).filter(isZidStoreItemVisibleInKasir);
     if (q) {
-      list = list.filter(a => String(a.name || "").toLowerCase().includes(q) || String(a.package_code || "").toLowerCase().includes(q));
+      list = list.filter(a =>
+        getZidStoreDisplayName(a).toLowerCase().includes(q) ||
+        String(a.name || "").toLowerCase().includes(q) ||
+        String(a.package_code || "").toLowerCase().includes(q) ||
+        String(a.description || "").toLowerCase().includes(q)
+      );
     }
     return list.sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0) || Number(a.price || 0) - Number(b.price || 0));
   }
 
-  let list = (zidState.products || []).filter(p => getZidStoreCategoryTab(p) === tab);
+  let list = (zidState.products || []).filter(p => getZidStoreCategoryTab(p) === tab && isZidStoreItemVisibleInKasir(p));
 
   if (tab === "pulsa" || tab === "data") {
     const detected = detectPhoneBrand(zidState.customerNo);
@@ -15183,9 +15252,11 @@ function getFilteredZidStoreItems() {
 
   if (q) {
     list = list.filter(p =>
+      getZidStoreDisplayName(p).toLowerCase().includes(q) ||
       String(p.name || "").toLowerCase().includes(q) ||
       String(p.code || "").toLowerCase().includes(q) ||
-      String(p.sub_category || "").toLowerCase().includes(q)
+      String(p.sub_category || "").toLowerCase().includes(q) ||
+      String(p.description || "").toLowerCase().includes(q)
     );
   }
 
@@ -15236,21 +15307,25 @@ function updateZidStoreList() {
   container.innerHTML = moreBanner + limited.map(item => {
     const isAkrab = zidState.tab === "akrab" || Boolean(item.package_code);
     const code = String(item.package_code || item.code || item.sku || "");
+    const displayName = getZidStoreDisplayName(item);
     const sellPrice = item.is_open_denom ? 0 : getZidStoreSellPrice(item);
     const stockNum = Number(item.stock || 0);
     const avail = isAkrab ? (item.available !== false && stockNum > 0) : item.available !== false;
     const stockBadge = isAkrab
       ? `<span class="chip" style="background:${stockNum > 0 ? "#dcfce7" : "#fee2e2"};color:${stockNum > 0 ? "#166534" : "#991b1b"};font-size:10px;font-weight:800;padding:2px 7px;">Stok: ${stockNum}</span>`
       : "";
+    const rawDesc = String(item.description || "").replace(/\s+/g, " ").trim();
+    const shortDesc = rawDesc ? (rawDesc.length > 110 ? rawDesc.slice(0, 110) + "..." : rawDesc) : "";
 
     return `
       <div class="card pad" style="display:flex;align-items:center;justify-content:space-between;border-radius:14px;border:1.5px solid var(--line,#e2e8f0);padding:12px 14px;cursor:${avail ? "pointer" : "not-allowed"};opacity:${avail ? "1" : "0.58"};gap:10px;" onclick="${avail ? `confirmZidStoreOrder('${esc(code)}', '${isAkrab ? "akrab" : "ppob"}')` : `toast('${isAkrab ? "Stok paket Akrab habis" : "Produk sedang tidak tersedia"}')`}">
         <div style="min-width:0;flex:1;">
-          <div style="font-size:13.5px;font-weight:800;color:var(--text-main,#0f172a);line-height:1.3;">${esc(item.name)}</div>
+          <div style="font-size:13.5px;font-weight:800;color:var(--text-main,#0f172a);line-height:1.3;">${esc(displayName)}</div>
           <div style="font-size:11px;color:var(--muted,#64748b);margin-top:3px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
             <span>${esc(item.sub_category || item.brand || "ZidStore")} &bull; ${esc(code)}</span>
             ${stockBadge}
           </div>
+          ${shortDesc ? `<div style="font-size:11px;color:#475569;margin-top:4px;line-height:1.35;">${esc(shortDesc)}</div>` : ""}
         </div>
         <div style="text-align:right;flex-shrink:0;">
           <div style="font-size:15px;font-weight:900;color:#4f46e5;">${item.is_open_denom ? "Open Denom" : `Rp ${rp(sellPrice)}`}</div>
@@ -15276,11 +15351,16 @@ function confirmZidStoreOrder(code, kind = "ppob") {
     }
   }
 
+  const displayName = getZidStoreDisplayName(item);
   const isOpen = Boolean(item.is_open_denom && kind === "ppob");
   const baseSellPrice = isOpen ? 0 : getZidStoreSellPrice(item);
-  const descBox = kind === "akrab" && item.description
-    ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;max-height:140px;overflow-y:auto;font-size:11px;color:#475569;white-space:pre-line;line-height:1.4;">${esc(item.description)}</div>`
-    : "";
+  const descText = String(item.description || "").trim();
+  const descBox = descText
+    ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;max-height:170px;overflow-y:auto;">
+         <div style="font-size:10.5px;font-weight:800;color:#4f46e5;text-transform:uppercase;margin-bottom:4px;">Keterangan Paket</div>
+         <div style="font-size:11.5px;color:#334155;white-space:pre-line;line-height:1.45;">${esc(descText)}</div>
+       </div>`
+    : `<div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:12px;padding:9px 12px;font-size:11px;color:#64748b;">Tidak ada keterangan paket tambahan dari ZidStore untuk produk ini.</div>`;
   const openDenomBox = isOpen
     ? `<div style="background:#eef2ff;border:1.5px solid #a5b4fc;border-radius:12px;padding:10px 12px;">
          <label style="font-size:11px;font-weight:800;color:#312e81;display:block;margin-bottom:4px;">NOMINAL OPEN DENOM (Rp 10.000 - Rp 10.000.000)</label>
@@ -15298,7 +15378,7 @@ function confirmZidStoreOrder(code, kind = "ppob") {
 
       <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:12px 14px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-          <div style="font-size:13.5px;font-weight:800;color:#0f172a;">${esc(item.name)}</div>
+          <div style="font-size:13.5px;font-weight:800;color:#0f172a;">${esc(displayName)}</div>
           ${!isOpen ? `<div style="font-size:16px;font-weight:900;color:#4f46e5;white-space:nowrap;">Rp ${rp(baseSellPrice)}</div>` : ""}
         </div>
         <div style="font-size:11px;color:var(--muted);margin-top:4px;">
@@ -15343,7 +15423,7 @@ function promptZidStorePinAndPay(code, kind, sellPrice, isOpenDenom = false) {
     <div style="display:flex;flex-direction:column;gap:12px;">
       <div style="background:#eef2ff;border:1.5px solid #a5b4fc;border-radius:12px;padding:11px 13px;">
         <div style="font-size:11px;font-weight:800;color:#312e81;text-transform:uppercase;">Verifikasi Kasir: ${esc(userName)}</div>
-        <div style="font-size:13.5px;font-weight:800;color:#0f172a;margin-top:3px;">${esc(item.name)} &bull; ${esc(zidState.customerNo)}</div>
+        <div style="font-size:13.5px;font-weight:800;color:#0f172a;margin-top:3px;">${esc(getZidStoreDisplayName(item))} &bull; ${esc(zidState.customerNo)}</div>
         <div style="font-size:14px;font-weight:900;color:#4f46e5;margin-top:2px;">Total: Rp ${rp(finalSell)}</div>
       </div>
 
@@ -15469,6 +15549,7 @@ async function processZidStoreTransaction(code, kind, sellPrice, openQty = 0) {
     const userRole = state.user?.role || "staff";
     const actualModal = Number(d.price || modalPrice || 0);
     const profit = Math.max(0, sellPrice - actualModal);
+    const displayName = getZidStoreDisplayName(item);
 
     const txPayload = {
       id: refId,
@@ -15487,10 +15568,10 @@ async function processZidStoreTransaction(code, kind, sellPrice, openQty = 0) {
       name: kasirName,
       cashier_name: kasirName,
       amount: sellPrice,
-      note: `${kind === "akrab" ? "[AKRAB]" : "[ZIDSTORE]"} ${item.name} (${targetNo})`,
+      note: `${kind === "akrab" ? "[AKRAB]" : "[ZIDSTORE]"} ${displayName} (${targetNo})`,
       customer_no: targetNo,
       buyer_sku_code: code,
-      product_name: item.name,
+      product_name: displayName,
       price_modal: actualModal,
       price_sell: sellPrice,
       profit,
@@ -15503,9 +15584,10 @@ async function processZidStoreTransaction(code, kind, sellPrice, openQty = 0) {
       paymentStatus: "success",
       paymentConfirmed: true,
       paymentConfirmedAtMs: now,
-      notifyAdmin: true,
+      notifyAdmin: mappedStatus === "Sukses",
       notificationType: "staff_transaction",
-      notificationStatus: "pending",
+      notificationStatus: mappedStatus === "Sukses" ? "pending" : "waiting_ppob",
+      settledAtMs: mappedStatus === "Sukses" ? now : null,
       dateKey: todayKey(),
       monthKey: monthKey(),
       userRole,
@@ -15535,41 +15617,25 @@ async function processZidStoreTransaction(code, kind, sellPrice, openQty = 0) {
     syncDailyTargetState();
     render();
 
-    if (!isTrialRecord(txPayload)) {
-      notifyAdminNewTransaction(txPayload);
-      if (typeof kirimNotifWaBos === "function") kirimNotifWaBos(sellPrice, txPayload.note, kasirName);
+    if (mappedStatus === "Sukses") {
+      if (!isTrialRecord(txPayload)) {
+        notifyAdminNewTransaction(txPayload);
+        if (typeof kirimNotifWaBos === "function") kirimNotifWaBos(sellPrice, txPayload.note, kasirName);
+      }
+      if (typeof playSuccessSound === "function") playSuccessSound();
     }
     if (typeof loadPpobAndZidBalancesFromDb === "function") {
       setTimeout(() => loadPpobAndZidBalancesFromDb(true), 1500);
     }
-    if (typeof playSuccessSound === "function") playSuccessSound();
 
     const receiptText = receiptTextForPpob(txPayload);
     window.__lastPpobReceipt = receiptText;
 
-    const successBody = `
-      <div style="text-align:center;padding:8px 0;">
-        <div style="width:60px;height:60px;border-radius:50%;background:#eef2ff;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;border:2.5px solid #a5b4fc;">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-        </div>
-        <div style="font-size:17px;font-weight:900;color:#0f172a;">Order ZidStore Diterima!</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px;">Status: <b>${esc(mappedStatus)}</b></div>
-
-        <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:12px;text-align:left;margin:14px 0;">
-          <div style="font-size:11px;color:var(--muted);font-weight:700;">NOMOR SERIAL NUMBER (SN):</div>
-          <div id="zidSuccessSnText" style="font-size:16px;font-weight:900;color:#4f46e5;letter-spacing:0.8px;word-break:break-all;margin-top:3px;">${esc(txPayload.sn || "Sedang diproses (cek lagi beberapa detik)")}</div>
-          <div style="font-size:11.5px;color:var(--muted);margin-top:8px;">Tujuan: <b style="color:#0f172a;">${esc(targetNo)}</b></div>
-          <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Produk: <b style="color:#0f172a;">${esc(item.name)}</b></div>
-          <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Total Bayar: <b style="color:#4f46e5;">Rp ${rp(sellPrice)}</b></div>
-        </div>
-
-        <div style="display:flex;gap:8px;">
-          ${mappedStatus !== "Sukses" ? `<button type="button" class="btn" style="flex:1;background:#eef2ff;color:#4f46e5;border:1.5px solid #a5b4fc;font-weight:800;border-radius:12px;padding:12px;" onclick="closeModal(); checkStaffZidStoreOrderStatus('${esc(refId)}')">Cek SN</button>` : ""}
-          <button type="button" class="btn primary" style="flex:1;background:#4f46e5;color:#fff;font-weight:800;border-radius:12px;padding:12px;" onclick="closeModal(); if (typeof openReceiptPreview === 'function' && window.__lastPpobReceipt) openReceiptPreview(window.__lastPpobReceipt, 'Struk ZidStore');">Cetak Struk</button>
-          <button type="button" class="btn" style="flex:1;background:#f1f5f9;border:1px solid #cbd5e1;font-weight:700;border-radius:12px;padding:12px;" onclick="closeModal(); go('home');">Selesai</button>
-        </div>
-      </div>`;
-    modal("Transaksi ZidStore", successBody, "", "");
+    const modalTitle = mappedStatus === "Sukses" ? "Transaksi ZidStore Selesai" : "Order ZidStore Sedang Diproses";
+    modal(modalTitle, `<div id="digitalOrderResultWrap" data-ref-id="${esc(refId)}">${renderDigitalOrderResultModalBody(txPayload)}</div>`, "", "");
+    if (mappedStatus === "Pending") {
+      startDigitalPendingPolling(refId);
+    }
   } catch (err) {
     toast("Gagal: " + (err.message || err), true);
   } finally {
@@ -15578,40 +15644,258 @@ async function processZidStoreTransaction(code, kind, sellPrice, openQty = 0) {
   }
 }
 
-async function checkStaffZidStoreOrderStatus(txId) {
-  const t = findTxById(txId);
-  if (!t) return toast("Transaksi tidak ditemukan");
-  const identifier = String(t.zidstoreOrderId || t.ref_id || t.id || "").trim();
-  const kind = isZidStoreAkrabTx(t) ? "akrab" : "ppob";
-  showLoad(true);
-  try {
-    const res = await callStaffZidStoreBackend("/zidstore-order-status", "POST", { kind, identifier });
-    if (!res || !res.ok || !res.data) {
-      return toast(res?.error || "Gagal cek status ZidStore", true);
+function renderDigitalOrderResultModalBody(tx, { isTesting = false, isPln = false, pollStep = 0 } = {}) {
+  const st = getDigitalTxStatus(tx);
+  const isZid = isZidStoreTx(tx);
+  const isPlnItem = isPln || String(tx?.buyer_sku_code || tx?.note || "").toLowerCase().includes("pln");
+  const sell = Number(tx?.price_sell || tx?.amount || 0);
+  const provLabel = isZid ? "ZidStore" : "Digiflazz";
+  const accent = isZid ? "#4f46e5" : "#059669";
+
+  let circleBg = "#dcfce7";
+  let circleBorder = "#86efac";
+  let strokeColor = "#16a34a";
+  let iconSvg = `<polyline points="20 6 9 17 4 12"></polyline>`;
+  let titleText = isZid ? "Transaksi ZidStore Sukses!" : "Transaksi Berhasil!";
+  let subText = isTesting ? "Mode Simulasi Sandbox (Saldo Aman)" : "Produk sudah diproses &amp; masuk ke omset";
+
+  if (st === "Pending") {
+    circleBg = "#fef3c7";
+    circleBorder = "#fcd34d";
+    strokeColor = "#d97706";
+    iconSvg = `<circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15 14"></polyline>`;
+    titleText = `Order ${provLabel} PENDING`;
+    subText = `Sedang dicek otomatis${pollStep ? ` (${pollStep}/8)` : ""} &bull; Belum masuk omset s.d. Sukses`;
+  } else if (st === "Gagal") {
+    circleBg = "#fee2e2";
+    circleBorder = "#fca5a5";
+    strokeColor = "#dc2626";
+    iconSvg = `<line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>`;
+    titleText = `Order ${provLabel} GAGAL`;
+    subText = "Saldo pusat otomatis kembali &bull; Tidak masuk omset/laci (kembalikan uang pembeli)";
+  }
+
+  const refId = String(tx?.ref_id || tx?.id || "");
+  const prodName = String(tx?.product_name || tx?.note || "").replace(/^\[(PPOB|ZIDSTORE|AKRAB)\]\s*/i, "");
+
+  return `
+    <div style="text-align:center;padding:8px 0;">
+      <div style="width:60px;height:60px;border-radius:50%;background:${circleBg};display:flex;align-items:center;justify-content:center;margin:0 auto 12px;border:2.5px solid ${circleBorder};">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">${iconSvg}</svg>
+      </div>
+      <div style="font-size:17px;font-weight:900;color:#0f172a;">${titleText}</div>
+      <div style="font-size:11.5px;color:${st === "Gagal" ? "#b91c1c" : (st === "Pending" ? "#b45309" : "var(--muted)")};font-weight:700;margin-top:3px;">${subText}</div>
+
+      <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:12px;text-align:left;margin:14px 0;">
+        <div style="font-size:11px;color:var(--muted);font-weight:700;">${isPlnItem ? "NOMOR TOKEN PLN:" : "NOMOR SERIAL NUMBER (SN):"}</div>
+        <div id="zidSuccessSnText" style="font-size:15.5px;font-weight:900;color:${st === "Gagal" ? "#dc2626" : accent};letter-spacing:0.6px;word-break:break-all;margin-top:3px;">${esc(tx?.sn || (st === "Gagal" ? (tx?.message || "Transaksi Gagal") : "Sedang diproses (otomatis dicek tiap 5 detik)"))}</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:8px;">Tujuan: <b style="color:#0f172a;">${esc(tx?.customer_no || "-")}</b></div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Produk: <b style="color:#0f172a;">${esc(prodName)}</b></div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Harga Jual: <b style="color:${accent};${st !== "Sukses" ? "text-decoration:line-through;opacity:0.65;" : ""}">Rp ${rp(sell)}</b>${st !== "Sukses" ? ` <span style="font-size:10px;font-weight:800;color:#b45309;">(${st === "Gagal" ? "Batal" : "Ditahan"})</span>` : ""}</div>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${st !== "Sukses" ? `<button type="button" class="btn" style="flex:1;background:${st === "Pending" ? "#fef3c7" : "#f1f5f9"};color:${st === "Pending" ? "#92400e" : "#475569"};border:1.5px solid ${st === "Pending" ? "#fcd34d" : "#cbd5e1"};font-weight:800;border-radius:12px;padding:12px;" onclick="checkStaffDigitalOrderStatus('${esc(refId)}', { fromResultModal: true })">&#8635; Cek Status Sekarang</button>` : ""}
+        ${st === "Sukses" ? `<button type="button" class="btn primary" style="flex:1;background:${accent};color:#fff;font-weight:800;border-radius:12px;padding:12px;" onclick="closeModal(); if (typeof openReceiptPreview === 'function' && window.__lastPpobReceipt) openReceiptPreview(window.__lastPpobReceipt, 'Struk ${provLabel}');">Cetak Struk</button>` : ""}
+        <button type="button" class="btn" style="flex:1;background:#f1f5f9;border:1px solid #cbd5e1;font-weight:700;border-radius:12px;padding:12px;" onclick="closeModal(); go('ppob_hub');">Selesai</button>
+      </div>
+    </div>`;
+}
+
+let _digitalPollTimer = null;
+function startDigitalPendingPolling(refId) {
+  if (_digitalPollTimer) {
+    clearTimeout(_digitalPollTimer);
+    _digitalPollTimer = null;
+  }
+  let attempt = 0;
+  const maxAttempts = 8;
+  const tick = async () => {
+    attempt++;
+    const tx = findTxById(refId);
+    if (!tx || getDigitalTxStatus(tx) !== "Pending" || attempt > maxAttempts) return;
+    const res = await checkStaffDigitalOrderStatus(refId, { silent: true, fromResultModal: true });
+    const wrap = document.getElementById("digitalOrderResultWrap");
+    if (wrap && wrap.getAttribute("data-ref-id") === String(refId)) {
+      const updatedTx = findTxById(refId) || tx;
+      wrap.innerHTML = renderDigitalOrderResultModalBody(updatedTx, { pollStep: attempt });
     }
-    const d = res.data;
-    const stLower = String(d.status || "").toLowerCase();
-    const mapped = stLower === "success" ? "Sukses" : (stLower === "failed" ? "Gagal" : "Pending");
+    if (res && res.mapped === "Pending" && attempt < maxAttempts) {
+      _digitalPollTimer = setTimeout(tick, 5000);
+    }
+  };
+  _digitalPollTimer = setTimeout(tick, 5000);
+}
+
+async function checkStaffDigitalOrderStatus(txId, { silent = false, fromResultModal = false } = {}) {
+  const t = findTxById(txId);
+  if (!t) {
+    if (!silent) toast("Transaksi tidak ditemukan");
+    return null;
+  }
+  const isZid = isZidStoreTx(t);
+  const wasPending = getDigitalTxStatus(t) === "Pending";
+  if (!silent) showLoad(true);
+  try {
+    let mapped = getDigitalTxStatus(t);
+    let nextSn = String(t.sn || "");
+    let nextMsg = String(t.message || "");
+    let nextModal = Number(t.price_modal || 0);
+
+    if (isZid) {
+      const identifier = String(t.zidstoreOrderId || t.ref_id || t.id || "").trim();
+      const kind = isZidStoreAkrabTx(t) ? "akrab" : "ppob";
+      const res = await callStaffZidStoreBackend("/zidstore-order-status", "POST", { kind, identifier });
+      if (!res || !res.ok || !res.data) {
+        if (!silent) toast(res?.error || "Gagal cek status ZidStore", true);
+        return null;
+      }
+      const d = res.data;
+      const stLower = String(d.status || "").toLowerCase();
+      mapped = stLower === "success" ? "Sukses" : (stLower === "failed" ? "Gagal" : "Pending");
+      nextSn = String(d.sn || t.sn || "");
+      nextMsg = String(d.message || t.message || "");
+      if (Number(d.price || 0) > 0) nextModal = Number(d.price);
+    } else {
+      const sku = String(t.buyer_sku_code || t.sku || "").trim();
+      const customerNo = String(t.customer_no || "").trim();
+      const refId = String(t.ref_id || t.id || "").trim();
+      if (!sku || !customerNo || !refId) {
+        if (!silent) toast("Data ref_id / SKU Digiflazz tidak lengkap");
+        return null;
+      }
+      const proxyHosts = buildStaffPpobProxyHosts();
+      const payload = { buyer_sku_code: sku, customer_no: customerNo, ref_id: refId, testing: Boolean(t.is_testing) };
+      let res = null;
+      for (const host of proxyHosts) {
+        try {
+          const r = await fetch(`${host}/ppob-order-status`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(7000)
+          });
+          if (r.ok) {
+            const j = await r.json();
+            if (j && (j.data || j.mapped_status || j.ok)) { res = j; break; }
+          }
+        } catch (e) {}
+      }
+      if (!res) {
+        try {
+          const r = await fetch(`${ROCKY_ADMIN_NOTIFY_WORKER_BASE_URL}/ppob-order-status`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Notify-Secret": ROCKY_ADMIN_NOTIFY_SECRET },
+            body: JSON.stringify({ ...payload, secret: ROCKY_ADMIN_NOTIFY_SECRET }),
+            signal: AbortSignal.timeout(8000)
+          });
+          if (r.ok) res = await r.json();
+        } catch (e) {}
+      }
+      if (!res || !res.data) {
+        if (!silent) toast("Gagal cek status Digiflazz (server tidak terjangkau)", true);
+        return null;
+      }
+      const d = res.data?.data || res.data || {};
+      const stLower = String(d.status || "").toLowerCase().trim();
+      const rc = String(d.rc || "").trim();
+      mapped = res.mapped_status || ((stLower === "sukses" || stLower === "success" || rc === "00")
+        ? "Sukses"
+        : ((stLower === "gagal" || stLower === "failed" || stLower === "error" || (rc !== "" && rc !== "00" && rc !== "03")) ? "Gagal" : "Pending"));
+      nextSn = String(d.sn || t.sn || "");
+      nextMsg = String(d.message || t.message || "");
+      if (Number(d.price || 0) > 0) nextModal = Number(d.price);
+    }
+
+    const sell = Number(t.price_sell || t.amount || 0);
+    const nextProfit = nextModal > 0 && sell > 0 ? Math.max(0, sell - nextModal) : Number(t.profit || 0);
+    const shouldNotifySettled = wasPending && mapped === "Sukses" && t.notificationStatus === "waiting_ppob";
     const patch = {
       status: mapped,
-      sn: String(d.sn || t.sn || ""),
-      message: String(d.message || t.message || ""),
+      sn: nextSn,
+      message: nextMsg,
+      price_modal: nextModal || Number(t.price_modal || 0),
+      profit: nextProfit,
+      settledAtMs: mapped === "Sukses" ? Number(t.settledAtMs || Date.now()) : (t.settledAtMs || null),
       updatedAtMs: Date.now()
     };
+    if (shouldNotifySettled) {
+      patch.notifyAdmin = true;
+      patch.notificationStatus = "pending";
+    }
+
     await setDoc(doc(db, "transactions", String(t.id)), patch, { merge: true });
+    supabase.from("ppob_transactions").update({ status: mapped, sn: nextSn, message: nextMsg, price_modal: patch.price_modal, profit: nextProfit }).eq("ref_id", String(t.ref_id || t.id)).then(() => {}).catch(() => {});
+    const updatedTx = { ...t, ...patch };
     if (Array.isArray(state.data.tx)) {
-      state.data.tx = state.data.tx.map(x => String(x.id) === String(t.id) ? { ...x, ...patch } : x);
+      state.data.tx = state.data.tx.map(x => String(x.id) === String(t.id) ? updatedTx : x);
     }
     if (Array.isArray(state.data.targetTx)) {
-      state.data.targetTx = state.data.targetTx.map(x => String(x.id) === String(t.id) ? { ...x, ...patch } : x);
+      state.data.targetTx = state.data.targetTx.map(x => String(x.id) === String(t.id) ? updatedTx : x);
     }
-    render();
-    toast(`Status ZidStore: ${mapped}${patch.sn ? " • SN: " + patch.sn : ""}`);
-    openTxDetail(String(t.id));
+    syncDailyTargetState();
+    window.__lastPpobReceipt = receiptTextForPpob(updatedTx);
+
+    if (shouldNotifySettled) {
+      if (!isTrialRecord(updatedTx)) {
+        notifyAdminNewTransaction(updatedTx);
+        if (typeof kirimNotifWaBos === "function") kirimNotifWaBos(sell, updatedTx.note, updatedTx.cashier_name || state.user?.name || "Kasir");
+      }
+      if (typeof playSuccessSound === "function") playSuccessSound();
+    }
+
+    if (fromResultModal) {
+      const wrap = document.getElementById("digitalOrderResultWrap");
+      if (wrap && wrap.getAttribute("data-ref-id") === String(t.id)) {
+        wrap.innerHTML = renderDigitalOrderResultModalBody(updatedTx);
+      }
+    }
+    if (!silent) {
+      toast(`Status ${isZid ? "ZidStore" : "Digiflazz"}: ${mapped}${nextSn ? " • SN: " + nextSn : ""}`, mapped === "Gagal");
+      if (!fromResultModal) {
+        render();
+        openTxDetail(String(t.id));
+      }
+    } else if (mapped !== "Pending") {
+      render();
+    }
+    return { mapped, updatedTx };
   } catch (e) {
-    toast("Gagal cek status: " + (e.message || e), true);
+    if (!silent) toast("Gagal cek status: " + (e.message || e), true);
+    return null;
   } finally {
-    showLoad(false);
+    if (!silent) showLoad(false);
+  }
+}
+
+async function checkStaffZidStoreOrderStatus(txId) {
+  return checkStaffDigitalOrderStatus(txId);
+}
+
+let _staffLastPendingCheckAt = 0;
+async function checkAllStaffPendingDigitalOrders(silent = false) {
+  if (silent && Date.now() - _staffLastPendingCheckAt < 20000) return;
+  _staffLastPendingCheckAt = Date.now();
+  const pendingList = todayTx().filter(t => (isPpobTx(t) || isZidStoreTx(t)) && getDigitalTxStatus(t) === "Pending");
+  if (!pendingList.length) {
+    if (!silent) toast("Tidak ada transaksi digital Pending hari ini");
+    return;
+  }
+  if (!silent) showLoad(true);
+  let changed = 0;
+  try {
+    for (const t of pendingList.slice(0, 10)) {
+      const res = await checkStaffDigitalOrderStatus(t.id, { silent: true });
+      if (res && res.mapped !== "Pending") changed++;
+    }
+    if (!silent) {
+      toast(changed ? `✓ ${changed} transaksi Pending terupdate!` : `Masih Pending (${pendingList.length} transaksi)`);
+      render();
+    } else if (changed) {
+      render();
+    }
+  } finally {
+    if (!silent) showLoad(false);
   }
 }
 
@@ -15625,6 +15909,8 @@ window.promptZidStorePinAndPay = promptZidStorePinAndPay;
 window.submitZidStorePinConfirm = submitZidStorePinConfirm;
 window.processZidStoreTransaction = processZidStoreTransaction;
 window.checkStaffZidStoreOrderStatus = checkStaffZidStoreOrderStatus;
+window.checkStaffDigitalOrderStatus = checkStaffDigitalOrderStatus;
+window.checkAllStaffPendingDigitalOrders = checkAllStaffPendingDigitalOrders;
 window.updateZidStoreList = updateZidStoreList;
 
 
