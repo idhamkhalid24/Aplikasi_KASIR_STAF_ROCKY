@@ -13541,6 +13541,7 @@ let ppobState = {
   loading: false,
   markup: 1500,
   roundUpTo: 1000,
+  priceBaseMode: "nominal",
   customPrices: {},
   balance: null,
   ppobPublicIp: "https://140-245-121-95.sslip.io,140.245.121.95,157.85.208.5",
@@ -13708,6 +13709,34 @@ try {
   });
 } catch (e) {}
 
+function extractStaffPpobNominal(item) {
+  if (!item) return 0;
+  const cat = String(item.category || "").toLowerCase().trim();
+  if (item.package_code || cat === "akrab" || cat === "data" || cat.includes("kuota") || cat.includes("paket")) {
+    return 0;
+  }
+  const name = String(item.name || "");
+  const dotted = name.match(/(\d{1,3}(?:\.\d{3})+)(?!\s*(?:gb|mb|kb|tb|hari|hr|jam|menit|mnt))/i);
+  if (dotted) {
+    const val = Number(dotted[1].replace(/\./g, ""));
+    if (Number.isFinite(val) && val >= 500) return val;
+  }
+  const isNominalCat = cat === "pulsa" || cat === "pln" || cat === "e-money" || cat === "emoney" || cat.includes("wallet") || cat.includes("money") || cat.includes("listrik");
+  if (isNominalCat) {
+    const kMatch = name.match(/\b(\d{1,4})\s*k\b/i);
+    if (kMatch) {
+      const val = Number(kMatch[1]) * 1000;
+      if (Number.isFinite(val) && val >= 500) return val;
+    }
+    const plain = name.match(/\b(\d{4,7})\b(?!\s*(?:gb|mb|kb|tb|hari|hr|jam|menit|mnt))/i);
+    if (plain) {
+      const val = Number(plain[1]);
+      if (Number.isFinite(val) && val >= 1000 && !(val >= 2020 && val <= 2035)) return val;
+    }
+  }
+  return 0;
+}
+
 function getPpobSellPrice(p) {
   if (!p) return 0;
   const sku = String(p.sku || "");
@@ -13715,8 +13744,11 @@ function getPpobSellPrice(p) {
   if (custom && custom > 0) return custom;
 
   const modal = Number(p.price || 0);
+  const baseMode = String(ppobState.priceBaseMode || "nominal");
+  const nom = baseMode === "nominal" ? extractStaffPpobNominal(p) : 0;
+  const base = nom > 0 ? nom : modal;
   const markup = Number(ppobState.markup !== undefined ? ppobState.markup : 1500);
-  let sell = modal + markup;
+  let sell = base + markup;
   const roundTo = Number(ppobState.roundUpTo || 0);
   if (roundTo > 0) {
     sell = Math.ceil(sell / roundTo) * roundTo;
@@ -13752,6 +13784,7 @@ async function loadPpobProductsFromDb() {
       const s = setSnap.data() || {};
       if (s.markup !== undefined) ppobState.markup = Number(s.markup);
       if (s.roundUpTo !== undefined) ppobState.roundUpTo = Number(s.roundUpTo);
+      ppobState.priceBaseMode = s.priceBaseMode === "modal" ? "modal" : "nominal";
       if (s.customPrices && typeof s.customPrices === "object") {
         ppobState.customPrices = { ...s.customPrices };
       }
@@ -14608,6 +14641,7 @@ let zidState = {
   akrabPackages: [],
   markup: 1500,
   roundUpTo: 1000,
+  priceBaseMode: "nominal",
   customPrices: {},
   balance: null,
   loading: false
@@ -14879,8 +14913,11 @@ function getZidStoreSellPrice(item, customOpenModal = 0) {
   const custom = zidState.customPrices && Number(zidState.customPrices[code] || 0);
   if (custom > 0) return custom;
   const modalPrice = Number(item.price || 0);
+  const baseMode = String(zidState.priceBaseMode || "nominal");
+  const nom = baseMode === "nominal" ? extractStaffPpobNominal(item) : 0;
+  const base = nom > 0 ? nom : modalPrice;
   const markup = Number(zidState.markup !== undefined ? zidState.markup : 1500);
-  let sell = modalPrice + markup;
+  let sell = base + markup;
   const roundTo = Number(zidState.roundUpTo || 0);
   if (roundTo > 0) sell = Math.ceil(sell / roundTo) * roundTo;
   return sell;
@@ -14937,6 +14974,7 @@ async function loadZidStoreCatalogFromDb() {
       const s = setSnap.data() || {};
       if (s.markup !== undefined) zidState.markup = Number(s.markup);
       if (s.roundUpTo !== undefined) zidState.roundUpTo = Number(s.roundUpTo);
+      zidState.priceBaseMode = s.priceBaseMode === "modal" ? "modal" : "nominal";
       if (s.customPrices && typeof s.customPrices === "object") {
         zidState.customPrices = { ...s.customPrices };
       }
